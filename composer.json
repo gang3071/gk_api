@@ -1,0 +1,57 @@
+{
+  "name": "yjb/api",
+  "type": "project",
+  "keywords": ["high performance", "http service", "api"],
+  "license": "MIT",
+  "description": "客户端API、代理API和外部API项目",
+  "require": {
+    "php": ">=8.0",
+    "workerman/webman-framework": "^1.5.0",
+    "monolog/monolog": "^2.0",
+    "ext-pdo": "*",
+    "ext-json": "*",
+    "ext-bcmath": "*",
+    "zjkal/time-helper": "^1.1",
+    "psr/container": "1.1.1",
+    "gitfei1231/webman-api-sign": "^0.0.21",
+    "workerman/validation": "^3.0",
+    "symfony/translation": "^5.4",
+    "webman/event": "^1.0",
+    "tinywan/jwt": "^1.6",
+    "php-di/php-di": "6",
+    "doctrine/annotations": "1.14",
+    "webman-tech/laravel-http-client": "^1.1",
+    "workbunny/webman-ip-attribution": "^1.0",
+    "illuminate/database": "^8.83",
+    "webman/gateway-worker": "^1.0",
+    "ext-sockets": "*",
+    "illuminate/pagination": "^8.83",
+    "ext-openssl": "*",
+    "webman/rate-limiter": "^1.1",
+    "tencentcloud/tencentcloud-sdk-php": "^3.0",
+    "zoujingli/ip2region": "^2.0",
+    "overtrue/easy-sms": "^3.1",
+    "superbalist/flysystem-google-storage": "^7.2",
+    "google/cloud-storage": "^1.35",
+    "webman/log": "^1.1",
+    "webman/redis-queue": "^1.2",
+    "webman/push": "^1.0",
+    "yzh52521/webman-lock": "^1.0",
+    "graham-campbell/result-type": "^1.1",
+    "phpoption/phpoption": "^1.9",
+    "vlucas/phpdotenv": "^5.6"
+  },
+  "autoload": {
+    "psr-4": {
+      "": "./",
+      "app\\": "./app",
+      "App\\": "./app",
+      "process\\": "./process"
+    }
+  },
+  "config": {
+    "audit": {
+      "ignore": ["PKSA-y2cr-5h3j-g3ys", "PKSA-2kqm-ps5x-s4f5"]
+    }
+  }
+}

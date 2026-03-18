@@ -1,0 +1,54 @@
+# Composer
+/vendor/
+composer.lock
+
+# Runtime
+/runtime/
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+*.pid
+*.sock
+
+# Logs
+/logs/
+*.log
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Upload files (可选)
+# /public/uploads/
+# /public/storage/
+
+# Queue files
+/queue/
+
+# Session files
+/session/
+
+# WebSocket
+*.gateway
