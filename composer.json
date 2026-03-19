@@ -23,6 +23,7 @@
     "webman-tech/laravel-http-client": "^1.1",
     "workbunny/webman-ip-attribution": "^1.0",
     "illuminate/database": "^8.83",
+    "illuminate/events": "^8.83",
     "webman/gateway-worker": "^1.0",
     "ext-sockets": "*",
     "illuminate/pagination": "^8.83",
