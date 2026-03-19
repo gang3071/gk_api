@@ -61,7 +61,7 @@ class SiteAuthMiddleware implements MiddlewareInterface
         if ($channel['status'] == 0 || !empty($channel['deleted_at'])) {
             return response('fail', 400);
         }
-        if (!empty($channel['client_version']) && !empty($clientVersion) && $channel['client_version'] != $clientVersion) {
+        if (!empty($channel['client_version']) && !empty($clientVersion) && $channel['client_version'] > $clientVersion) {
             return jsonFailResponse(trans('client_version_incorrect', [], 'message'), [], 466);
         }
         if (!empty($channel['app_version_code']) && !empty($appVersion) && $channel['app_version_code'] != $appVersion) {
