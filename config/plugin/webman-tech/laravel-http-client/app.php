@@ -23,7 +23,7 @@ return [
          * 启用 custom 时无实际作用
          * @link \GuzzleHttp\MessageFormatter::format()
          */
-        'format' => \GuzzleHttp\MessageFormatter::CLF,
+        'format' => '{method} {uri} {code}',
         /**
          * 自定义日志
          *
