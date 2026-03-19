@@ -33,12 +33,7 @@ class LevelList extends Model
         'level_id',
         'must_chip_amount'
     ];
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.level_list_table'));
-    }
+    protected $table = 'level_list';
 
     /**
      * 全民代理等级分类
@@ -46,6 +41,6 @@ class LevelList extends Model
      */
     public function national_level(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.national_level_model'), 'level_id');
+        return $this->belongsTo(NationalLevel::class, 'level_id');
     }
 }

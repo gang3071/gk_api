@@ -29,21 +29,16 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class MachineLabel extends Model
 {
     use HasDateTimeFormatter;
-    
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_label_table'));
-    }
-    
-    
+
+    protected $table = 'machine_label';
+
+
     /**
      * 分类扩展信息
      * @return hasMany
      */
     public function machineLabelExtend(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.machine_label_extend_model'), 'label_id');
+        return $this->hasMany(MachineLabelExtend::class, 'label_id');
     }
 }

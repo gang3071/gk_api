@@ -31,17 +31,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PlayerActivityRecord extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
 
     const STATUS_BEGIN = 1; // 进行中
     const STATUS_FINISH = 2; // 已结束
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_activity_record_table'));
-    }
+    protected $table = 'player_activity_record';
 
     /**
      * 活动内容
@@ -49,7 +45,7 @@ class PlayerActivityRecord extends Model
      */
     public function activity(): belongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.activity_model'), 'activity_id')->withTrashed();
+        return $this->belongsTo(Activity::class, 'activity_id')->withTrashed();
     }
 
     /**
@@ -58,7 +54,7 @@ class PlayerActivityRecord extends Model
      */
     public function machine(): belongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'), 'machine_id')->withTrashed();
+        return $this->belongsTo(Machine::class, 'machine_id')->withTrashed();
     }
 
     /**
@@ -67,6 +63,6 @@ class PlayerActivityRecord extends Model
      */
     public function player(): belongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 }

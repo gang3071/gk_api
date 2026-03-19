@@ -43,19 +43,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PromoterProfitSettlementRecord extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-    
+
     const TYPE_SETTLEMENT = 1; // 结算
     const TYPE_CLEAR = 2; // 清算
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-
-        $this->setTable(plugin()->webman->config('database.promoter_profit_settlement_record_table'));
-    }
+    protected $table = 'promoter_profit_settlement_record';
 
     /**
      * 推广员信息
@@ -63,7 +57,7 @@ class PromoterProfitSettlementRecord extends Model
      */
     public function promoter(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_promoter_model'), 'promoter_player_id', 'player_id');
+        return $this->belongsTo(PlayerPromoter::class, 'promoter_player_id', 'player_id');
     }
 
     /**
@@ -72,7 +66,7 @@ class PromoterProfitSettlementRecord extends Model
      */
     public function player_promoter(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'promoter_player_id');
+        return $this->belongsTo(Player::class, 'promoter_player_id');
     }
 
     /**
@@ -81,6 +75,6 @@ class PromoterProfitSettlementRecord extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'user_id')->withTrashed();
+        return $this->belongsTo(AdminUser::class, 'user_id')->withTrashed();
     }
 }

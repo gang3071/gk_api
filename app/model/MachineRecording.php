@@ -38,68 +38,63 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class MachineRecording extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
-    
+
     const TYPE_TEST = 1; // 测试
     const TYPE_OPEN = 2; // 开分
     const TYPE_WASH = 3; // 洗分
     const TYPE_REWARD = 4; //开奖
-    
+
     const STATUS_STARTING = 1; // 录制中
     const STATUS_COMPLETE = 2; // 录制完成
     const STATUS_FAIL = 3; //  录制失败
-    
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_recording_table'));
-    }
-    
+    protected $table = 'machine_recording';
+
     /**
      * 机台
      * @return BelongsTo
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'), 'machine_id')->withTrashed();
+        return $this->belongsTo(Machine::class, 'machine_id')->withTrashed();
     }
-    
+
     /**
      * 视讯流
      * @return BelongsTo
      */
     public function media(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_media_model'), 'media_id')->withTrashed();
+        return $this->belongsTo(MachineMedia::class, 'media_id')->withTrashed();
     }
-    
+
     /**
      * 上下分记录
      * @return BelongsTo
      */
     public function playerGameLog(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_game_log_model'), 'player_game_log_id');
+        return $this->belongsTo(PlayerGameLog::class, 'player_game_log_id');
     }
-    
+
     /**
      * 上下分记录
      * @return BelongsTo
      */
     public function playerGameRecord(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_game_record_model'), 'player_game_record_id');
+        return $this->belongsTo(PlayerGameRecord::class, 'player_game_record_id');
     }
-    
+
     /**
      * 渠道信息
      * @return BelongsTo
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->belongsTo(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
 }

@@ -28,30 +28,26 @@ class PhoneSmsLog extends Model
 {
     use HasDateTimeFormatter;
 
-    CONST TYPE_LOGIN = 1; // 登录
-    CONST TYPE_REGISTER = 2; // 注册
-    CONST TYPE_CHANGE_PASSWORD = 3; // 修改密码
-    CONST TYPE_CHANGE_PAY_PASSWORD = 4; // 修改支付密码
-    CONST TYPE_CHANGE_PHONE = 5; // 修改手机号
-    CONST TYPE_BIND_NEW_PHONE = 6; // 绑定新手机号
-    CONST TYPE_TALK_BIND = 7; // QTalk绑定账号
+    const TYPE_LOGIN = 1; // 登录
+    const TYPE_REGISTER = 2; // 注册
+    const TYPE_CHANGE_PASSWORD = 3; // 修改密码
+    const TYPE_CHANGE_PAY_PASSWORD = 4; // 修改支付密码
+    const TYPE_CHANGE_PHONE = 5; // 修改手机号
+    const TYPE_BIND_NEW_PHONE = 6; // 绑定新手机号
+    const TYPE_TALK_BIND = 7; // QTalk绑定账号
     const TYPE_LINE_BIND = 8; // LINE绑定账号
 
-    CONST COUNTRY_CODE_JP = 81; // 日本
-    CONST COUNTRY_CODE_TW = 886; // 中国台湾
-    CONST COUNTRY_CODE_CH = 86; // 中国大陆
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.phone_sms_log_table'));
-    }
-    
+    const COUNTRY_CODE_JP = 81; // 日本
+    const COUNTRY_CODE_TW = 886; // 中国台湾
+    const COUNTRY_CODE_CH = 86; // 中国大陆
+    protected $table = 'phone_sms_log';
+
     /**
      * 玩家信息
      * @return BelongsTo
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 }

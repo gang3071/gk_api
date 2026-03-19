@@ -33,13 +33,7 @@ class ChannelPlatformReverseWater extends Model
         'checkout_time',
         'status'
     ];
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-
-        $this->setTable(plugin()->webman->config('database.channel_platform_reverse_water_table'));
-    }
+    protected $table = 'channel_platform_reverse_water';
 
     /**
      * 反水活动配置
@@ -56,6 +50,6 @@ class ChannelPlatformReverseWater extends Model
      */
     public function platform(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_platform_model'), 'platform_id')->withTrashed();
+        return $this->belongsTo(GamePlatform::class, 'platform_id')->withTrashed();
     }
 }

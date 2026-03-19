@@ -38,39 +38,34 @@ class Game extends Model
     const DISPLAY_MODE_LANDSCAPE = 1; // 横版
     const DISPLAY_MODE_PORTRAIT = 2;  // 竖版
     const DISPLAY_MODE_ALL = 3;       // 全部支持
+    protected $table = 'game';
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.game_table'));
-    }
-    
     /**
      * 游戏平台
      * @return BelongsTo
      */
     public function gamePlatform(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_platform_model'),
+        return $this->belongsTo(GamePlatform::class,
             'platform_id')->withTrashed();
     }
-    
+
     /**
      * 游戏内容
      * @return hasMany
      */
     public function gameContent(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.game_content_model'), 'game_id');
+        return $this->hasMany(GameContent::class, 'game_id');
     }
-    
+
     /**
      * 游戏
      * @return BelongsTo
      */
     public function game_extend(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_extend_model'),
+        return $this->belongsTo(GameExtend::class,
             'game_extend_id');
     }
 }

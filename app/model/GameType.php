@@ -26,7 +26,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class GameType extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
-    
+
     const TYPE_SLOT = 1; // 斯洛
     const TYPE_STEEL_BALL = 2; // 钢珠
     const TYPE_FISH = 3; // 鱼机
@@ -42,19 +42,14 @@ class GameType extends Model
     const CATE_ARCADE = 8; // 街機
     const CATE_SPORT = 9; // 体育
     const CATE_LOTTERY = 10; // 彩票
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.game_type_table'));
-    }
-    
+    protected $table = 'game_type';
+
     /**
-     * 玩家信息
+     * 彩金池信息
      * @return HasOne
      */
     public function lotteryPool(): HasOne
     {
-        return $this->HasOne(plugin()->webman->config('database.lottery_pool_model'), 'type', 'type');
+        return $this->HasOne(LotteryPool::class, 'type', 'type');
     }
 }

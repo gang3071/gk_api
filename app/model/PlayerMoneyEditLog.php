@@ -66,12 +66,7 @@ class PlayerMoneyEditLog extends Model
     const COIN_WITHDRAWAL = 16; // 币商提现
     const DEPOSIT_BONUS_GRANT = 17; // 充值满赠发放
     const DEPOSIT_BONUS_CANCEL = 18; // 充值满赠取消
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_money_edit_log_table'));
-    }
+    protected $table = 'player_money_edit_log';
 
     /**
      * 玩家信息
@@ -79,7 +74,7 @@ class PlayerMoneyEditLog extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->BelongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->BelongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**
@@ -88,7 +83,7 @@ class PlayerMoneyEditLog extends Model
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id', 'department_id')->withTrashed();
+        return $this->belongsTo(Channel::class, 'department_id', 'department_id')->withTrashed();
     }
 
     /**
@@ -97,6 +92,6 @@ class PlayerMoneyEditLog extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'user_id')->withTrashed();
+        return $this->belongsTo(AdminUser::class, 'user_id')->withTrashed();
     }
 }

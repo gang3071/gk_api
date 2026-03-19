@@ -88,20 +88,15 @@ use support\Cache;
 class Machine extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
-    
+
     const CONTROL_TYPE_MEI = 1;
     const CONTROL_TYPE_SONG = 2;
-    
+
     protected $name;
     protected $correct_rate;
     protected $picture_url;
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_table'));
-    }
-    
+    protected $table = 'machine';
+
     /**
      * 模型的 "booted" 方法
      *
@@ -178,43 +173,43 @@ class Machine extends Model
             }
         });
     }
-    
+
     /**
      * 游戏类别
      * @return BelongsTo
      */
     public function machineCategory(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_category_model'), 'cate_id');
+        return $this->belongsTo(MachineCategory::class, 'cate_id');
     }
-    
+
     /**
      * 正在游戏玩家
      * @return HasOne
      */
     public function gamingPlayer(): HasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.player_model'), 'id', 'gaming_user_id')->withTrashed();
+        return $this->hasOne(Player::class, 'id', 'gaming_user_id')->withTrashed();
     }
-    
+
     /**
      * 机器标签
      * @return belongsTo
      */
     public function machineLabel(): belongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_label_model'), 'label_id');
+        return $this->belongsTo(MachineLabel::class, 'label_id');
     }
-    
+
     /**
      * 保留玩家
      * @return HasOne
      */
     public function keepingPlayer(): HasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.player_model'), 'id', 'keeping_user_id')->withTrashed();
+        return $this->hasOne(Player::class, 'id', 'keeping_user_id')->withTrashed();
     }
-    
+
     /**
      * 获取name属性
      * @return string
@@ -223,7 +218,7 @@ class Machine extends Model
     {
         return $this->machineLabel->name ?? '';
     }
-    
+
     /**
      * 获取correct_rate属性
      * @return string
@@ -232,7 +227,7 @@ class Machine extends Model
     {
         return $this->machineLabel->correct_rate ?? 0;
     }
-    
+
     /**
      * 获取picture_url属性
      * @return string
@@ -241,32 +236,32 @@ class Machine extends Model
     {
         return $this->machineLabel->picture_url ?? '';
     }
-    
+
     /**
      * 媒体服务
      * @return HasMany
      */
     public function machine_media(): HasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.machine_media_model'), 'machine_id');
+        return $this->hasMany(MachineMedia::class, 'machine_id');
     }
-    
+
     /**
      * 机台攻略
      * @return hasOne
      */
     public function machine_strategy(): hasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.machine_strategy_model'), 'strategy_id');
+        return $this->hasOne(MachineStrategy::class, 'strategy_id');
     }
-    
+
     /**
      * 厂商
      * @return BelongsTo
      */
     public function producer(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_producer_model'),
+        return $this->belongsTo(MachineProducer::class,
             'producer_id')->withTrashed();
     }
 }

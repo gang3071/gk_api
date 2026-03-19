@@ -52,7 +52,7 @@ use Webman\Event\Event;
 class PlayerWithdrawRecord extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     const STATUS_WAIT = 1; // 提现中(待审核)
     const STATUS_SUCCESS = 2; // 成功
@@ -67,13 +67,8 @@ class PlayerWithdrawRecord extends Model
     const TYPE_GB = 4; // 购宝提现
     const TYPE_COIN = 5; // 币商提现
     protected $dataAuth = ['department_id' => 'department_id'];
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_withdraw_record_table'));
-    }
-    
+    protected $table = 'player_withdraw_record';
+
     /**
      * 模型的 "booted" 方法
      *
@@ -99,26 +94,26 @@ class PlayerWithdrawRecord extends Model
             }
         });
     }
-    
+
     /**
      * 渠道信息
      * @return BelongsTo
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->belongsTo(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
-    
+
     /**
      * 玩家信息
      * @return BelongsTo
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
-    
+
     /**
      * 获取器 - 标签id
      * @param $value
@@ -128,7 +123,7 @@ class PlayerWithdrawRecord extends Model
     {
         return array_filter(explode(',', $value));
     }
-    
+
     /**
      * 修改器 - 标签id
      * @param $value
@@ -138,7 +133,7 @@ class PlayerWithdrawRecord extends Model
     {
         return $this->attributes['player_tag'] = implode(',', $value);
     }
-    
+
     /**
      * 实际金额
      *
@@ -149,7 +144,7 @@ class PlayerWithdrawRecord extends Model
     {
         return floatval($value);
     }
-    
+
     /**
      * 金额
      *
@@ -160,7 +155,7 @@ class PlayerWithdrawRecord extends Model
     {
         return floatval($value);
     }
-    
+
     /**
      * 游戏点数
      *
@@ -171,7 +166,7 @@ class PlayerWithdrawRecord extends Model
     {
         return floatval($value);
     }
-    
+
     /**
      * 手续费
      *

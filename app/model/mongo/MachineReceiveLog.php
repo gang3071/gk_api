@@ -37,7 +37,7 @@ use Jenssegers\Mongodb\Eloquent\Model;
 class MachineReceiveLog extends Model
 {
     use HasDateTimeFormatter;
-    
+
     protected $connection = 'mongodb';
     protected $collection = 'machine_receive_log';
     protected $primaryKey = '_id';

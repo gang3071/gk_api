@@ -2,8 +2,8 @@
 
 namespace app\model;
 
+use Illuminate\Database\Eloquent\SoftDeletes;
 use support\Model;
-use think\model\concern\SoftDelete;
 
 /**
  * 充值满赠活动配置模型
@@ -30,11 +30,11 @@ use think\model\concern\SoftDelete;
  */
 class DepositBonusActivity extends Model
 {
-    use SoftDelete;
+    use SoftDeletes;
 
     protected $table = 'deposit_bonus_activity';
     protected $pk = 'id';
-    protected $deleteTime = 'deleted_at';
+    const DELETED_AT = 'deleted_at';
 
     // 活动类型常量
     const TYPE_DEPOSIT_BONUS = 1; // 充值满赠

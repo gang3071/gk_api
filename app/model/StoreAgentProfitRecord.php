@@ -46,56 +46,50 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class StoreAgentProfitRecord extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-    
+
     const TYPE_AGENT = 1; // 代理
     const TYPE_STORE = 2; // 店家
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        
-        $this->setTable(plugin()->webman->config('database.store_agent_profit_record_table'));
-    }
-    
+    protected $table = 'store_agent_profit_record';
+
     /**
      * 玩家信息
      * @return BelongsTo
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
-    
+
     /**
      * 代理信息
      * @return BelongsTo
      */
     public function agent(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'agent_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'agent_id')->withTrashed();
     }
-    
+
     /**
      * 渠道信息
      * @return BelongsTo
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->belongsTo(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
-    
+
     /**
      * 推广员信息（旧方法，已废弃）
-     * @deprecated 使用 adminUser() 或 agentAdminUser() 替代
      * @return belongsTo
+     * @deprecated 使用 adminUser() 或 agentAdminUser() 替代
      */
     public function agent_promoter(): belongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_promoter_model'), 'player_id',
+        return $this->belongsTo(PlayerPromoter::class, 'player_id',
             'player_id');
     }
 

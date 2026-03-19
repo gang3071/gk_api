@@ -29,29 +29,25 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class PlayerGamePlatform extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_game_platform_table'));
-    }
-    
+
+    protected $table = 'player_game_platform';
+
     /**
      * 游戏平台
      * @return BelongsTo
      */
     public function gamePlatform(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_platform_model'),
+        return $this->belongsTo(GamePlatform::class,
             'platform_id')->withTrashed();
     }
-    
+
     /**
      * 玩家信息
      * @return BelongsTo
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 }

@@ -20,18 +20,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string updated_at 最后一次修改时间
  *
  * @property Activity activity 活动
- * @property MachineCategory  machineCategory
+ * @property MachineCategory machineCategory
  * @package app\model
  */
 class ActivityPhase extends Model
 {
     use HasDateTimeFormatter;
+
     //数据权限字段
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.activity_phase_table'));
-    }
+    protected $table = 'activity_phase';
 
     /**
      * 活动
@@ -39,7 +36,7 @@ class ActivityPhase extends Model
      */
     public function activity(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.activity_model'), 'activity_id')->withTrashed();
+        return $this->belongsTo(Activity::class, 'activity_id')->withTrashed();
     }
 
     /**
@@ -48,6 +45,6 @@ class ActivityPhase extends Model
      */
     public function machineCategory(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_category_model'), 'cate_id')->withTrashed();
+        return $this->belongsTo(MachineCategory::class, 'cate_id')->withTrashed();
     }
 }

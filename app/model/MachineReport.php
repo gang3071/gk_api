@@ -62,11 +62,7 @@ class MachineReport extends Model
         return $date->format('Y-m-d H:i:s');
     }
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_report_table'));
-    }
+    protected $table = 'machine_report';
 
     /**
      * 机台信息
@@ -74,7 +70,7 @@ class MachineReport extends Model
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'), 'machine_id')->withTrashed();
+        return $this->belongsTo(Machine::class, 'machine_id')->withTrashed();
     }
 
     public function playerGameLogs()

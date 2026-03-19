@@ -71,11 +71,7 @@ class PlayerGameLog extends Model
         return $date->format('Y-m-d H:i:s');
     }
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_game_log_table'));
-    }
+    protected $table = 'player_game_log';
 
     /**
      * 玩家信息
@@ -83,7 +79,7 @@ class PlayerGameLog extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**
@@ -92,7 +88,7 @@ class PlayerGameLog extends Model
      */
     public function machine_recording(): hasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.machine_recording_model'),
+        return $this->hasOne(MachineRecording::class,
             'player_game_log_id')->withTrashed();
     }
 
@@ -102,7 +98,7 @@ class PlayerGameLog extends Model
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'), 'machine_id')->withTrashed();
+        return $this->belongsTo(Machine::class, 'machine_id')->withTrashed();
     }
 
     /**

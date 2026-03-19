@@ -21,11 +21,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PlayerFavoriteMachine extends Model
 {
     use HasDateTimeFormatter;
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_favorite_machine_table'));
-    }
+
+    protected $table = 'player_favorite_machine';
 
     /**
      * 玩家信息
@@ -33,7 +30,7 @@ class PlayerFavoriteMachine extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**
@@ -42,7 +39,7 @@ class PlayerFavoriteMachine extends Model
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'),'machine_id');
+        return $this->belongsTo(Machine::class, 'machine_id');
     }
 
     /**

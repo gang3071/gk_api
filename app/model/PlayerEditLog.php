@@ -30,12 +30,7 @@ class PlayerEditLog extends Model
 
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_edit_log_table'));
-    }
+    protected $table = 'player_edit_log';
 
     /**
      * 玩家信息
@@ -43,7 +38,7 @@ class PlayerEditLog extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->BelongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->BelongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**
@@ -52,7 +47,7 @@ class PlayerEditLog extends Model
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id', 'department_id')->withTrashed();
+        return $this->belongsTo(Channel::class, 'department_id', 'department_id')->withTrashed();
     }
 
     /**
@@ -61,6 +56,6 @@ class PlayerEditLog extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'user_id')->withTrashed();
+        return $this->belongsTo(AdminUser::class, 'user_id')->withTrashed();
     }
 }

@@ -23,10 +23,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PlayerEnterGameRecord extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-    
+
     /**
      * 时间转换
      * @param DateTimeInterface $date
@@ -36,38 +36,34 @@ class PlayerEnterGameRecord extends Model
     {
         return $date->format('Y-m-d H:i:s');
     }
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_enter_game_record_table'));
-    }
-    
+
+    protected $table = 'player_enter_game_record';
+
     /**
      * 渠道信息
      * @return BelongsTo
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->belongsTo(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
-    
+
     /**
      * 玩家信息
      * @return BelongsTo
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
-    
+
     /**
      * 游戏
      * @return BelongsTo
      */
     public function game(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_model'), 'game_id');
+        return $this->belongsTo(Game::class, 'game_id');
     }
 }

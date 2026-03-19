@@ -42,13 +42,7 @@ class ChannelRechargeSetting extends Model
 
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-
-        $this->setTable(plugin()->webman->config('database.channel_recharge_setting_table'));
-    }
+    protected $table = 'channel_recharge_setting';
 
     /**
      * 部门
@@ -56,7 +50,7 @@ class ChannelRechargeSetting extends Model
      */
     public function department(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.department_model'), 'department_id')->withTrashed();
+        return $this->belongsTo(AdminDepartment::class, 'department_id')->withTrashed();
     }
 
     /**
@@ -65,7 +59,7 @@ class ChannelRechargeSetting extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'user_id')->withTrashed();
+        return $this->belongsTo(AdminUser::class, 'user_id')->withTrashed();
     }
 
     /**
@@ -74,7 +68,7 @@ class ChannelRechargeSetting extends Model
      */
     public function channel_recharge_method(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_recharge_method_model'), 'method_id')->withTrashed();
+        return $this->belongsTo(ChannelRechargeMethod::class, 'method_id')->withTrashed();
     }
 
     /**

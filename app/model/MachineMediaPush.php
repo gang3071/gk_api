@@ -28,38 +28,34 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MachineMediaPush extends Model
 {
     use HasDateTimeFormatter;
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_media_push_table'));
-    }
-    
+
+    protected $table = 'machine_media_push';
+
     /**
      * 关联机台
      * @return BelongsTo
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'), 'machine_id')->withTrashed();
+        return $this->belongsTo(Machine::class, 'machine_id')->withTrashed();
     }
-    
+
     /**
      * 关联机台媒体流
      * @return BelongsTo
      */
     public function media(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_media_model'), 'media_id')->withTrashed();
+        return $this->belongsTo(MachineMedia::class, 'media_id')->withTrashed();
     }
-    
+
     /**
      * 关联腾讯云配置
      * @return BelongsTo
      */
     public function machineTencentPlay(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_tencent_play_model'),
+        return $this->belongsTo(MachineTencentPlay::class,
             'machine_tencent_play_id');
     }
 }

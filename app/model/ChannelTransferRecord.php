@@ -26,20 +26,15 @@ class ChannelTransferRecord extends Model
 
     const TYPE_IN = 1; //转入
     const TYPE_OUT = 2; //转出
+    protected $table = 'channel_transfer_record';
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.channel_transfer_record_table'));
-    }
-    
     /**
      * 渠道
      * @return hasMany
      */
     public function Channel(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.channel_model'),'department_id','department_id');
+        return $this->hasMany(Channel::class, 'department_id', 'department_id');
     }
 
     /**
@@ -48,6 +43,6 @@ class ChannelTransferRecord extends Model
      */
     public function Player(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.player_model'),'department_id','department_id');
+        return $this->hasMany(Player::class, 'department_id', 'department_id');
     }
 }

@@ -22,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MachineLabelExtend extends Model
 {
     use HasDateTimeFormatter;
-    
+
     protected $fillable = [
         'id',
         'label_id',
@@ -32,19 +32,14 @@ class MachineLabelExtend extends Model
         'created_at',
         'updated_at',
     ];
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_label_extend_table'));
-    }
-    
+    protected $table = 'machine_label_extend';
+
     /**
      * 游戏类别
      * @return BelongsTo
      */
     public function machineLabel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_label_model'), 'label_id')->withTrashed();
+        return $this->belongsTo(MachineLabel::class, 'label_id')->withTrashed();
     }
 }

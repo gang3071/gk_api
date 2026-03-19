@@ -30,17 +30,11 @@ class AdminDepartment extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
 
-    CONST TYPE_DEPARTMENT = 1; // 部门
-    CONST TYPE_CHANNEL = 2; // 渠道
-    CONST TYPE_AGENT = 3; // 代理
-    CONST TYPE_STORE = 4; // 店家
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-
-        $this->setTable(plugin()->webman->config('database.department_table'));
-    }
+    const TYPE_DEPARTMENT = 1; // 部门
+    const TYPE_CHANNEL = 2; // 渠道
+    const TYPE_AGENT = 3; // 代理
+    const TYPE_STORE = 4; // 店家
+    protected $table = 'admin_department';
 
     protected static function booted()
     {
@@ -50,8 +44,9 @@ class AdminDepartment extends Model
         });
     }
 
-    protected function getPidAttribute($value){
-        return (int) $value;
+    protected function getPidAttribute($value)
+    {
+        return (int)$value;
     }
 
     /**
@@ -60,6 +55,6 @@ class AdminDepartment extends Model
      */
     public function channel(): HasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.channel_model'),'department_id');
+        return $this->hasOne(Channel::class, 'department_id');
     }
 }

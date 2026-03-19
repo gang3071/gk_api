@@ -39,13 +39,9 @@ class PlayerGameRecord extends Model
 {
     use HasDateTimeFormatter;
 
-    CONST STATUS_START = 1; // 进行中
-    CONST STATUS_END = 2; // 结束
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_game_record_table'));
-    }
+    const STATUS_START = 1; // 进行中
+    const STATUS_END = 2; // 结束
+    protected $table = 'player_game_record';
 
     /**
      * 上分
@@ -86,7 +82,7 @@ class PlayerGameRecord extends Model
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'), 'machine_id')->withTrashed();
+        return $this->belongsTo(Machine::class, 'machine_id')->withTrashed();
     }
 
     /**
@@ -95,7 +91,7 @@ class PlayerGameRecord extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**

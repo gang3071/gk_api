@@ -33,12 +33,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class NationalPromoter extends Model
 {
     use HasDateTimeFormatter;
+
     protected $fillable = ['uid', 'level'];
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.national_promoter_table'));
-    }
+    protected $table = 'national_promoter';
 
     /**
      * 玩家信息
@@ -46,7 +43,7 @@ class NationalPromoter extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'uid')->withTrashed();
+        return $this->belongsTo(Player::class, 'uid')->withTrashed();
     }
 
     /**
@@ -55,7 +52,7 @@ class NationalPromoter extends Model
      */
     public function level_list(): HasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.level_list_model'),'id','level');
+        return $this->hasOne(LevelList::class, 'id', 'level');
     }
 
     /**
@@ -64,7 +61,7 @@ class NationalPromoter extends Model
      */
     public function national_profit_record(): HasMany
     {
-        return $this->HasMany(plugin()->webman->config('database.national_profit_record_model'),'recommend_id','uid');
+        return $this->HasMany(NationalProfitRecord::class, 'recommend_id', 'uid');
     }
 
     /**
@@ -73,7 +70,7 @@ class NationalPromoter extends Model
      */
     public function sub_players(): HasMany
     {
-        return $this->HasMany(plugin()->webman->config('database.national_promoter_model'),'recommend_id','uid');
+        return $this->HasMany(NationalPromoter::class, 'recommend_id', 'uid');
     }
 
     /**
@@ -82,7 +79,7 @@ class NationalPromoter extends Model
      */
     public function last_national_profit_record(): hasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.player_delivery_record_model'), 'player_id',
-            'uid')->where('type',18)->orderBy('created_at', 'desc');
+        return $this->hasOne(PlayerDeliveryRecord::class, 'player_id',
+            'uid')->where('type', 18)->orderBy('created_at', 'desc');
     }
 }

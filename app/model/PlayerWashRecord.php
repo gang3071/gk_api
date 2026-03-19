@@ -51,11 +51,7 @@ class PlayerWashRecord extends Model
         return $date->format('Y-m-d H:i:s');
     }
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_wash_record_table'));
-    }
+    protected $table = 'player_wash_record';
 
     /**
      * 渠道信息
@@ -63,7 +59,7 @@ class PlayerWashRecord extends Model
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id', 'department_id')->withTrashed();
+        return $this->belongsTo(Channel::class, 'department_id', 'department_id')->withTrashed();
     }
 
     /**
@@ -72,7 +68,7 @@ class PlayerWashRecord extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**
@@ -81,7 +77,7 @@ class PlayerWashRecord extends Model
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'machine_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'machine_id')->withTrashed();
     }
 
     /**
@@ -90,6 +86,6 @@ class PlayerWashRecord extends Model
      */
     public function playerGameRecord(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_game_record_model'), 'game_record_id');
+        return $this->belongsTo(PlayerGameRecord::class, 'game_record_id');
     }
 }

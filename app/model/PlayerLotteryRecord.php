@@ -55,7 +55,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PlayerLotteryRecord extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     const STATUS_UNREVIEWED = 0;
     const STATUS_REJECT = 1; // 未审核
@@ -66,13 +66,8 @@ class PlayerLotteryRecord extends Model
     const SOURCE_GAME = 2;// 电子游戏
     const SOURCE_MANUAL = 3;// 手动发放
     protected $dataAuth = ['department_id' => 'department_id']; // 已完成
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_lottery_record_table'));
-    }
-    
+    protected $table = 'player_lottery_record';
+
     /**
      * @return void
      */
@@ -102,24 +97,24 @@ class PlayerLotteryRecord extends Model
             }
         });
     }
-    
+
     /**
      * 渠道信息
      * @return BelongsTo
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->belongsTo(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
-    
+
     /**
      * 玩家信息
      * @return BelongsTo
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**
@@ -128,7 +123,7 @@ class PlayerLotteryRecord extends Model
      */
     public function play_game_record(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.play_game_record_model'), 'play_game_record_id');
+        return $this->belongsTo(PlayGameRecord::class, 'play_game_record_id');
     }
 
     /**
@@ -137,18 +132,18 @@ class PlayerLotteryRecord extends Model
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'), 'machine_id')->withTrashed();
+        return $this->belongsTo(Machine::class, 'machine_id')->withTrashed();
     }
-    
+
     /**
      * 彩金信息
      * @return BelongsTo
      */
     public function lottery(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.lottery_model'), 'lottery_id')->withTrashed();
+        return $this->belongsTo(Lottery::class, 'lottery_id')->withTrashed();
     }
-    
+
     /**
      * 派彩金额
      *
@@ -159,7 +154,7 @@ class PlayerLotteryRecord extends Model
     {
         return floatval($value);
     }
-    
+
     /**
      * 金额比例
      *
@@ -170,7 +165,7 @@ class PlayerLotteryRecord extends Model
     {
         return floatval($value);
     }
-    
+
     /**
      * 派彩系数
      *
@@ -181,7 +176,7 @@ class PlayerLotteryRecord extends Model
     {
         return floatval($value);
     }
-    
+
     /**
      * 派彩系数
      *

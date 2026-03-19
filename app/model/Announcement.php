@@ -37,12 +37,7 @@ class Announcement extends Model
     const PRIORITY_ORDINARY = 1; // 普通
     const PRIORITY_SENIOR = 2; // 高级
     const PRIORITY_EMERGENT = 3; // 紧急
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.announcement_table'));
-    }
+    protected $table = 'announcement';
 
     /**
      * 游戏类别
@@ -50,7 +45,7 @@ class Announcement extends Model
      */
     public function adminUser(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'admin_id');
+        return $this->belongsTo(AdminUser::class, 'admin_id');
     }
 
     /**
@@ -59,6 +54,6 @@ class Announcement extends Model
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id', 'department_id')->withTrashed();
+        return $this->belongsTo(Channel::class, 'department_id', 'department_id')->withTrashed();
     }
 }

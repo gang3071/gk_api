@@ -23,10 +23,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ChannelMachine extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-    
+
     /**
      * 时间转换
      * @param DateTimeInterface $date
@@ -36,29 +36,25 @@ class ChannelMachine extends Model
     {
         return $date->format('Y-m-d H:i:s');
     }
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.channel_machine_table'));
-    }
-    
+
+    protected $table = 'channel_machine';
+
     /**
      * 渠道信息
      * @return BelongsTo
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->belongsTo(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
-    
+
     /**
      * 机台信息
      * @return BelongsTo
      */
     public function machine(): BelongsTo
     {
-        return $this->BelongsTo(plugin()->webman->config('database.machine_model'), 'machine_id')->withTrashed();
+        return $this->BelongsTo(Machine::class, 'machine_id')->withTrashed();
     }
 }

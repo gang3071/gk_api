@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class GameContent extends Model
 {
     use HasDateTimeFormatter;
-    
+
     protected $fillable = [
         'id',
         'game_id',
@@ -36,28 +36,23 @@ class GameContent extends Model
         'created_at',
         'updated_at',
     ];
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.game_content_table'));
-    }
-    
+    protected $table = 'game_content';
+
     /**
      * 游戏平台
      * @return BelongsTo
      */
     public function gamePlatform(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_platform_model'), 'platform_id')->withTrashed();
+        return $this->belongsTo(GamePlatform::class, 'platform_id')->withTrashed();
     }
-    
+
     /**
      * 电子游戏
      * @return BelongsTo
      */
     public function game(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_model'), 'game_id')->withTrashed();
+        return $this->belongsTo(Game::class, 'game_id')->withTrashed();
     }
 }

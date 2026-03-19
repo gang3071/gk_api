@@ -31,12 +31,7 @@ class MachineEditLog extends Model
 
     const SOURCE_MACHINE = 1; // 来源机台表
     const SOURCE_MEDIA = 2; // 来源媒体表
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_edit_log_table'));
-    }
+    protected $table = 'machine_edit_log';
 
     /**
      * 机台信息
@@ -44,7 +39,7 @@ class MachineEditLog extends Model
      */
     public function machine(): BelongsTo
     {
-        return $this->BelongsTo(plugin()->webman->config('database.machine_model'), 'machine_id')->withTrashed();
+        return $this->BelongsTo(Machine::class, 'machine_id')->withTrashed();
     }
 
     /**
@@ -53,7 +48,7 @@ class MachineEditLog extends Model
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id', 'department_id')->withTrashed();
+        return $this->belongsTo(Channel::class, 'department_id', 'department_id')->withTrashed();
     }
 
     /**
@@ -62,6 +57,6 @@ class MachineEditLog extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'user_id')->withTrashed();
+        return $this->belongsTo(AdminUser::class, 'user_id')->withTrashed();
     }
 }

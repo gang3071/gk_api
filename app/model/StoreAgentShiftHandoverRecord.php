@@ -33,33 +33,27 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class StoreAgentShiftHandoverRecord extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        
-        $this->setTable(plugin()->webman->config('database.store_agent_shift_handover_record_table'));
-    }
-    
+    protected $table = 'store_agent_shift_handover_record';
+
     /**
      * 管理员用户
      * @return BelongsTo
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'user_id')->withTrashed();
+        return $this->belongsTo(AdminUser::class, 'user_id')->withTrashed();
     }
-    
+
     /**
      * 渠道信息
      * @return BelongsTo
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->belongsTo(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
 

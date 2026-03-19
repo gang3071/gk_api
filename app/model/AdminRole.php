@@ -94,13 +94,8 @@ class AdminRole extends Model
         'type' => self::TYPE_ADMIN,
         'check_strictly' => false,
     ];
+    protected $table = 'admin_roles';
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.role_table'));
-    }
-    
     /**
      * 模型的 "booted" 方法
      *
@@ -115,7 +110,7 @@ class AdminRole extends Model
         // 更新前检查：阻止修改受保护角色的关键字段
         static::updating(function (AdminRole $adminRole) {
             $isProtected = ($adminRole->is_protected ?? 0) == 1 ||
-                           in_array($adminRole->id, [self::ROLE_CHANNEL, self::ROLE_AGENT, self::ROLE_STORE]);
+                in_array($adminRole->id, [self::ROLE_CHANNEL, self::ROLE_AGENT, self::ROLE_STORE]);
 
             if ($isProtected) {
                 // 获取原始数据
@@ -175,8 +170,8 @@ class AdminRole extends Model
     public function departments()
     {
         return $this->belongsToMany(
-            plugin()->webman->config('database.department_model'),
-            plugin()->webman->config('database.role_department_model'),
+            AdminDepartment::class,
+            AdminRoleDepartment::class,
             'role_id',
             'department_id'
         );
@@ -185,8 +180,8 @@ class AdminRole extends Model
     /**
      * 关联部门（兼容旧方法名）
      *
-     * @deprecated 请使用 departments() 方法
      * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     * @deprecated 请使用 departments() 方法
      */
     public function department()
     {
@@ -201,8 +196,8 @@ class AdminRole extends Model
     public function users()
     {
         return $this->belongsToMany(
-            plugin()->webman->config('database.user_model'),
-            plugin()->webman->config('database.role_user_table'),
+            AdminUser::class,
+            'admin_role_users',
             'role_id',
             'user_id'
         );
@@ -216,8 +211,8 @@ class AdminRole extends Model
     public function menus()
     {
         return $this->belongsToMany(
-            plugin()->webman->config('database.menu_model'),
-            plugin()->webman->config('database.role_menu_table'),
+            AdminMenu::class,
+            'admin_role_menus',
             'role_id',
             'menu_id'
         );
@@ -230,9 +225,10 @@ class AdminRole extends Model
      */
     public function permissions()
     {
+        // TODO: 需要创建 AdminPermission 模型
         return $this->belongsToMany(
-            plugin()->webman->config('database.permission_model'),
-            plugin()->webman->config('database.role_permission_table'),
+            AdminRolePermission::class,
+            'admin_role_permissions',
             'role_id',
             'permission_id'
         );

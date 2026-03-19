@@ -21,7 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class MachineCategoryExtend extends Model
 {
     use HasDateTimeFormatter;
-    
+
     protected $fillable = [
         'id',
         'cate_id',
@@ -30,19 +30,14 @@ class MachineCategoryExtend extends Model
         'created_at',
         'updated_at',
     ];
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_category_extend_table'));
-    }
-    
+    protected $table = 'machine_category_extend';
+
     /**
      * 游戏类别
      * @return BelongsTo
      */
     public function machineCategory(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_category_model'), 'cate_id')->withTrashed();
+        return $this->belongsTo(MachineCategory::class, 'cate_id')->withTrashed();
     }
 }

@@ -89,17 +89,11 @@ use support\Cache;
 class Channel extends Model
 {
     use HasDateTimeFormatter, SoftDeletes;
-    
+
     const TYPE_STORE = 1; // 直营
     const TYPE_API = 2; // api
     const TYPE_AGENT = 3; // 代理
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-
-        $this->setTable(plugin()->webman->config('database.channel_table'));
-    }
+    protected $table = 'channel';
 
     /**
      * 模型的 "booted" 方法
@@ -198,7 +192,7 @@ class Channel extends Model
      */
     public function department(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.department_model'), 'department_id')->withTrashed();
+        return $this->belongsTo(AdminDepartment::class, 'department_id')->withTrashed();
     }
 
     /**
@@ -207,25 +201,25 @@ class Channel extends Model
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'user_id')->withTrashed();
+        return $this->belongsTo(AdminUser::class, 'user_id')->withTrashed();
     }
-    
+
     /**
      * 对外应用
      * @return hasOne
      */
     public function externalApp(): hasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.external_app_model'), 'department_id', 'department_id');
+        return $this->hasOne(ExternalApp::class, 'department_id', 'department_id');
     }
-    
+
     /**
      * 管理员用户
      * @return hasMany
      */
     public function player(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.player_model'), 'department_id', 'department_id');
+        return $this->hasMany(Player::class, 'department_id', 'department_id');
     }
 
     /**
@@ -234,13 +228,13 @@ class Channel extends Model
      */
     public function wallet(): hasManyThrough
     {
-        return $this->hasManyThrough(plugin()->webman->config('database.player_platform_cash_model'),
-            plugin()->webman->config('database.player_model'), 'department_id', 'player_id', 'department_id', 'id');
+        return $this->hasManyThrough(PlayerPlatformCash::class,
+            Player::class, 'department_id', 'player_id', 'department_id', 'id');
     }
 
     public function getDomainExtAttribute($value)
     {
-        if(is_null($value))return null;
-        return json_decode($value,true);
+        if (is_null($value)) return null;
+        return json_decode($value, true);
     }
 }

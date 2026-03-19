@@ -1,6 +1,7 @@
 <?php
 
 namespace app\model;
+
 use app\traits\HasDateTimeFormatter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -136,12 +137,7 @@ class AdminUser extends Model
         'type' => self::TYPE_ADMIN,
         'is_super' => false,
     ];
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.user_table'));
-    }
+    protected $table = 'admin_users';
 
     // ==================== 关联关系 ====================
 
@@ -155,8 +151,8 @@ class AdminUser extends Model
     public function roles()
     {
         return $this->belongsToMany(
-            plugin()->webman->config('database.role_model'),
-            plugin()->webman->config('database.role_user_model'),
+            AdminRole::class,
+            AdminRoleUsers::class,
             'user_id',
             'role_id'
         );
@@ -170,7 +166,7 @@ class AdminUser extends Model
     public function department()
     {
         return $this->belongsTo(
-            plugin()->webman->config('database.department_model'),
+            AdminDepartment::class,
             'department_id'
         );
     }
@@ -185,8 +181,8 @@ class AdminUser extends Model
     public function permissions()
     {
         return $this->hasManyThrough(
-            plugin()->webman->config('database.role_permission_model'),
-            plugin()->webman->config('database.role_user_model'),
+            AdminRolePermission::class,
+            AdminRoleUsers::class,
             'user_id',
             'role_id',
             'id',
@@ -197,8 +193,8 @@ class AdminUser extends Model
     /**
      * 权限（兼容旧方法名）
      *
-     * @deprecated 请使用 permissions() 方法
      * @return \Illuminate\Database\Eloquent\Relations\HasManyThrough
+     * @deprecated 请使用 permissions() 方法
      */
     public function permission()
     {
@@ -233,7 +229,7 @@ class AdminUser extends Model
     public function agentPlayers()
     {
         return $this->hasMany(
-            plugin()->webman->config('database.player_model'),
+            Player::class,
             'agent_admin_id'
         );
     }
@@ -246,7 +242,7 @@ class AdminUser extends Model
     public function storePlayers()
     {
         return $this->hasMany(
-            plugin()->webman->config('database.player_model'),
+            Player::class,
             'store_admin_id'
         );
     }

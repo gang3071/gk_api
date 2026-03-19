@@ -35,12 +35,7 @@ class MachineCategory extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
 
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_category_table'));
-    }
+    protected $table = 'machine_category';
 
     /**
      * 游戏类别
@@ -48,7 +43,7 @@ class MachineCategory extends Model
      */
     public function gameType(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_type_model'), 'game_id')->withTrashed();
+        return $this->belongsTo(GameType::class, 'game_id')->withTrashed();
     }
 
     /**
@@ -57,15 +52,15 @@ class MachineCategory extends Model
      */
     public function machineCategoryGiveRule(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.machine_category_give_rule_model'), 'machine_category_id');
+        return $this->hasMany(MachineCategoryGiveRule::class, 'machine_category_id');
     }
-    
+
     /**
      * 分类扩展信息
      * @return hasMany
      */
     public function machineCategoryExtend(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.machine_category_extend_model'), 'cate_id');
+        return $this->hasMany(MachineCategoryExtend::class, 'cate_id');
     }
 }

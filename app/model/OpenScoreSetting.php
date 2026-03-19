@@ -51,22 +51,16 @@ class OpenScoreSetting extends Model
         'score_6' => 'integer',
         'default_scores' => 'integer',
     ];
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-
-        $this->setTable(plugin()->webman->config('database.open_score_setting_table'));
-    }
+    protected $table = 'open_score_setting';
 
     /**
      * 店家玩家（旧方法，已废弃）
-     * @deprecated 使用 adminUser() 替代
      * @return BelongsTo
+     * @deprecated 使用 adminUser() 替代
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id');
+        return $this->belongsTo(Player::class, 'player_id');
     }
 
     /**

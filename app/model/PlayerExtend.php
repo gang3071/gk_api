@@ -46,12 +46,7 @@ class PlayerExtend extends Model
     use SoftDeletes, HasDateTimeFormatter;
 
     protected $fillable = ['remark', 'player_id', 'sex', 'email', 'ip', 'qq', 'telegram', 'birthday', 'id_number', 'address', 'wechat', 'whatsapp', 'facebook', 'line', 'remark'];
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_extend_table'));
-    }
+    protected $table = 'player_extend';
 
     /**
      * 玩家信息
@@ -59,7 +54,7 @@ class PlayerExtend extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**

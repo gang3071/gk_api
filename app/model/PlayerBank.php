@@ -28,11 +28,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class PlayerBank extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_bank_table'));
-    }
+
+    protected $table = 'player_bank';
 
     /**
      * 玩家信息
@@ -40,27 +37,27 @@ class PlayerBank extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
-    
+
     /**
      * 模型事件 - 删除前
      */
     protected static function boot()
     {
         parent::boot();
-        
+
         static::deleting(function (PlayerBank $playerBank) {
             if (!empty($playerBank->qr_code)) {
                 $imagePath = self::extractImagePathFromUrl($playerBank->qr_code);
-                
+
                 if ($imagePath) {
                     deleteToGCS($imagePath);
                 }
             }
         });
     }
-    
+
     /**
      * 从 URL 中提取图片路径
      */
@@ -70,19 +67,19 @@ class PlayerBank extends Model
             $parsedUrl = parse_url($url);
             if (isset($parsedUrl['path'])) {
                 $path = $parsedUrl['path'];
-                
+
                 // 移除可能的存储桶名称
                 $bucketName = env('GOOGLE_CLOUD_STORAGE_BUCKET', 'yjbfile');
                 $bucketPrefix = '/' . $bucketName . '/';
-                
+
                 if (str_starts_with($path, $bucketPrefix)) {
                     return substr($path, strlen($bucketPrefix));
                 }
-                
+
                 return ltrim($path, '/');
             }
         }
-        
+
         return $url;
     }
 }

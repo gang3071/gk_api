@@ -26,11 +26,7 @@ class MachineKickLog extends Model
 {
     use HasDateTimeFormatter;
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_kick_log_table'));
-    }
+    protected $table = 'machine_kick_log';
 
     /**
      * 玩家信息
@@ -38,7 +34,7 @@ class MachineKickLog extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'),'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**
@@ -47,7 +43,7 @@ class MachineKickLog extends Model
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'),'machine_id')->withTrashed();
+        return $this->belongsTo(Machine::class, 'machine_id')->withTrashed();
     }
 
     public function getCreatedAtAttribute($date)

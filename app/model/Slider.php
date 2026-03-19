@@ -19,20 +19,16 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string created_at 创建时间
  * @property string updated_at 最后一次修改时间
  * @property string deleted_at 删除时间
-
  * @property Channel channel 渠道
  * @package app\model
  */
 class Slider extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
+
     //数据权限字段
-    protected $dataAuth = ['department_id'=>'department_id'];
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.slider_table'));
-    }
+    protected $dataAuth = ['department_id' => 'department_id'];
+    protected $table = 'slider';
 
     /**
      * 渠道信息
@@ -40,6 +36,6 @@ class Slider extends Model
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id', 'department_id')->withTrashed();
+        return $this->belongsTo(Channel::class, 'department_id', 'department_id')->withTrashed();
     }
 }

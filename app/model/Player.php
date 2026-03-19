@@ -103,15 +103,11 @@ class Player extends Model
         return $date->format('Y-m-d H:i:s');
     }
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_table'));
-    }
+    protected $table = 'player';
 
     public function machine_wallet(): HasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.player_platform_cash_model'))->where('platform_id', PlayerPlatformCash::PLATFORM_SELF);
+        return $this->hasOne(PlayerPlatformCash::class)->where('platform_id', PlayerPlatformCash::PLATFORM_SELF);
     }
 
     /**
@@ -120,7 +116,7 @@ class Player extends Model
      */
     public function player_extend(): HasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.player_extend_model'), 'player_id');
+        return $this->hasOne(PlayerExtend::class, 'player_id');
     }
 
     /**
@@ -129,7 +125,7 @@ class Player extends Model
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id', 'department_id')->withTrashed();
+        return $this->belongsTo(Channel::class, 'department_id', 'department_id')->withTrashed();
     }
 
     /**
@@ -138,7 +134,7 @@ class Player extends Model
      */
     public function player_withdraw_record(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.player_withdraw_record_model'), 'player_id');
+        return $this->hasMany(PlayerWithdrawRecord::class, 'player_id');
     }
 
     /**
@@ -147,7 +143,7 @@ class Player extends Model
      */
     public function player_recharge_record(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.player_recharge_record_model'), 'player_id');
+        return $this->hasMany(PlayerRechargeRecord::class, 'player_id');
     }
 
     /**
@@ -156,7 +152,7 @@ class Player extends Model
      */
     public function present_out(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.player_present_record_model'), 'user_id');
+        return $this->hasMany(PlayerPresentRecord::class, 'user_id');
     }
 
     /**
@@ -165,7 +161,7 @@ class Player extends Model
      */
     public function present_in(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.player_present_record_model'), 'player_id');
+        return $this->hasMany(PlayerPresentRecord::class, 'player_id');
     }
 
     /**
@@ -174,15 +170,16 @@ class Player extends Model
      */
     public function game_record(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.play_game_record_model'), 'player_id');
+        return $this->hasMany(PlayGameRecord::class, 'player_id');
     }
+
     /**
      * 玩家扩展信息
      * @return BelongsTo
      */
     public function recommend_player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'recommend_id');
+        return $this->belongsTo(Player::class, 'recommend_id');
     }
 
     public function the_last_player_login_record(): HasOne
@@ -258,7 +255,7 @@ class Player extends Model
      */
     public function recommend_promoter(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_promoter_model'), 'recommend_id', 'player_id');
+        return $this->belongsTo(PlayerPromoter::class, 'recommend_id', 'player_id');
     }
 
     /**
@@ -267,7 +264,7 @@ class Player extends Model
      */
     public function agentAdmin(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'agent_admin_id', 'id');
+        return $this->belongsTo(AdminUser::class, 'agent_admin_id', 'id');
     }
 
     /**
@@ -276,7 +273,7 @@ class Player extends Model
      */
     public function storeAdmin(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'store_admin_id', 'id');
+        return $this->belongsTo(AdminUser::class, 'store_admin_id', 'id');
     }
 
     /**
@@ -285,7 +282,7 @@ class Player extends Model
      */
     public function national_promoter(): HasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.national_promoter_model'), 'uid');
+        return $this->hasOne(NationalPromoter::class, 'uid');
     }
 
     /**
@@ -362,6 +359,6 @@ class Player extends Model
      */
     public function bankCard(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.player_bank_model'), 'player_id');
+        return $this->hasMany(PlayerBank::class, 'player_id');
     }
 }

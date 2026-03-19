@@ -42,37 +42,31 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ChannelProfitRecord extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-    
+
     const STATUS_UNCOMPLETED = 0; // 未结算
     const STATUS_COMPLETED = 1; // 已结算
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        
-        $this->setTable(plugin()->webman->config('database.channel_profit_record_table'));
-    }
-    
+    protected $table = 'channel_profit_record';
+
     /**
      * 结算信息
      * @return BelongsTo
      */
     public function settlement(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.promoter_profit_settlement_record_model'),
+        return $this->belongsTo(PromoterProfitSettlementRecord::class,
             'settlement_id');
     }
-    
+
     /**
      * 渠道信息
      * @return BelongsTo
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->belongsTo(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
 }

@@ -22,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BankContent extends Model
 {
     use HasDateTimeFormatter;
-    
+
     protected $fillable = [
         'id',
         'bank_id',
@@ -32,12 +32,7 @@ class BankContent extends Model
         'created_at',
         'updated_at',
     ];
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.bank_content_table'));
-    }
+    protected $table = 'bank_content';
 
     /**
      * 银行
@@ -45,6 +40,6 @@ class BankContent extends Model
      */
     public function bank(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.bank_model'),'bank_id','id');
+        return $this->belongsTo(Bank::class, 'bank_id', 'id');
     }
 }

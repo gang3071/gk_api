@@ -66,12 +66,7 @@ class PlayerRechargeRecord extends Model
     const TYPE_GB = 5; // 购宝充值
     const TYPE_MACHINE = 6; // 机器投钞
     const TYPE_EH = 7; // Eh-Pay
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_recharge_record_table'));
-    }
+    protected $table = 'player_recharge_record';
 
     /**
      * 玩家信息
@@ -79,7 +74,7 @@ class PlayerRechargeRecord extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**
@@ -88,7 +83,7 @@ class PlayerRechargeRecord extends Model
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id', 'department_id')->withTrashed();
+        return $this->belongsTo(Channel::class, 'department_id', 'department_id')->withTrashed();
     }
 
     /**
@@ -97,7 +92,7 @@ class PlayerRechargeRecord extends Model
      */
     public function channel_recharge_setting(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_recharge_setting_model'), 'setting_id')->withTrashed();
+        return $this->belongsTo(ChannelRechargeSetting::class, 'setting_id')->withTrashed();
     }
 
     /**

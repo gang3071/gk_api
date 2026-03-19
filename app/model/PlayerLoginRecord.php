@@ -37,12 +37,7 @@ class PlayerLoginRecord extends Model
         'remark',
         'department_id',
     ];
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_login_record_table'));
-    }
+    protected $table = 'player_login_record';
 
     /**
      * 玩家信息
@@ -50,6 +45,6 @@ class PlayerLoginRecord extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 }

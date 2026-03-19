@@ -31,43 +31,39 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PlayerWalletTransfer extends Model
 {
     use HasDateTimeFormatter;
-    
+
     protected $dataAuth = ['department_id' => 'department_id'];
     const TYPE_OUT = 1; // 转出
     const TYPE_IN = 2; // 转入
-    
+
     //数据权限字段
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_wallet_transfer_table'));
-    }
-    
+    protected $table = 'player_wallet_transfer';
+
     /**
      * 渠道信息
      * @return BelongsTo
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->belongsTo(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
-    
+
     /**
      * 玩家信息
      * @return BelongsTo
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
-    
+
     /**
      * 平台信息
      * @return BelongsTo
      */
     public function gamePlatform(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_platform_model'), 'platform_id')->withTrashed();
+        return $this->belongsTo(GamePlatform::class, 'platform_id')->withTrashed();
     }
 }

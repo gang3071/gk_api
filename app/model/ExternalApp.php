@@ -36,12 +36,9 @@ use support\Cache;
 class ExternalApp extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.external_app_table'));
-    }
-    
+
+    protected $table = 'external_app';
+
     /**
      * 模型的 "booted" 方法
      *
@@ -58,14 +55,14 @@ class ExternalApp extends Model
             Cache::set($cacheKey, $externalApp);
         });
     }
-    
+
     /**
      * 渠道信息
      * @return hasOne
      */
     public function channel(): hasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->hasOne(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
 }

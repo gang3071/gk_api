@@ -50,7 +50,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class PlayerPromoter extends Model
 {
     use HasDateTimeFormatter;
-    
+
     protected $fillable = ['name', 'adjust_amount', 'status', 'ratio'];
 
     //数据权限字段
@@ -66,11 +66,7 @@ class PlayerPromoter extends Model
         return $date->format('Y-m-d H:i:s');
     }
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_promoter_table'));
-    }
+    protected $table = 'player_promoter';
 
     /**
      * 渠道信息
@@ -78,7 +74,7 @@ class PlayerPromoter extends Model
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id', 'department_id')->withTrashed();
+        return $this->belongsTo(Channel::class, 'department_id', 'department_id')->withTrashed();
     }
 
     /**
@@ -87,7 +83,7 @@ class PlayerPromoter extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**
@@ -96,6 +92,6 @@ class PlayerPromoter extends Model
      */
     public function parent_promoter(): hasOne
     {
-        return $this->hasOne(plugin()->webman->config('database.player_promoter_model'), 'player_id', 'recommend_id');
+        return $this->hasOne(PlayerPromoter::class, 'player_id', 'recommend_id');
     }
 }

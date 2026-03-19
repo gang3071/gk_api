@@ -30,20 +30,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property GamePlatform platform 游戏平台
  * @package app\model
  */
-
 class PlayerReverseWaterDetail extends Model
 {
     use HasDateTimeFormatter;
 
     const STATUS_UNRECEIVED = 0; // 未领取
     const STATUS_RECEIVED = 1; // 已领取
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-
-        $this->setTable(plugin()->webman->config('database.player_reverse_water_detail_table'));
-    }
+    protected $table = 'player_reverse_water_detail';
 
     /**
      * 玩家信息
@@ -51,7 +44,7 @@ class PlayerReverseWaterDetail extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 
     /**
@@ -60,6 +53,6 @@ class PlayerReverseWaterDetail extends Model
      */
     public function platform(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_platform_model'), 'platform_id')->withTrashed();
+        return $this->belongsTo(GamePlatform::class, 'platform_id')->withTrashed();
     }
 }

@@ -24,14 +24,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class AdminPost extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
+    protected $table = 'admin_post';
 
-        $this->setTable(plugin()->webman->config('database.post_table'));
-    }
     protected static function booted()
     {
         //创建时间倒序

@@ -26,13 +26,9 @@ use Illuminate\Database\Eloquent\Model;
 class AdminMenu extends Model
 {
     use HasDateTimeFormatter;
-    protected $fillable = ['name', 'icon', 'url', 'plugin', 'pid', 'sort', 'status', 'open'];
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.menu_table'));
-    }
+    protected $fillable = ['name', 'icon', 'url', 'plugin', 'pid', 'sort', 'status', 'open'];
+    protected $table = 'admin_menus';
 
     protected function getNameAttribute($value)
     {

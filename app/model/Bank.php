@@ -20,19 +20,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Bank extends Model
 {
     use HasDateTimeFormatter;
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.bank_table'));
-    }
-    
+
+    protected $table = 'bank_list';
+
     /**
      * 银行内容
      * @return hasMany
      */
     public function BankContent(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.bank_content_model'),'bank_id','id');
+        return $this->hasMany(BankContent::class, 'bank_id', 'id');
     }
 }

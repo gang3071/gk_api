@@ -2,19 +2,19 @@
 
 namespace app\model;
 
+use Illuminate\Database\Eloquent\SoftDeletes;
 use support\Model;
-use think\model\concern\SoftDelete;
 
 /**
  * 自动交班配置模型
  */
 class StoreAutoShiftConfig extends Model
 {
-    use SoftDelete;
+    use SoftDeletes;
 
     protected $table = 'store_auto_shift_config';
     protected $pk = 'id';
-    protected $deleteTime = 'deleted_at';
+    const DELETED_AT = 'deleted_at';
 
     // 交班模式常量
     const MODE_DAILY = 1;      // 每日

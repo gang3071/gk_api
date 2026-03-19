@@ -27,9 +27,9 @@ class PlayerRegisterRecord extends Model
 {
     use HasDateTimeFormatter;
 
-    CONST TYPE_ADMIN = 1; // 管理后台
-    CONST TYPE_CLIENT = 2; // 客户端
-    CONST TYPE_TALK = 3; // QTalk
+    const TYPE_ADMIN = 1; // 管理后台
+    const TYPE_CLIENT = 2; // 客户端
+    const TYPE_TALK = 3; // QTalk
 
     protected $fillable = [
         'player_id',
@@ -41,12 +41,7 @@ class PlayerRegisterRecord extends Model
         'device',
         'department_id',
     ];
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_register_record_table'));
-    }
+    protected $table = 'player_register_record';
 
     /**
      * 玩家信息
@@ -54,6 +49,6 @@ class PlayerRegisterRecord extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'),'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 }

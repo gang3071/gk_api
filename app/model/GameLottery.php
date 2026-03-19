@@ -6,7 +6,6 @@ use app\traits\HasDateTimeFormatter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use support\Log;
 
 /**
  * Class GameLottery
@@ -92,11 +91,7 @@ class GameLottery extends Model
         }
     }
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.game_lottery_table'));
-    }
+    protected $table = 'game_lottery';
 
     /**
      * 玩家信息
@@ -104,7 +99,7 @@ class GameLottery extends Model
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'last_player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'last_player_id')->withTrashed();
     }
 
     /**

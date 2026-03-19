@@ -210,11 +210,12 @@ class Device extends Model
     public static function logAccess(
         string $deviceNo,
         string $ipAddress,
-        bool $isAllowed = true,
+        bool   $isAllowed = true,
         string $rejectReason = '',
         string $requestUrl = '',
         string $userAgent = ''
-    ): void {
+    ): void
+    {
         $device = self::where('device_no', $deviceNo)->first();
 
         DeviceAccessLog::create([

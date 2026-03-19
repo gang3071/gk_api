@@ -46,12 +46,7 @@ class AdminRoleUsers extends Model
         'role_id' => 'integer',
         'user_id' => 'integer',
     ];
-
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.role_user_table'));
-    }
+    protected $table = 'admin_role_users';
 
     /**
      * 关联角色
@@ -60,7 +55,7 @@ class AdminRoleUsers extends Model
     public function role()
     {
         return $this->belongsTo(
-            plugin()->webman->config('database.role_model'),
+            AdminRole::class,
             'role_id',
             'id'
         );
@@ -73,7 +68,7 @@ class AdminRoleUsers extends Model
     public function user()
     {
         return $this->belongsTo(
-            plugin()->webman->config('database.user_model'),
+            AdminUser::class,
             'user_id',
             'id'
         );

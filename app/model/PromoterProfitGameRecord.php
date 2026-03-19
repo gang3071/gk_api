@@ -36,64 +36,58 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class PromoterProfitGameRecord extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
-    
+
     const STATUS_UNCOMPLETED = 0; // 未结算
     const STATUS_COMPLETED = 1; // 已结算
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        
-        $this->setTable(plugin()->webman->config('database.promoter_profit_game_record_table'));
-    }
-    
+    protected $table = 'promoter_profit_game_record';
+
     /**
      * 玩家信息
      * @return BelongsTo
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
-    
+
     /**
      * 推广员信息
      * @return BelongsTo
      */
     public function promoter(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_promoter_model'), 'promoter_player_id',
+        return $this->belongsTo(PlayerPromoter::class, 'promoter_player_id',
             'player_id');
     }
-    
+
     /**
      * 推广员玩家信息
      * @return BelongsTo
      */
     public function player_promoter(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'promoter_player_id');
+        return $this->belongsTo(Player::class, 'promoter_player_id');
     }
-    
+
     /**
      * 开分赠送规则
      * @return hasMany
      */
     public function promoterProfitGameRecord(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.promoter_profit_game_record_model'),
+        return $this->hasMany(PromoterProfitGameRecord::class,
             'machine_category_id');
     }
-    
+
     /**
      * 游戏平台信息
      * @return BelongsTo
      */
     public function gamePlatform(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_platform_model'), 'platform_id');
+        return $this->belongsTo(GamePlatform::class, 'platform_id');
     }
 }

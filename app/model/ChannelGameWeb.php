@@ -4,8 +4,6 @@ namespace app\model;
 
 use app\traits\HasDateTimeFormatter;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Class ChannelGameWeb

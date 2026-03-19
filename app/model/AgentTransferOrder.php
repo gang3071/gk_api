@@ -35,37 +35,32 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class AgentTransferOrder extends Model
 {
     use HasDateTimeFormatter;
-    
+
     //数据权限字段
     const STATUS_WAIT = 1; // 提现中(待审核)
     const STATUS_SUCCESS = 2; // 成功
     const STATUS_FAIL = 3; // 提现失败
-    
+
     const TYPE_IN = 1; // 转入
     const TYPE_OUT = 2; // 转出
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.agent_transfer_order_table'));
-    }
-    
+    protected $table = 'agent_transfer_order';
+
     /**
      * 渠道信息
      * @return BelongsTo
      */
     public function channel(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.channel_model'), 'department_id',
+        return $this->belongsTo(Channel::class, 'department_id',
             'department_id')->withTrashed();
     }
-    
+
     /**
      * 玩家信息
      * @return BelongsTo
      */
     public function player(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
 }

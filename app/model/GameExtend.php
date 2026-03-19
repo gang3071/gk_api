@@ -32,7 +32,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class GameExtend extends Model
 {
     use HasDateTimeFormatter;
-    
+
     /**
      * 时间转换
      * @param DateTimeInterface $date
@@ -42,20 +42,16 @@ class GameExtend extends Model
     {
         return $date->format('Y-m-d H:i:s');
     }
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.game_extend_table'));
-    }
-    
+
+    protected $table = 'game_extend';
+
     /**
      * 游戏平台
      * @return BelongsTo
      */
     public function gamePlatform(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.game_platform_model'),
+        return $this->belongsTo(GamePlatform::class,
             'platform_id')->withTrashed();
     }
 }

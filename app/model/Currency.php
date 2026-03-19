@@ -24,11 +24,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Currency extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.currency_table'));
-    }
+
+    protected $table = 'currency';
 
     /**
      * 游戏类别
@@ -36,7 +33,7 @@ class Currency extends Model
      */
     public function admin_user(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.user_model'), 'admin_id');
+        return $this->belongsTo(AdminUser::class, 'admin_id');
     }
 
     /**

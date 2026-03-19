@@ -38,19 +38,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PlayerActivityPhaseRecord extends Model
 {
     use HasDateTimeFormatter;
-    
+
     const STATUS_UNRECEIVED = 1; // 未领取
     const STATUS_RECEIVED = 2; // 已领取(待审核)
     const STATUS_COMPLETE = 3; // 已发放(审核通过)
     const STATUS_REJECT = 4; // 已拒绝
     protected $dataAuth = ['department_id' => 'department_id'];
-    
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.player_activity_phase_record_table'));
-    }
-    
+    protected $table = 'player_activity_phase_record';
+
     /**
      * @return void
      */
@@ -84,50 +79,50 @@ class PlayerActivityPhaseRecord extends Model
             }
         });
     }
-    
+
     /**
      * 活动内容
      * @return belongsTo
      */
     public function activity(): belongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.activity_model'), 'activity_id')->withTrashed();
+        return $this->belongsTo(Activity::class, 'activity_id')->withTrashed();
     }
-    
+
     /**
      * 玩家
      * @return belongsTo
      */
     public function player(): belongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_model'), 'player_id')->withTrashed();
+        return $this->belongsTo(Player::class, 'player_id')->withTrashed();
     }
-    
+
     /**
      * 活动阶段
      * @return belongsTo
      */
     public function activity_phase(): belongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.activity_phase_model'), 'activity_phase_id');
+        return $this->belongsTo(ActivityPhase::class, 'activity_phase_id');
     }
-    
+
     /**
      * 玩家活动参与记录
      * @return belongsTo
      */
     public function player_activity_record(): belongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.player_activity_record_model'),
+        return $this->belongsTo(PlayerActivityRecord::class,
             'player_activity_record_id');
     }
-    
+
     /**
      * 机台
      * @return belongsTo
      */
     public function machine(): belongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'), 'machine_id');
+        return $this->belongsTo(Machine::class, 'machine_id');
     }
 }

@@ -26,7 +26,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string updated_at 最后一次修改时间
  * @property string deleted_at 删除时间
  *
- * @property Machine  machine
+ * @property Machine machine
  * @property MachineMediaPush machineMediaPush
  * @package app\model
  */
@@ -34,11 +34,7 @@ class MachineMedia extends Model
 {
     use SoftDeletes, HasDateTimeFormatter;
 
-    public function __construct(array $attributes = [])
-    {
-        parent::__construct($attributes);
-        $this->setTable(plugin()->webman->config('database.machine_media_table'));
-    }
+    protected $table = 'machine_media';
 
     /**
      * 游戏类别
@@ -46,16 +42,16 @@ class MachineMedia extends Model
      */
     public function machine(): BelongsTo
     {
-        return $this->belongsTo(plugin()->webman->config('database.machine_model'), 'machine_id')->withTrashed();
+        return $this->belongsTo(Machine::class, 'machine_id')->withTrashed();
     }
-    
+
     /**
      * 游戏类别
      * @return hasMany
      */
     public function machineMediaPush(): hasMany
     {
-        return $this->hasMany(plugin()->webman->config('database.machine_media_push_model'), 'media_id');
+        return $this->hasMany(MachineMediaPush::class, 'media_id');
     }
 
     /**
