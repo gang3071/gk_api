@@ -1,7 +1,7 @@
 <?php
 
-use addons\webman\model\GameType;
-use addons\webman\model\PhoneSmsLog;
+use app\model\GameType;
+use app\model\PhoneSmsLog;
 
 return [
     'validation_error' => '字段驗證錯誤',

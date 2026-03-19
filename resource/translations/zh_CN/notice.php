@@ -6,8 +6,8 @@
  * Time: 00:44
  */
 
-use addons\webman\model\Lottery;
-use addons\webman\model\Notice;
+use app\model\Lottery;
+use app\model\Notice;
 
 return [
     'title' => [
