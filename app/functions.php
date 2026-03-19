@@ -674,11 +674,6 @@ function machineOpenAny(
                 'condition' => $machine->type == GameType::TYPE_SLOT ? $machineCategoryGiveRule->condition : ($services->turn - $orgTurn),
             ]);
         }
-
-        queueClient::send('media-recording', [
-            'machine_id' => $machine->id,
-            'action' => 'stop',
-        ], 10);
     } catch (\Exception $e) {
         $log = Log::channel('song_jackpot_machine');
 
@@ -2939,20 +2934,6 @@ function getDateWhere($type, $column): array
     }
 
     return $where;
-}
-
-//终止机台录像
-function machinesRecordingStop()
-{
-    $machines = Machine::query()
-        ->where('status', 1)
-        ->pluck('id');
-    foreach ($machines as $machine) {
-        queueClient::send('media-recording', [
-            'machine_id' => $machine,
-            'action' => 'stop',
-        ], 10);
-    }
 }
 
 /**
