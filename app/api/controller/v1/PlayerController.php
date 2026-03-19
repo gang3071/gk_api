@@ -1021,6 +1021,7 @@ class PlayerController
             'amount' => $playerDeliveryRecord->amount,
             'created_at' => date('Y-m-d H:i:s', strtotime($playerDeliveryRecord->created_at)),
             'tradeno' => $playerDeliveryRecord->tradeno,
+            'name' => $player->name
         ]);
     }
     
