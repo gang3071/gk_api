@@ -18,7 +18,7 @@
     "symfony/translation": "^5.4",
     "webman/event": "^1.0",
     "tinywan/jwt": "^1.6",
-    "php-di/php-di": "6",
+    "php-di/php-di": "^7.0",
     "doctrine/annotations": "1.14",
     "webman-tech/laravel-http-client": "^1.1",
     "workbunny/webman-ip-attribution": "^1.0",
