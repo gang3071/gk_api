@@ -44,7 +44,8 @@
     "illuminate/redis": "^8.83",
     "symfony/cache": "^5.4",
     "mongodb/mongodb": "~1.12.0",
-    "jenssegers/mongodb": "3.8.*"
+    "jenssegers/mongodb": "3.8.*",
+    "robmorgan/phinx": "^0.14.0"
   },
   "autoload": {
     "psr-4": {
