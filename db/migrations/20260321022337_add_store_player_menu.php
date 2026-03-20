@@ -13,9 +13,10 @@ class AddStorePlayerMenu extends AbstractMigration
     public function up()
     {
         // 插入设备管理菜单（父级菜单）
+        // type = 4 表示店家菜单 (AdminDepartment::TYPE_STORE)
         $this->execute("
-            INSERT INTO `admin_menus` (`name`, `icon`, `url`, `plugin`, `pid`, `sort`, `status`, `open`, `created_at`, `updated_at`)
-            VALUES ('store_player', 'el-icon-s-grid', '', 'webman', 191, 100, 1, 0, NOW(), NOW())
+            INSERT INTO `admin_menus` (`name`, `icon`, `url`, `plugin`, `pid`, `sort`, `status`, `open`, `type`, `created_at`, `updated_at`)
+            VALUES ('store_player', 'el-icon-s-grid', '', 'webman', 0, 100, 1, 0, 4, NOW(), NOW())
         ");
 
         // 获取刚插入的父级菜单ID
@@ -23,8 +24,8 @@ class AddStorePlayerMenu extends AbstractMigration
 
         // 插入设备列表子菜单
         $this->execute("
-            INSERT INTO `admin_menus` (`name`, `icon`, `url`, `plugin`, `pid`, `sort`, `status`, `open`, `created_at`, `updated_at`)
-            VALUES ('store_player_list', '', 'ex-admin/addons-webman-controller-StorePlayerController/index', 'webman', {$parentMenuId}, 1, 1, 0, NOW(), NOW())
+            INSERT INTO `admin_menus` (`name`, `icon`, `url`, `plugin`, `pid`, `sort`, `status`, `open`, `type`, `created_at`, `updated_at`)
+            VALUES ('store_player_list', '', 'ex-admin/addons-webman-controller-StorePlayerController/index', 'webman', {$parentMenuId}, 1, 1, 0, 4, NOW(), NOW())
         ");
     }
 
