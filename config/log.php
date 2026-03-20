@@ -29,7 +29,7 @@ return [
             ],
             // Telegram 错误通知
             [
-                'class' => app\service\TelegramHandler::class,
+                'class' => app\service\TelegramService::class,
                 'constructor' => [
                     env('TELEGRAM_BOT_TOKEN', ''),
                     env('TELEGRAM_CHAT_ID', ''),
