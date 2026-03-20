@@ -29,11 +29,10 @@ return [
             ],
             // Telegram 错误通知
             [
-                'class' => app\handler\TelegramHandler::class,
+                'class' => app\service\TelegramHandler::class,
                 'constructor' => [
                     env('TELEGRAM_BOT_TOKEN', ''),
                     env('TELEGRAM_CHAT_ID', ''),
-                    env('TELEGRAM_APP_NAME', 'Webman App'),
                     Monolog\Logger::ERROR, // 只发送 ERROR 及以上级别的日志
                 ],
             ],
