@@ -47,6 +47,7 @@ class GamePlatformController
         if (empty($player->channel->game_platform)) {
             return jsonFailResponse(trans('platform_no_permission', [], 'message'));
         }
+
         $data = $request->all();
         $validator = v::key('type', v::intVal()->setName(trans('type', [], 'message')), false)
             ->key('cate_id', v::intVal()->setName(trans('game_cate_id', [], 'message')), false)
