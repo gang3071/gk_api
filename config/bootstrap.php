@@ -17,5 +17,4 @@ return [
     support\bootstrap\LaravelDb::class,
     Webman\ThinkOrm\ThinkOrm::class,
     Webman\ThinkCache\ThinkCache::class,
-    support\bootstrap\HealthCheck::class,  // 健康检查（最后执行，确保所有服务已初始化）
 ];

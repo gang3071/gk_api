@@ -1216,9 +1216,9 @@ class GamePlatformController
     public function enterGame(Request $request): Response
     {
         // 转发到外网主机（零信任隧道）
-        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'enterGame')) {
-            return $proxyResponse;
-        }
+//        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'enterGame')) {
+//            return $proxyResponse;
+//        }
 
         $player = checkPlayer();
         $data = $request->all();
