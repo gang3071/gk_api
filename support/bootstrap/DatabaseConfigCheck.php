@@ -154,6 +154,31 @@ class DatabaseConfigCheck implements Bootstrap
         echo "    └─ 端口: {$mysql['port']}\n";
         echo "    └─ 字符集: {$mysql['charset']}\n";
 
+        // 尝试连接
+        echo "\n  连接测试:\n";
+        try {
+            $result = \support\Db::select("SELECT 1 as test");
+            echo "    └─ ✓ Laravel DB 连接成功\n";
+
+            $info = \support\Db::select("SELECT USER() as user, DATABASE() as db");
+            if (!empty($info[0])) {
+                echo "    └─ 当前用户: {$info[0]->user}\n";
+                echo "    └─ 当前数据库: {$info[0]->db}\n";
+            }
+        } catch (\Throwable $e) {
+            echo "    └─ ✗ Laravel DB 连接失败\n";
+            echo "    └─ 错误: {$e->getMessage()}\n";
+
+            // 尝试获取更详细的错误信息
+            if (method_exists($e, 'getCode')) {
+                echo "    └─ 错误码: {$e->getCode()}\n";
+            }
+
+            if (strpos($e->getMessage(), '1045') !== false) {
+                echo "    └─ ⚠️  认证失败，请检查密码和IP授权\n";
+            }
+        }
+
         echo "\n";
     }
 }
