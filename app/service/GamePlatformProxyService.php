@@ -51,6 +51,17 @@ class GamePlatformProxyService
         $startTime = microtime(true);
 
         try {
+            // 获取当前登录玩家ID（在转发前验证）
+            $playerId = null;
+            try {
+                $player = checkPlayer();
+                if ($player) {
+                    $playerId = $player->id;
+                }
+            } catch (\Throwable $e) {
+                // 获取玩家失败，继续转发，让 gk_work 处理
+            }
+
             $workerHost = env('GAME_PLATFORM_PROXY_HOST', '10.140.0.10');
             $workerPort = env('GAME_PLATFORM_PROXY_PORT', '8788');
             $proxyUrl = "http://{$workerHost}:{$workerPort}{$endpoint}";
@@ -58,6 +69,7 @@ class GamePlatformProxyService
             Log::info('Game platform proxy request', [
                 'endpoint' => $endpoint,
                 'proxy_url' => $proxyUrl,
+                'player_id' => $playerId,
                 'request_data' => $request->all(),
             ]);
 
@@ -68,6 +80,8 @@ class GamePlatformProxyService
                 'X-Real-IP: ' . $request->getRealIp(),
                 'X-Forwarded-For: ' . $request->header('X-Forwarded-For', ''),
                 'User-Agent: ' . $request->header('User-Agent', 'Webman-Proxy/1.0'),
+                // 传递玩家 ID（已验证）
+                'X-Player-Id: ' . ($playerId ?? ''),
                 // API 签名验证所需头部
                 'appId: ' . $request->header('appId', ''),
                 'appKey: ' . $request->header('appKey', ''),
