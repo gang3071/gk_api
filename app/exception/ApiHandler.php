@@ -42,6 +42,26 @@ class ApiHandler extends ExceptionHandler
                 'msg' => $exception->getMessage()
             ]);
         }
+
+        // 过滤 opis/closure Serializable 接口弃用警告（PHP 8.2+ 兼容性）
+        if ($exception instanceof \ErrorException) {
+            $message = $exception->getMessage();
+            if (str_contains($message, 'SerializableClosure') &&
+                str_contains($message, 'Serializable interface')) {
+                // 记录到日志，但不返回给客户端
+                \support\Log::warning('opis/closure Serializable deprecated warning', [
+                    'message' => $message,
+                    'file' => $exception->getFile(),
+                    'line' => $exception->getLine(),
+                ]);
+
+                return json([
+                    'code' => 500,
+                    'msg' => 'Internal Server Error'
+                ]);
+            }
+        }
+
         return json([
             'code' => $exception->getCode(),
             'msg' => $exception->getMessage()
