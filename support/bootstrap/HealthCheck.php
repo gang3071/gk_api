@@ -15,13 +15,22 @@ use support\Redis;
 class HealthCheck implements Bootstrap
 {
     /**
-     * 输出信息到控制台
+     * 输出信息到控制台和日志文件
      */
     private static function out($message)
     {
-        // 直接写到标准输出，确保能看到
+        // 输出到控制台
         echo $message;
         flush();
+
+        // 同时写入日志文件
+        static $logFile = null;
+        if ($logFile === null) {
+            $logFile = runtime_path() . '/logs/healthcheck.log';
+            // 清空旧日志
+            @file_put_contents($logFile, '');
+        }
+        @file_put_contents($logFile, $message, FILE_APPEND);
     }
 
     public static function start(?Worker $worker)
