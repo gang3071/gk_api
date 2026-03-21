@@ -82,7 +82,9 @@ class DatabaseConfigCheck implements Bootstrap
 
         // 显示分布式配置
         echo "\n  分布式配置:\n";
-        echo "    └─ deploy: " . ($mysql['deploy'] ?? 0) . " (启用分布式)\n";
+        $deploy = $mysql['deploy'] ?? 0;
+        $deploy_status = $deploy ? '启用' : '禁用';
+        echo "    └─ deploy: {$deploy} ({$deploy_status}分布式)\n";
         echo "    └─ rw_separate: " . ($mysql['rw_separate'] ? 'true' : 'false') . " (读写分离)\n";
         echo "    └─ master_num: " . ($mysql['master_num'] ?? 1) . "\n";
 
@@ -91,13 +93,12 @@ class DatabaseConfigCheck implements Bootstrap
         try {
             // 强制使用主库连接
             $result = \think\facade\Db::query("SELECT 1 as test", [], true);  // 第三个参数 true 表示使用主库
-            echo "    └─ ✓ ThinkORM 连接成功\n";
+            echo "    └─ ✓ ThinkORM 连接成功 (连接到: {$mysql['hostname']}:{$mysql['hostport']})\n";
 
-            $info = \think\facade\Db::query("SELECT USER() as user, DATABASE() as db, @@hostname as mysql_host", [], true);
+            $info = \think\facade\Db::query("SELECT USER() as user, DATABASE() as db", [], true);
             if (!empty($info[0])) {
                 echo "    └─ 当前用户: {$info[0]['user']}\n";
                 echo "    └─ 当前数据库: {$info[0]['db']}\n";
-                echo "    └─ MySQL主机: {$info[0]['mysql_host']}\n";
             }
         } catch (\Throwable $e) {
             echo "    └─ ✗ ThinkORM 连接失败\n";
@@ -173,7 +174,9 @@ class DatabaseConfigCheck implements Bootstrap
         echo "\n  连接测试:\n";
         try {
             $result = \support\Db::select("SELECT 1 as test");
-            echo "    └─ ✓ Laravel DB 连接成功\n";
+            $write_host = $mysql['write']['host'][0] ?? $mysql['host'] ?? 'N/A';
+            $port = $mysql['port'] ?? '3306';
+            echo "    └─ ✓ Laravel DB 连接成功 (连接到: {$write_host}:{$port})\n";
 
             $info = \support\Db::select("SELECT USER() as user, DATABASE() as db");
             if (!empty($info[0])) {
