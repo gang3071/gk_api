@@ -63,7 +63,7 @@ class GamePlatformProxyService
             }
 
             $workerHost = env('GAME_PLATFORM_PROXY_HOST', '10.140.0.10');
-            $workerPort = env('GAME_PLATFORM_PROXY_PORT', '8788');
+            $workerPort = env('GAME_PLATFORM_PROXY_PORT', '8080');
             $proxyUrl = "http://{$workerHost}:{$workerPort}{$endpoint}";
 
             Log::info('Game platform proxy request', [
