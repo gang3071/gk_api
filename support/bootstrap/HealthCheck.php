@@ -14,66 +14,96 @@ use MongoDB\Client as MongoDBClient;
  */
 class HealthCheck implements Bootstrap
 {
+    /**
+     * 输出信息到控制台
+     */
+    private static function out($message)
+    {
+        // 直接写到标准输出，确保能看到
+        echo $message;
+        flush();
+    }
+
     public static function start(?Worker $worker)
     {
-        if ($worker) {
+        // 只在主进程执行一次
+        static $checked = false;
+        if ($checked) {
             return;
         }
+        $checked = true;
 
-        echo "\n========================================\n";
-        echo "🔍 启动健康检查...\n";
-        echo "========================================\n\n";
+        $startTime = microtime(true);
+
+        self::out("\n========================================\n");
+        self::out("🔍 启动健康检查...\n");
+        self::out("========================================\n\n");
 
         $allPassed = true;
+        $errors = [];
 
         // 1. 检查 MySQL 数据库连接
-        echo "📊 检查 MySQL 连接...\n";
+        self::out("📊 检查 MySQL 连接...\n");
         try {
             $dbConfig = config('database.connections.mysql');
-            echo "   - 主机: {$dbConfig['host']}:{$dbConfig['port']}\n";
-            echo "   - 数据库: {$dbConfig['database']}\n";
+            self::out("   主机: {$dbConfig['host']}:{$dbConfig['port']}\n");
+            self::out("   数据库: {$dbConfig['database']}\n");
 
             // 测试连接
             $pdo = Db::connection()->getPdo();
             $result = $pdo->query('SELECT 1')->fetchColumn();
 
             if ($result == 1) {
-                echo "   ✅ MySQL 连接正常\n\n";
+                self::out("   ✅ MySQL 连接正常\n\n");
             } else {
-                echo "   ❌ MySQL 查询失败\n\n";
+                self::out("   ❌ MySQL 查询失败\n\n");
                 $allPassed = false;
+                $errors[] = 'MySQL 查询失败';
             }
         } catch (\Throwable $e) {
-            echo "   ❌ MySQL 连接失败: {$e->getMessage()}\n";
-            echo "   📂 文件: {$e->getFile()}:{$e->getLine()}\n\n";
+            self::out("   ❌ MySQL 连接失败: {$e->getMessage()}\n");
+            self::out("   📂 {$e->getFile()}:{$e->getLine()}\n\n");
             $allPassed = false;
+            $errors[] = 'MySQL: ' . $e->getMessage();
         }
 
         // 2. 检查 Redis 连接
-        echo "🔴 检查 Redis 连接...\n";
+        self::out("🔴 检查 Redis 连接...\n");
         try {
             $redisConfig = config('redis.default');
-            echo "   - 主机: {$redisConfig['host']}:{$redisConfig['port']}\n";
-            echo "   - 数据库: {$redisConfig['database']}\n";
+            self::out("   主机: {$redisConfig['host']}:{$redisConfig['port']}\n");
+            self::out("   数据库: {$redisConfig['database']}\n");
 
             // 测试连接
             $redis = Redis::connection('default');
             $pong = $redis->ping();
 
             if ($pong === true || $pong === 'PONG' || $pong === '+PONG') {
-                echo "   ✅ Redis 连接正常\n\n";
+                self::out("   ✅ Redis 连接正常\n");
+
+                // 测试读写
+                $testKey = 'healthcheck:' . time();
+                $redis->set($testKey, 'test', 10);
+                $value = $redis->get($testKey);
+                $redis->del($testKey);
+
+                if ($value === 'test') {
+                    self::out("   ✅ Redis 读写正常\n\n");
+                }
             } else {
-                echo "   ❌ Redis PING 失败\n\n";
+                self::out("   ❌ Redis PING 失败\n\n");
                 $allPassed = false;
+                $errors[] = 'Redis PING 失败';
             }
         } catch (\Throwable $e) {
-            echo "   ❌ Redis 连接失败: {$e->getMessage()}\n";
-            echo "   📂 文件: {$e->getFile()}:{$e->getLine()}\n\n";
+            self::out("   ❌ Redis 连接失败: {$e->getMessage()}\n");
+            self::out("   📂 {$e->getFile()}:{$e->getLine()}\n\n");
             $allPassed = false;
+            $errors[] = 'Redis: ' . $e->getMessage();
         }
 
         // 3. 检查 MongoDB 连接
-        echo "🍃 检查 MongoDB 连接...\n";
+        self::out("🍃 检查 MongoDB 连接...\n");
         try {
             $mongoHost = env('MONGODB_HOST', '127.0.0.1');
             $mongoPort = env('MONGODB_PORT', 27017);
@@ -81,8 +111,8 @@ class HealthCheck implements Bootstrap
             $mongoUsername = env('MONGODB_USERNAME', '');
             $mongoPassword = env('MONGODB_PASSWORD', '');
 
-            echo "   - 主机: {$mongoHost}:{$mongoPort}\n";
-            echo "   - 数据库: {$mongoDatabase}\n";
+            self::out("   主机: {$mongoHost}:{$mongoPort}\n");
+            self::out("   数据库: {$mongoDatabase}\n");
 
             // 构建连接字符串
             if (!empty($mongoUsername) && !empty($mongoPassword)) {
@@ -103,89 +133,91 @@ class HealthCheck implements Bootstrap
             $result = $admin->command(['ping' => 1]);
 
             if (isset($result['ok']) && $result['ok'] == 1) {
-                echo "   ✅ MongoDB 连接正常\n\n";
+                self::out("   ✅ MongoDB 连接正常\n\n");
             } else {
-                echo "   ❌ MongoDB PING 失败\n\n";
+                self::out("   ❌ MongoDB PING 失败\n\n");
                 $allPassed = false;
+                $errors[] = 'MongoDB PING 失败';
             }
         } catch (\Throwable $e) {
-            echo "   ❌ MongoDB 连接失败: {$e->getMessage()}\n";
-            echo "   📂 文件: {$e->getFile()}:{$e->getLine()}\n\n";
+            self::out("   ❌ MongoDB 连接失败: {$e->getMessage()}\n");
+            self::out("   📂 {$e->getFile()}:{$e->getLine()}\n\n");
             $allPassed = false;
+            $errors[] = 'MongoDB: ' . $e->getMessage();
         }
 
-        // 4. 检查 ThinkCache 配置
-        echo "💾 检查 ThinkCache 配置...\n";
-        try {
-            $cacheConfig = config('thinkcache');
-            $defaultStore = $cacheConfig['default'] ?? 'file';
-            echo "   - 默认驱动: {$defaultStore}\n";
+        // 4. 检查配置
+        self::out("⚙️  检查系统配置...\n");
 
-            if ($defaultStore === 'redis') {
-                echo "   ⚠️  警告: 使用 Redis 缓存，确保 Redis 连接正常\n\n";
-            } else {
-                echo "   ✅ 使用文件缓存\n\n";
+        // ThinkCache
+        $cacheConfig = config('thinkcache');
+        $defaultStore = $cacheConfig['default'] ?? 'file';
+        self::out("   ThinkCache 驱动: {$defaultStore}\n");
+
+        // Session
+        $sessionConfig = config('session');
+        $sessionType = $sessionConfig['type'] ?? 'file';
+        self::out("   Session 驱动: {$sessionType}\n");
+
+        // RateLimiter
+        $rateLimiterConfig = config('plugin.webman.rate-limiter.app');
+        if ($rateLimiterConfig && isset($rateLimiterConfig['enable']) && $rateLimiterConfig['enable']) {
+            $driver = $rateLimiterConfig['driver'] ?? 'auto';
+            self::out("   RateLimiter 驱动: {$driver}\n");
+
+            if ($driver === 'redis' || $driver === 'auto') {
+                self::out("   💡 提示: RateLimiter 可能使用 Redis\n");
             }
-        } catch (\Throwable $e) {
-            echo "   ❌ ThinkCache 配置检查失败: {$e->getMessage()}\n\n";
-        }
-
-        // 5. 检查 Session 配置
-        echo "🔐 检查 Session 配置...\n";
-        try {
-            $sessionConfig = config('session');
-            $sessionType = $sessionConfig['type'] ?? 'file';
-            echo "   - 驱动类型: {$sessionType}\n";
-
-            if ($sessionType === 'redis') {
-                echo "   ⚠️  警告: 使用 Redis Session，确保 Redis 连接正常\n\n";
-            } else {
-                echo "   ✅ 使用文件 Session\n\n";
-            }
-        } catch (\Throwable $e) {
-            echo "   ❌ Session 配置检查失败: {$e->getMessage()}\n\n";
-        }
-
-        // 6. 检查限流器配置
-        echo "⏱️  检查 RateLimiter 配置...\n";
-        try {
-            $rateLimiterConfig = config('plugin.webman.rate-limiter.app');
-            if ($rateLimiterConfig && isset($rateLimiterConfig['enable']) && $rateLimiterConfig['enable']) {
-                $driver = $rateLimiterConfig['driver'] ?? 'auto';
-                echo "   - 驱动类型: {$driver}\n";
-
-                if ($driver === 'redis' || $driver === 'auto') {
-                    echo "   ⚠️  警告: RateLimiter 可能使用 Redis，确保 Redis 连接正常\n";
-                    echo "   💡 提示: 如果 Redis 连接失败，建议改为 'memory' 驱动\n\n";
-                } else {
-                    echo "   ✅ 使用 {$driver} 驱动\n\n";
-                }
-            } else {
-                echo "   ℹ️  RateLimiter 未启用\n\n";
-            }
-        } catch (\Throwable $e) {
-            echo "   ❌ RateLimiter 配置检查失败: {$e->getMessage()}\n\n";
-        }
-
-        // 7. 总结
-        echo "========================================\n";
-        if ($allPassed) {
-            echo "✅ 所有核心服务连接正常，可以启动！\n";
         } else {
-            echo "❌ 部分服务连接失败，请检查配置后再启动！\n";
-            echo "\n💡 提示：\n";
-            echo "   - 检查 .env 配置是否正确\n";
-            echo "   - 确保 MySQL、Redis、MongoDB 服务已启动\n";
-            echo "   - 检查网络连接和防火墙设置\n";
-            echo "\n⚠️  警告：强制继续启动可能导致运行时错误！\n";
+            self::out("   RateLimiter: 未启用\n");
         }
-        echo "========================================\n\n";
 
-        if (!$allPassed) {
-            // 给用户 5 秒时间决定是否继续
-            echo "按 Ctrl+C 取消启动，或等待 5 秒后自动继续...\n";
-            sleep(5);
-            echo "继续启动...\n\n";
+        // 游戏平台代理
+        $proxyEnabled = env('GAME_PLATFORM_PROXY_ENABLE', false);
+        if ($proxyEnabled) {
+            $proxyHost = env('GAME_PLATFORM_PROXY_HOST', '');
+            $proxyPort = env('GAME_PLATFORM_PROXY_PORT', '');
+            self::out("   游戏平台代理: ✅ 已启用 ({$proxyHost}:{$proxyPort})\n");
+        } else {
+            self::out("   游戏平台代理: 未启用\n");
+        }
+
+        // Telegram 通知
+        $telegramEnabled = env('GAME_PLATFORM_PROXY_TELEGRAM_NOTIFY', false);
+        $telegramToken = env('TELEGRAM_BOT_TOKEN', '');
+        $telegramChatId = env('TELEGRAM_CHAT_ID', '');
+        if ($telegramEnabled && !empty($telegramToken) && !empty($telegramChatId)) {
+            self::out("   Telegram 通知: ✅ 已启用\n");
+        } else {
+            self::out("   Telegram 通知: 未启用\n");
+        }
+
+        self::out("\n");
+
+        // 5. 总结
+        $duration = round((microtime(true) - $startTime) * 1000, 2);
+
+        self::out("========================================\n");
+        if ($allPassed) {
+            self::out("✅ 所有核心服务连接正常！\n");
+            self::out("========================================\n");
+            self::out("检查耗时: {$duration}ms\n\n");
+        } else {
+            self::out("❌ 检测到 " . count($errors) . " 个问题：\n");
+            foreach ($errors as $i => $error) {
+                self::out("   " . ($i + 1) . ". {$error}\n");
+            }
+            self::out("========================================\n");
+            self::out("检查耗时: {$duration}ms\n\n");
+            self::out("⚠️  警告: 继续启动可能导致运行时错误！\n");
+            self::out("按 Ctrl+C 可以取消启动...\n\n");
+
+            // 给用户3秒时间决定
+            for ($i = 3; $i > 0; $i--) {
+                self::out("倒计时: {$i} 秒...\r");
+                sleep(1);
+            }
+            self::out("\n继续启动...\n\n");
         }
     }
 }
