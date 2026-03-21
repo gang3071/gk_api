@@ -33,7 +33,7 @@ use Webman\RateLimiter\Annotation\RateLimiter;
 class GamePlatformController
 {
     /** 排除  */
-    protected $noNeedSign = ['walletTransferIN'];
+    protected $noNeedSign = ['walletTransferIN', 'enterGame'];
     
     #[RateLimiter(limit: 5)]
     /**
