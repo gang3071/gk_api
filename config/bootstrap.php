@@ -13,7 +13,7 @@
  */
 
 return [
-    support\bootstrap\HealthCheck::class,  // 健康检查（最先执行）
+    // 健康检查已移至 start.php 启动前执行
     support\bootstrap\Session::class,
     support\bootstrap\LaravelDb::class,
     Webman\ThinkOrm\ThinkOrm::class,
