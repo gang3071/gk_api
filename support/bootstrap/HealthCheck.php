@@ -26,12 +26,16 @@ class HealthCheck implements Bootstrap
 
     public static function start(?Worker $worker)
     {
-        // 只在主进程执行一次
-        static $checked = false;
-        if ($checked) {
+        // 只在主进程启动时执行一次，不在 Worker 进程中执行
+        if ($worker !== null) {
             return;
         }
-        $checked = true;
+
+        // 使用全局标记确保只执行一次
+        if (defined('HEALTHCHECK_EXECUTED')) {
+            return;
+        }
+        define('HEALTHCHECK_EXECUTED', true);
 
         $startTime = microtime(true);
 
@@ -46,8 +50,21 @@ class HealthCheck implements Bootstrap
         self::out("📊 检查 MySQL 连接...\n");
         try {
             $dbConfig = config('database.connections.mysql');
-            self::out("   主机: {$dbConfig['host']}:{$dbConfig['port']}\n");
-            self::out("   数据库: {$dbConfig['database']}\n");
+
+            // 处理读写分离配置
+            if (isset($dbConfig['write']['host'])) {
+                $host = is_array($dbConfig['write']['host']) ? $dbConfig['write']['host'][0] : $dbConfig['write']['host'];
+            } elseif (isset($dbConfig['read']['host'])) {
+                $host = is_array($dbConfig['read']['host']) ? $dbConfig['read']['host'][0] : $dbConfig['read']['host'];
+            } else {
+                $host = $dbConfig['host'] ?? env('DB_HOST', '127.0.0.1');
+            }
+
+            $port = $dbConfig['port'] ?? env('DB_PORT', '3306');
+            $database = $dbConfig['database'] ?? env('DB_DATABASE', 'unknown');
+
+            self::out("   主机: {$host}:{$port}\n");
+            self::out("   数据库: {$database}\n");
 
             // 测试连接
             $pdo = Db::connection()->getPdo();
