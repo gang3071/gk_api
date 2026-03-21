@@ -17,4 +17,5 @@ return [
     support\bootstrap\LaravelDb::class,
     Webman\ThinkOrm\ThinkOrm::class,
     Webman\ThinkCache\ThinkCache::class,
+    support\bootstrap\DatabaseConfigCheck::class, // 数据库配置检查（启动时显示）
 ];
