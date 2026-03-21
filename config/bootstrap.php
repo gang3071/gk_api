@@ -13,6 +13,7 @@
  */
 
 return [
+    support\bootstrap\HealthCheck::class,  // 健康检查（第一个执行）
     support\bootstrap\Session::class,
     support\bootstrap\LaravelDb::class,
     Webman\ThinkOrm\ThinkOrm::class,
