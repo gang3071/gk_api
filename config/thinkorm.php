@@ -28,7 +28,7 @@ return [
             ],
             
             // 分布式配置
-            'deploy' => 1, // 启用分布式
+            'deploy' => 0, // 禁用分布式（临时测试）
             'rw_separate' => false, // 读写分离
             'master_num' => 1, // 主库数量
             

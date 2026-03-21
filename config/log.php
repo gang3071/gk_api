@@ -26,7 +26,16 @@ return [
                     'class' => Monolog\Formatter\LineFormatter::class,
                     'constructor' => [null, 'Y-m-d H:i:s', true],
                 ],
-            ]
+            ],
+            // Telegram 错误通知
+            [
+                'class' => app\service\TelegramService::class,
+                'constructor' => [
+                    env('TELEGRAM_BOT_TOKEN', ''),
+                    env('TELEGRAM_CHAT_ID', ''),
+                    Monolog\Logger::ERROR, // 只发送 ERROR 及以上级别的日志
+                ],
+            ],
         ],
     ],
     'machine' => [

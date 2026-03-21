@@ -19,6 +19,7 @@ use app\exception\GameException;
 use app\exception\PlayerCheckException;
 use app\service\game\GameServiceFactory;
 use app\service\GameLotteryServices;
+use app\service\GamePlatformProxyService;
 use Exception;
 use Illuminate\Support\Str;
 use Respect\Validation\Exceptions\AllOfException;
@@ -32,7 +33,7 @@ use Webman\RateLimiter\Annotation\RateLimiter;
 class GamePlatformController
 {
     /** 排除  */
-    protected $noNeedSign = ['walletTransferIN'];
+    protected $noNeedSign = ['walletTransferIN', 'enterGame'];
     
     #[RateLimiter(limit: 5)]
     /**
@@ -628,6 +629,11 @@ class GamePlatformController
      */
     public function walletTransferOut(Request $request): Response
     {
+        // 转发到外网主机（零信任隧道）
+        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'walletTransferOut')) {
+            return $proxyResponse;
+        }
+
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('game_platform_id',
@@ -719,6 +725,11 @@ class GamePlatformController
      */
     public function getBalance(Request $request): Response
     {
+        // 转发到外网主机（零信任隧道）
+        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'getBalance')) {
+            return $proxyResponse;
+        }
+
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('game_platform_id',
@@ -758,6 +769,11 @@ class GamePlatformController
      */
     public function getWallet(): Response
     {
+        // 转发到外网主机（零信任隧道）
+        if ($proxyResponse = GamePlatformProxyService::proxyByMethod(request(), 'getWallet')) {
+            return $proxyResponse;
+        }
+
         $player = checkPlayer();
         $lang = locale();
         $lang = Str::replace('_', '-', $lang);
@@ -804,6 +820,11 @@ class GamePlatformController
      */
     public function withdrawAmountAll(): Response
     {
+        // 转发到外网主机（零信任隧道）
+        if ($proxyResponse = GamePlatformProxyService::proxyByMethod(request(), 'withdrawAmountAll')) {
+            return $proxyResponse;
+        }
+
         $player = checkPlayer();
         if (empty($player->channel->game_platform)) {
             return jsonFailResponse(trans('game_platform_not_found', [], 'message'));
@@ -899,6 +920,11 @@ class GamePlatformController
      */
     public function walletTransferIN(Request $request): Response
     {
+        // 转发到外网主机（零信任隧道）
+        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'walletTransferIN')) {
+            return $proxyResponse;
+        }
+
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('game_platform_id',
@@ -998,6 +1024,11 @@ class GamePlatformController
      */
     public function lobbyLogin(Request $request): Response
     {
+        // 转发到外网主机（零信任隧道）
+        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'lobbyLogin')) {
+            return $proxyResponse;
+        }
+
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('game_platform_id',
@@ -1098,6 +1129,11 @@ class GamePlatformController
      */
     public function fastTransferAllIN(): Response
     {
+        // 转发到外网主机（零信任隧道）
+        if ($proxyResponse = GamePlatformProxyService::proxyByMethod(request(), 'fastTransferAllIN')) {
+            return $proxyResponse;
+        }
+
         $player = checkPlayer();
         $playerGamePlatform = PlayerGamePlatform::query()->where('player_id', $player->id)->get();
         if (empty($playerGamePlatform)) {
@@ -1179,11 +1215,16 @@ class GamePlatformController
      */
     public function enterGame(Request $request): Response
     {
+        // 转发到外网主机（零信任隧道）
+        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'enterGame')) {
+            return $proxyResponse;
+        }
+
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('game_id',
             v::stringType()->notEmpty()->setName(trans('game_id', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {

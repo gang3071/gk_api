@@ -45,7 +45,8 @@
     "symfony/cache": "^5.4",
     "mongodb/mongodb": "~1.12.0",
     "jenssegers/mongodb": "3.8.*",
-    "robmorgan/phinx": "^0.14.0"
+    "robmorgan/phinx": "^0.14.0",
+    "ext-curl": "*"
   },
   "autoload": {
     "psr-4": {
