@@ -2,7 +2,6 @@
 
 namespace app\service;
 
-use Illuminate\Support\Facades\Http;
 use support\Log;
 use support\Request;
 use support\Response;
@@ -60,26 +59,41 @@ class GamePlatformProxyService
                 'request_data' => $request->all(),
             ]);
 
-            // 使用 Laravel HTTP Client 转发请求
-            $client = Http::timeout(30)
-                ->withHeaders([
-                    'Authorization' => $request->header('Authorization', ''),
-                    'Content-Type' => 'application/json',
-                    'X-Real-IP' => $request->getRealIp(),
-                    'X-Forwarded-For' => $request->header('X-Forwarded-For', ''),
-                    'User-Agent' => $request->header('User-Agent', ''),
-                ]);
+            // 使用 cURL 转发请求
+            $headers = [
+                'Authorization: ' . $request->header('Authorization', ''),
+                'Content-Type: application/json',
+                'X-Real-IP: ' . $request->getRealIp(),
+                'X-Forwarded-For: ' . $request->header('X-Forwarded-For', ''),
+                'User-Agent: ' . $request->header('User-Agent', 'Webman-Proxy/1.0'),
+            ];
 
-            $response = $client->post($proxyUrl, $request->all());
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $proxyUrl);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($request->all()));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+            curl_setopt($ch, CURLOPT_HEADER, false);
+
+            $responseBody = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($responseBody === false) {
+                throw new \Exception('cURL request failed: ' . $curlError);
+            }
 
             Log::info('Game platform proxy response', [
                 'endpoint' => $endpoint,
-                'status' => $response->status(),
-                'success' => $response->successful(),
+                'status' => $httpCode,
+                'success' => $httpCode >= 200 && $httpCode < 300,
             ]);
 
             // 返回外网主机的响应
-            return response($response->body(), $response->status())
+            return response($responseBody, $httpCode)
                 ->withHeaders(['Content-Type' => 'application/json']);
 
         } catch (\Throwable $e) {
