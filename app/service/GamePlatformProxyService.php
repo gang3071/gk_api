@@ -66,6 +66,13 @@ class GamePlatformProxyService
                 'X-Real-IP: ' . $request->getRealIp(),
                 'X-Forwarded-For: ' . $request->header('X-Forwarded-For', ''),
                 'User-Agent: ' . $request->header('User-Agent', 'Webman-Proxy/1.0'),
+                // API 签名验证所需头部
+                'appId: ' . $request->header('appId', ''),
+                'appKey: ' . $request->header('appKey', ''),
+                'timestamp: ' . $request->header('timestamp', ''),
+                'nonceStr: ' . $request->header('nonceStr', ''),
+                'signature: ' . $request->header('signature', ''),
+                'Accept-Language: ' . $request->header('Accept-Language', 'zh-CN'),
             ];
 
             $ch = curl_init();
