@@ -6,36 +6,16 @@ use Webman\Bootstrap;
 use Workerman\Worker;
 use support\Db;
 use support\Redis;
-// MongoDB 动态加载，避免版本兼容性导致启动失败
 
 /**
- * 启动时健康检查
- * 检查 MySQL、Redis、MongoDB 连接是否正常
+ * 启动后健康检查
+ * 在所有服务初始化完成后检查各模块连接状态
  */
 class HealthCheck implements Bootstrap
 {
-    /**
-     * 输出信息到控制台和日志文件
-     */
-    private static function out($message)
-    {
-        // 输出到控制台
-        echo $message;
-        flush();
-
-        // 同时写入日志文件
-        static $logFile = null;
-        if ($logFile === null) {
-            $logFile = runtime_path() . '/logs/healthcheck.log';
-            // 清空旧日志
-            @file_put_contents($logFile, '');
-        }
-        @file_put_contents($logFile, $message, FILE_APPEND);
-    }
-
     public static function start(?Worker $worker)
     {
-        // 只在主进程启动时执行一次，不在 Worker 进程中执行
+        // 只在主进程启动完成后执行一次
         if ($worker !== null) {
             return;
         }
@@ -46,95 +26,121 @@ class HealthCheck implements Bootstrap
         }
         define('HEALTHCHECK_EXECUTED', true);
 
+        // 延迟执行，确保所有服务都已初始化
+        \Workerman\Timer::add(1, function() {
+            self::runHealthCheck();
+        }, [], false);
+    }
+
+    private static function runHealthCheck()
+    {
         $startTime = microtime(true);
 
-        self::out("\n========================================\n");
-        self::out("🔍 启动健康检查...\n");
-        self::out("========================================\n\n");
+        echo "\n";
+        echo "========================================\n";
+        echo "🔍 系统健康检查（启动后）\n";
+        echo "========================================\n\n";
 
         $allPassed = true;
-        $errors = [];
+        $warnings = [];
 
         // 1. 检查 MySQL 数据库连接
-        self::out("📊 检查 MySQL 连接...\n");
+        echo "📊 MySQL 数据库\n";
         try {
             $dbConfig = config('database.connections.mysql');
 
             // 处理读写分离配置
             if (isset($dbConfig['write']['host'])) {
-                $host = is_array($dbConfig['write']['host']) ? $dbConfig['write']['host'][0] : $dbConfig['write']['host'];
-            } elseif (isset($dbConfig['read']['host'])) {
-                $host = is_array($dbConfig['read']['host']) ? $dbConfig['read']['host'][0] : $dbConfig['read']['host'];
+                $writeHost = is_array($dbConfig['write']['host']) ? $dbConfig['write']['host'][0] : $dbConfig['write']['host'];
+                $readHost = isset($dbConfig['read']['host']) ? (is_array($dbConfig['read']['host']) ? $dbConfig['read']['host'][0] : $dbConfig['read']['host']) : $writeHost;
             } else {
-                $host = $dbConfig['host'] ?? env('DB_HOST', '127.0.0.1');
+                $writeHost = $readHost = $dbConfig['host'] ?? env('DB_HOST', '127.0.0.1');
             }
 
             $port = $dbConfig['port'] ?? env('DB_PORT', '3306');
-            $database = $dbConfig['database'] ?? env('DB_DATABASE', 'unknown');
+            $database = $dbConfig['database'] ?? env('DB_DATABASE', '');
 
-            self::out("   主机: {$host}:{$port}\n");
-            self::out("   数据库: {$database}\n");
+            echo "   配置: {$writeHost}:{$port}/{$database}\n";
+            echo "   读写分离: " . (isset($dbConfig['read']) ? '是' : '否') . "\n";
 
             // 测试连接
             $pdo = Db::connection()->getPdo();
-            $result = $pdo->query('SELECT 1')->fetchColumn();
+            $version = $pdo->query('SELECT VERSION()')->fetchColumn();
 
+            echo "   版本: MySQL {$version}\n";
+            echo "   状态: ✅ 连接正常\n";
+
+            // 测试查询
+            $result = $pdo->query('SELECT 1')->fetchColumn();
             if ($result == 1) {
-                self::out("   ✅ MySQL 连接正常\n\n");
-            } else {
-                self::out("   ❌ MySQL 查询失败\n\n");
-                $allPassed = false;
-                $errors[] = 'MySQL 查询失败';
+                echo "   测试: ✅ 查询正常\n";
             }
+
+            echo "\n";
         } catch (\Throwable $e) {
-            self::out("   ❌ MySQL 连接失败: {$e->getMessage()}\n");
-            self::out("   📂 {$e->getFile()}:{$e->getLine()}\n\n");
+            echo "   状态: ❌ 连接失败\n";
+            echo "   错误: {$e->getMessage()}\n";
+            echo "   位置: {$e->getFile()}:{$e->getLine()}\n\n";
             $allPassed = false;
-            $errors[] = 'MySQL: ' . $e->getMessage();
         }
 
         // 2. 检查 Redis 连接
-        self::out("🔴 检查 Redis 连接...\n");
+        echo "🔴 Redis 缓存\n";
         try {
             $redisConfig = config('redis.default');
-            self::out("   主机: {$redisConfig['host']}:{$redisConfig['port']}\n");
-            self::out("   数据库: {$redisConfig['database']}\n");
+            $host = $redisConfig['host'] ?? '127.0.0.1';
+            $port = $redisConfig['port'] ?? 6379;
+            $db = $redisConfig['database'] ?? 0;
+            $hasPassword = !empty($redisConfig['password']);
+
+            echo "   配置: {$host}:{$port} (DB:{$db})\n";
+            echo "   密码: " . ($hasPassword ? '已设置' : '无') . "\n";
 
             // 测试连接
             $redis = Redis::connection('default');
             $pong = $redis->ping();
 
             if ($pong === true || $pong === 'PONG' || $pong === '+PONG') {
-                self::out("   ✅ Redis 连接正常\n");
+                echo "   状态: ✅ 连接正常\n";
+
+                // 获取 Redis 信息
+                $info = $redis->info('server');
+                if (isset($info['redis_version'])) {
+                    echo "   版本: Redis {$info['redis_version']}\n";
+                }
 
                 // 测试读写
                 $testKey = 'healthcheck:' . time();
-                $redis->set($testKey, 'test', 10);
-                $value = $redis->get($testKey);
+                $testValue = 'test_' . uniqid();
+                $redis->set($testKey, $testValue, 10);
+                $getValue = $redis->get($testKey);
                 $redis->del($testKey);
 
-                if ($value === 'test') {
-                    self::out("   ✅ Redis 读写正常\n\n");
+                if ($getValue === $testValue) {
+                    echo "   测试: ✅ 读写正常\n";
+                } else {
+                    echo "   测试: ⚠️  读写异常\n";
+                    $warnings[] = 'Redis 读写测试失败';
                 }
             } else {
-                self::out("   ❌ Redis PING 失败\n\n");
-                $allPassed = false;
-                $errors[] = 'Redis PING 失败';
+                echo "   状态: ⚠️  PING 响应异常\n";
+                $warnings[] = 'Redis PING 响应: ' . var_export($pong, true);
             }
+
+            echo "\n";
         } catch (\Throwable $e) {
-            self::out("   ❌ Redis 连接失败: {$e->getMessage()}\n");
-            self::out("   📂 {$e->getFile()}:{$e->getLine()}\n\n");
+            echo "   状态: ❌ 连接失败\n";
+            echo "   错误: {$e->getMessage()}\n";
+            echo "   位置: {$e->getFile()}:{$e->getLine()}\n\n";
             $allPassed = false;
-            $errors[] = 'Redis: ' . $e->getMessage();
         }
 
         // 3. 检查 MongoDB 连接
-        self::out("🍃 检查 MongoDB 连接...\n");
+        echo "🍃 MongoDB 数据库\n";
 
-        // 检查 MongoDB 扩展是否已加载
         if (!class_exists('MongoDB\Driver\Manager')) {
-            self::out("   ⚠️  MongoDB 扩展未安装\n");
-            self::out("   💡 跳过 MongoDB 检查\n\n");
+            echo "   状态: ⚠️  扩展未安装\n";
+            echo "   提示: MongoDB 为可选服务\n\n";
         } else {
             try {
                 $mongoHost = env('MONGODB_HOST', '127.0.0.1');
@@ -143,8 +149,8 @@ class HealthCheck implements Bootstrap
                 $mongoUsername = env('MONGODB_USERNAME', '');
                 $mongoPassword = env('MONGODB_PASSWORD', '');
 
-                self::out("   主机: {$mongoHost}:{$mongoPort}\n");
-                self::out("   数据库: {$mongoDatabase}\n");
+                echo "   配置: {$mongoHost}:{$mongoPort}/{$mongoDatabase}\n";
+                echo "   认证: " . (!empty($mongoUsername) ? '是' : '否') . "\n";
 
                 // 构建连接字符串
                 if (!empty($mongoUsername) && !empty($mongoPassword)) {
@@ -154,104 +160,131 @@ class HealthCheck implements Bootstrap
                     $uri = "mongodb://{$mongoHost}:{$mongoPort}";
                 }
 
-                // 使用原生 MongoDB 扩展测试连接，避免库版本兼容性问题
+                // 使用原生 MongoDB 扩展测试连接
                 $manager = new \MongoDB\Driver\Manager($uri, [
                     'connectTimeoutMS' => 3000,
                     'serverSelectionTimeoutMS' => 3000,
                 ]);
 
-                // 执行简单的 ping 命令
-                $command = new \MongoDB\Driver\Command(['ping' => 1]);
+                // 执行 ping 命令获取版本信息
+                $command = new \MongoDB\Driver\Command(['buildInfo' => 1]);
                 $result = $manager->executeCommand($mongoDatabase, $command);
-                $response = current($result->toArray());
+                $buildInfo = current($result->toArray());
+
+                echo "   版本: MongoDB {$buildInfo->version}\n";
+                echo "   状态: ✅ 连接正常\n";
+
+                // 测试 ping
+                $pingCommand = new \MongoDB\Driver\Command(['ping' => 1]);
+                $pingResult = $manager->executeCommand($mongoDatabase, $pingCommand);
+                $response = current($pingResult->toArray());
 
                 if (isset($response->ok) && $response->ok == 1) {
-                    self::out("   ✅ MongoDB 连接正常\n\n");
-                } else {
-                    self::out("   ❌ MongoDB PING 失败\n\n");
-                    $allPassed = false;
-                    $errors[] = 'MongoDB PING 失败';
+                    echo "   测试: ✅ PING 正常\n";
                 }
+
+                echo "\n";
             } catch (\Throwable $e) {
-                $errorMsg = $e->getMessage();
-                self::out("   ❌ MongoDB 连接失败: {$errorMsg}\n\n");
-                // MongoDB 失败不影响启动，只记录警告
-                self::out("   💡 提示: MongoDB 连接失败不会阻止启动\n\n");
+                echo "   状态: ⚠️  连接失败\n";
+                echo "   错误: {$e->getMessage()}\n";
+                echo "   提示: MongoDB 为可选服务，不影响核心功能\n\n";
             }
         }
 
-        // 4. 检查配置
-        self::out("⚙️  检查系统配置...\n");
+        // 4. 检查模块配置
+        echo "⚙️  模块配置\n";
 
         // ThinkCache
         $cacheConfig = config('thinkcache');
         $defaultStore = $cacheConfig['default'] ?? 'file';
-        self::out("   ThinkCache 驱动: {$defaultStore}\n");
+        echo "   ThinkCache: {$defaultStore}\n";
 
         // Session
         $sessionConfig = config('session');
         $sessionType = $sessionConfig['type'] ?? 'file';
-        self::out("   Session 驱动: {$sessionType}\n");
+        echo "   Session: {$sessionType}\n";
 
         // RateLimiter
         $rateLimiterConfig = config('plugin.webman.rate-limiter.app');
         if ($rateLimiterConfig && isset($rateLimiterConfig['enable']) && $rateLimiterConfig['enable']) {
             $driver = $rateLimiterConfig['driver'] ?? 'auto';
-            self::out("   RateLimiter 驱动: {$driver}\n");
-
-            if ($driver === 'redis' || $driver === 'auto') {
-                self::out("   💡 提示: RateLimiter 可能使用 Redis\n");
-            }
+            echo "   RateLimiter: {$driver} (已启用)\n";
         } else {
-            self::out("   RateLimiter: 未启用\n");
+            echo "   RateLimiter: 未启用\n";
         }
+
+        // Redis Queue
+        $redisQueueConfig = config('plugin.webman.redis-queue.process');
+        if ($redisQueueConfig && isset($redisQueueConfig['consumer']['enable'])) {
+            $enabled = $redisQueueConfig['consumer']['enable'];
+            echo "   Redis Queue: " . ($enabled ? '已启用' : '已禁用') . "\n";
+        }
+
+        // WebSocket Push
+        $pushConfig = config('plugin.webman.push.app');
+        if ($pushConfig && isset($pushConfig['enable']) && $pushConfig['enable']) {
+            echo "   WebSocket Push: 已启用\n";
+        }
+
+        echo "\n";
+
+        // 5. 业务配置
+        echo "🎮 业务配置\n";
 
         // 游戏平台代理
         $proxyEnabled = env('GAME_PLATFORM_PROXY_ENABLE', false);
         if ($proxyEnabled) {
             $proxyHost = env('GAME_PLATFORM_PROXY_HOST', '');
             $proxyPort = env('GAME_PLATFORM_PROXY_PORT', '');
-            self::out("   游戏平台代理: ✅ 已启用 ({$proxyHost}:{$proxyPort})\n");
+            echo "   游戏平台代理: ✅ 已启用\n";
+            echo "   代理地址: {$proxyHost}:{$proxyPort}\n";
+
+            // Telegram 通知
+            $telegramEnabled = env('GAME_PLATFORM_PROXY_TELEGRAM_NOTIFY', false);
+            $telegramToken = env('TELEGRAM_BOT_TOKEN', '');
+            $telegramChatId = env('TELEGRAM_CHAT_ID', '');
+            if ($telegramEnabled && !empty($telegramToken) && !empty($telegramChatId)) {
+                echo "   Telegram 通知: ✅ 已启用\n";
+            } else {
+                echo "   Telegram 通知: 未启用\n";
+            }
         } else {
-            self::out("   游戏平台代理: 未启用\n");
+            echo "   游戏平台代理: 未启用\n";
         }
 
-        // Telegram 通知
-        $telegramEnabled = env('GAME_PLATFORM_PROXY_TELEGRAM_NOTIFY', false);
-        $telegramToken = env('TELEGRAM_BOT_TOKEN', '');
-        $telegramChatId = env('TELEGRAM_CHAT_ID', '');
-        if ($telegramEnabled && !empty($telegramToken) && !empty($telegramChatId)) {
-            self::out("   Telegram 通知: ✅ 已启用\n");
-        } else {
-            self::out("   Telegram 通知: 未启用\n");
-        }
+        // IP 白名单
+        $ipWhitelistEnabled = env('IP_WHITELIST_ENABLE', false);
+        echo "   IP 白名单: " . ($ipWhitelistEnabled ? '已启用' : '未启用') . "\n";
 
-        self::out("\n");
+        // 调试模式
+        $debugMode = env('APP_DEBUG', false);
+        echo "   调试模式: " . ($debugMode ? '开启' : '关闭') . "\n";
 
-        // 5. 总结
+        $env = env('APP_ENV', 'production');
+        echo "   运行环境: {$env}\n";
+
+        echo "\n";
+
+        // 6. 总结
         $duration = round((microtime(true) - $startTime) * 1000, 2);
 
-        self::out("========================================\n");
+        echo "========================================\n";
         if ($allPassed) {
-            self::out("✅ 所有核心服务连接正常！\n");
-            self::out("========================================\n");
-            self::out("检查耗时: {$duration}ms\n\n");
+            if (count($warnings) > 0) {
+                echo "⚠️  核心服务正常，但有 " . count($warnings) . " 个警告\n";
+                foreach ($warnings as $i => $warning) {
+                    echo "   " . ($i + 1) . ". {$warning}\n";
+                }
+            } else {
+                echo "✅ 所有服务连接正常！\n";
+            }
         } else {
-            self::out("❌ 检测到 " . count($errors) . " 个问题：\n");
-            foreach ($errors as $i => $error) {
-                self::out("   " . ($i + 1) . ". {$error}\n");
-            }
-            self::out("========================================\n");
-            self::out("检查耗时: {$duration}ms\n\n");
-            self::out("⚠️  警告: 继续启动可能导致运行时错误！\n");
-            self::out("按 Ctrl+C 可以取消启动...\n\n");
-
-            // 给用户3秒时间决定
-            for ($i = 3; $i > 0; $i--) {
-                self::out("倒计时: {$i} 秒...\r");
-                sleep(1);
-            }
-            self::out("\n继续启动...\n\n");
+            echo "❌ 部分核心服务连接失败！\n";
+            echo "⚠️  请检查上述错误信息\n";
         }
+        echo "========================================\n";
+        echo "检查耗时: {$duration}ms\n";
+        echo "检查时间: " . date('Y-m-d H:i:s') . "\n";
+        echo "========================================\n\n";
     }
 }
