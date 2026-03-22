@@ -218,7 +218,7 @@ function machineMaintaining(): bool
 {
     //每周機台維護時段
     /** @var SystemSetting $setting */
-    $setting = SystemSetting::where('feature', 'machine_maintain')->first();
+    $setting = SystemSetting::query()->where('feature', 'machine_maintain')->first();
     if (!$setting || $setting->status == 0) {
         return false;
     } else {
@@ -445,7 +445,7 @@ function machineOpenAny(
         }
         //记录游戏局记录
         /** @var PlayerGameRecord $gameRecord */
-        $gameRecord = PlayerGameRecord::where('machine_id', $machine->id)
+        $gameRecord = PlayerGameRecord::query()->where('machine_id', $machine->id)
             ->where('player_id', $player->id)
             ->where('status', PlayerGameRecord::STATUS_START)
             ->orderBy('created_at', 'desc')
@@ -681,7 +681,7 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
  * @param $id
  * @return PlayerLoginRecord|Model
  */
-function addLoginRecord($id)
+function addLoginRecord($id): PlayerLoginRecord|Model
 {
     $ip = request()->getRealIp();
     if (!empty($ip)) {
@@ -695,7 +695,7 @@ function addLoginRecord($id)
     $country_name = ($result['country'] ?? '') . ($result['city'] ?? '');
     $domain = isset($_SERVER['HTTP_ORIGIN']) ? parse_url($_SERVER['HTTP_ORIGIN']) : null;
 
-    return PlayerLoginRecord::create([
+    return PlayerLoginRecord::query()->create([
         'player_id' => $id,
         'login_domain' => !empty($domain) ? $domain['host'] : null,
         'ip' => $ip,
@@ -713,7 +713,7 @@ function addLoginRecord($id)
  * @param $department_id
  * @return PlayerRegisterRecord|Model
  */
-function addRegisterRecord($id, $type, $department_id)
+function addRegisterRecord($id, $type, $department_id): PlayerRegisterRecord|Model
 {
     $ip = request()->getRealIp();
     if (!empty($ip)) {
@@ -727,7 +727,7 @@ function addRegisterRecord($id, $type, $department_id)
     $country_name = ($result['country'] ?? '') . ($result['city'] ?? '');
     $domain = isset($_SERVER['HTTP_ORIGIN']) ? parse_url($_SERVER['HTTP_ORIGIN']) : null;
 
-    return PlayerRegisterRecord::create([
+    return PlayerRegisterRecord::query()->create([
         'player_id' => $id,
         'register_domain' => !empty($domain) ? $domain['host'] : null,
         'ip' => $ip,
@@ -740,197 +740,15 @@ function addRegisterRecord($id, $type, $department_id)
 }
 
 /**
- * 检查玩家游戏状态 5分钟没有使用机台玩家将被踢出(分数返还)
- * @return void
- * @throws Exception
- * @throws PushException
- */
-function machineKeepOutPlayer(): void
-{
-    $log = Log::channel('machine_keeping');
-    //機台例行維護中
-    if (machineMaintaining()) {
-        $log->info('PlayOutMachine', ['全站维护中']);
-        return;
-    }
-    /** @var SystemSetting $setting */
-    $setting = SystemSetting::where('feature', 'pending_minutes')->where('status', 1)->first();
-    if (!$setting || $setting->num <= 0) {
-        $settingMinutes = 2; // 默认2分钟进入保留状态
-    } else {
-        $settingMinutes = $setting->num;
-    }
-
-    // 不扣保留时间设置
-    $isFreeTime = false;
-    /** @var SystemSetting $keepingSetting */
-    $keepingSetting = SystemSetting::where('feature', 'keeping_off')->where('status', 1)->first();
-    if (!empty($keepingSetting)) {
-        $offStart = $keepingSetting['date_start'] ?? '';
-        $offEnd = $keepingSetting['date_end'] ?? '';
-        if (!empty($offStart) && !empty($offEnd)) {
-            $dateStart = date('Y-m-d') . ' ' . $offStart;
-            $dateEnd = date('Y-m-d') . ' ' . $offEnd;
-
-            if ($dateStart > $dateEnd) {
-                $dateStart = date('Y-m-d H:i:s', strtotime($dateStart . '-1 day'));
-            }
-
-            $now = time();
-            if ($now >= strtotime($dateStart) && $now <= strtotime($dateEnd)) {
-                $isFreeTime = true;
-            }
-        }
-    }
-    //遊戲中玩家
-    $gamingMachines = Machine::query()
-        ->where('gaming', 1)
-        ->where('gaming_user_id', '!=', 0)
-        ->orderBy('type')
-        ->get();
-    /** @var Machine $machine */
-    foreach ($gamingMachines as $machine) {
-        try {
-            if (Cache::has('machine_open_point' . $machine->id . '_' . $machine->gaming_user_id)) {
-                continue;
-            }
-            /** @var Player $player */
-            $player = $machine->gamingPlayer;
-            $services = MachineServices::createServices($machine);
-            if ($services->has_lock == 1) {
-                $log->info('PlayOutMachine: 机台锁定跳过' . $machine->code);
-                continue;
-            }
-            if ($machine->maintaining == 1) {
-                $services->last_play_time = time();
-            }
-            $minutes = $settingMinutes * 60;
-            if ($machine->type == GameType::TYPE_SLOT && $services->reward_status == 1) {
-                $minutes = $settingMinutes + (15 * 60);
-            }
-            if ($services->keeping == 0 && time() - $services->last_play_time > $minutes) {
-                if ($machine->type == GameType::TYPE_SLOT && $machine->is_special == 0 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                    $services->sendCmd($services::OUT_OFF, 0, 'player', $player->id, 1);
-                }
-                $services->keeping = 1;
-                $services->keeping_user_id = $machine->gaming_user_id;
-                $services->last_keep_at = time();
-                // 记录保留日志
-                $machineKeepingLog = new MachineKeepingLog();
-                $machineKeepingLog->player_id = $player->id;
-                $machineKeepingLog->machine_id = $machine->id;
-                $machineKeepingLog->machine_name = $machine->name;
-                $machineKeepingLog->is_system = 1;
-                $machineKeepingLog->department_id = $player->department_id;
-                $machineKeepingLog->save();
-                // 发送进入保留状态消息
-                sendSocketMessage('player-' . $machine->gaming_user_id . '-' . $machine->id, [
-                    'msg_type' => 'player_machine_keeping',
-                    'player_id' => $machine->gaming_user_id,
-                    'machine_id' => $machine->id,
-                    'keep_seconds' => $services->keep_seconds,
-                    'keeping' => $services->keeping
-                ]);
-                sendSocketMessage('player-' . $machine->gaming_user_id, [
-                    'msg_type' => 'player_machine_keeping',
-                    'player_id' => $machine->gaming_user_id,
-                    'machine_id' => $machine->id,
-                    'keep_seconds' => $services->keep_seconds,
-                    'keeping' => $services->keeping
-                ]);
-            }
-            if ($services->keeping == 0) {
-                $log->info('PlayOutMachine: 非保留状态跳过' . $machine->code);
-                continue;
-            }
-            if ($isFreeTime && $services->keep_seconds > 1800) {
-                $log->info('PlayOutMachine: 自由时间且时间大于1800秒跳过' . $machine->code);
-                continue;
-            }
-            $keepSeconds = $services->keep_seconds;
-            if ($keepSeconds > 0) {
-                if ($services->reward_status == 1) {
-                    if ($machine->type == GameType::TYPE_STEEL_BALL) {
-                        $log->info('PlayOutMachine', [$machine->code . '开奖中15分钟内不扣除保留时间']);
-                        continue;
-                    }
-                }
-                $log->info('PlayOutMachine: 扣除保留时间', [$keepingSetting, $keepSeconds]);
-                $services->keep_seconds = max(bcsub($keepSeconds, 10), 0);
-                sendSocketMessage('player-' . $machine->gaming_user_id . '-' . $machine->id, [
-                    'msg_type' => 'player_machine_keeping',
-                    'player_id' => $machine->gaming_user_id,
-                    'machine_id' => $machine->id,
-                    'keep_seconds' => $keepSeconds,
-                    'keeping' => $services->keeping
-                ]);
-                sendSocketMessage('player-' . $machine->gaming_user_id, [
-                    'msg_type' => 'player_machine_keeping',
-                    'player_id' => $machine->gaming_user_id,
-                    'machine_id' => $machine->id,
-                    'keep_seconds' => $keepSeconds,
-                    'keeping' => $services->keeping
-                ]);
-            } else {
-                // 保留时间为0时踢出玩家
-                $beforeGameAmount = $player->machine_wallet->money;
-                if (machineWash($player, $machine, 'leave', 1)) {
-                    /** @var PlayerPlatformCash $playerPlatformWallet */
-                    $playerPlatformWallet = PlayerPlatformCash::where([
-                        'player_id' => $player->id,
-                        'platform_id' => PlayerPlatformCash::PLATFORM_SELF,
-                    ])->first();
-                    //寫入踢人log
-                    $afterGameAmount = $playerPlatformWallet->money;
-                    $wash_point = abs($afterGameAmount - $beforeGameAmount);
-                    $machineKickLog = new MachineKickLog;
-                    $machineKickLog->player_id = $player->id;
-                    $machineKickLog->machine_id = $machine->id;
-                    $machineKickLog->platform_id = PlayerPlatformCash::PLATFORM_SELF;
-                    $machineKickLog->wash_point = $wash_point;
-                    $machineKickLog->before_game_amount = $beforeGameAmount;
-                    $machineKickLog->after_game_amount = $afterGameAmount;
-
-                    $machineKickLog->save();
-                    // 更新保留日志
-                    updateKeepingLog($machine->id, $player->id);
-                    // 发送踢人消息
-                    sendSocketMessage('player-' . $player->id . '-' . $machine->id, [
-                        'msg_type' => 'kick_out',
-                        'machine_id' => $machine->id,
-                        'machine_name' => $machine->name,
-                        'machine_code' => $machine->code,
-                        'wash_point' => $wash_point,
-                        'before_game_amount' => $beforeGameAmount,
-                        'after_game_amount' => $afterGameAmount
-                    ]);
-                    sendSocketMessage('player-' . $player->id, [
-                        'msg_type' => 'player_machine_keeping',
-                        'player_id' => $player->id,
-                        'machine_id' => $machine->id,
-                        'keep_seconds' => '0',
-                        'keeping' => '0'
-                    ]);
-                    // 清理赠点缓存
-                    Cache::delete('gift_cache_' . $machine->id . '_' . $player->id);
-                }
-            }
-        } catch (\Exception $e) {
-            $log->error('PlayOutMachine', [$e->getMessage()]);
-        }
-    }
-}
-
-/**
  * 更新保留日志
  * @param $machineId
  * @param $playerId
  * @return void
  */
-function updateKeepingLog($machineId, $playerId)
+function updateKeepingLog($machineId, $playerId): void
 {
     /** @var MachineKeepingLog $machineKeepingLog */
-    $machineKeepingLog = MachineKeepingLog::where([
+    $machineKeepingLog = MachineKeepingLog::query()->where([
         'machine_id' => $machineId,
         'player_id' => $playerId
     ])->where('status', MachineKeepingLog::STATUS_STAR)->first();
@@ -970,97 +788,6 @@ function saveAvatar($avatar): string
     }
 
     return '/storage/avatar/' . $fileName;
-}
-
-/**
- * 寫入每日累積轉數/壓/得
- * @return void
- * @throws Exception|\Exception
- */
-function syncMachineGamingLog()
-{
-    $machines = Machine::where('status', 1)
-        ->orderBy('type', 'asc')
-        ->get();
-
-    /** @var Machine $machine */
-    $date = date('Y-m-d');
-    foreach ($machines as $machine) {
-        /** @var MachineOpenCard $machineOpenCard */
-        $machineOpenCard = MachineOpenCard::where('machine_id', $machine->id)
-            ->orderBy('id', 'desc')
-            ->first();
-        if (!empty($machineOpenCard)) {
-            $seventh = MachineGamingLog::where('machine_id', $machine->id)
-                ->where('updated_at', '>=', $machineOpenCard->created_at)
-                ->orderBy('date', 'desc')
-                ->limit(7)
-                ->get()
-                ->last();
-        } else {
-            /** @var MachineGamingLog $seventh */
-            $seventh = MachineGamingLog::where('machine_id', $machine->id)
-                ->orderBy('date', 'desc')
-                ->limit(7)
-                ->get()
-                ->last();
-        }
-        if (!empty($machineOpenCard)) {
-            /** @var MachineGamingLog $thirty */
-            $thirty = MachineGamingLog::where('machine_id', $machine->id)
-                ->where('updated_at', '>=', $machineOpenCard->created_at)
-                ->orderBy('date', 'desc')
-                ->limit(30)
-                ->get()
-                ->last();
-        } else {
-            /** @var MachineGamingLog $thirty */
-            $thirty = MachineGamingLog::where('machine_id', $machine->id)
-                ->orderBy('date', 'desc')
-                ->limit(30)
-                ->get()
-                ->last();
-        }
-
-        if ($machine->type == GameType::TYPE_STEEL_BALL) {
-            try {
-                $services = MachineServices::createServices($machine);
-                MachineGamingLog::updateOrCreate([
-                    'machine_id' => $machine->id,
-                    'type' => $machine->type,
-                    'date' => $date,
-                ], [
-                    'turn_point' => $services->win_number ?? 0,
-                    'seventh_turn_point' => $seventh->turn_point ?? 0,
-                    'thirty_turn_point' => $thirty->turn_point ?? 0,
-                ]);
-            } catch (Exception $e) {
-                continue;
-            }
-        }
-        if ($machine->type == GameType::TYPE_SLOT) {
-            try {
-                $services = MachineServices::createServices($machine);
-                $services->sendCmd($services::READ_BET, 0, 'admin', 0, 1);
-                $services->sendCmd($services::READ_WIN, 0, 'admin', 0, 1);
-                MachineGamingLog::query()->updateOrCreate([
-                    'machine_id' => $machine->id,
-                    'type' => $machine->type,
-                    'date' => $date,
-                ], [
-                    'pressure' => $services->bet,
-                    'score' => $services->win,
-                    'seventh_pressure' => $seventh->pressure ?? 0,
-                    'seventh_score' => $seventh->score ?? 0,
-                    'thirty_pressure' => $thirty->pressure ?? 0,
-                    'thirty_score' => $thirty->score ?? 0,
-                ]);
-            } catch (\Exception $e) {
-                Log::error('syncMachineGamingLog', [$e->getMessage()]);
-                continue;
-            }
-        }
-    }
 }
 
 /**
@@ -1153,24 +880,16 @@ function talkPaySuccess(PlayerRechargeRecord $recharge): bool
  */
 function setSmsKey(string $phone, int $type): string
 {
-    switch ($type) {
-        case PhoneSmsLog::TYPE_LOGIN:
-            return 'sms-login' . $phone;
-        case PhoneSmsLog::TYPE_REGISTER:
-            return 'sms-register' . $phone;
-        case PhoneSmsLog::TYPE_CHANGE_PASSWORD:
-            return 'sms-change-password' . $phone;
-        case PhoneSmsLog::TYPE_CHANGE_PAY_PASSWORD:
-            return 'sms-change-pay-password' . $phone;
-        case PhoneSmsLog::TYPE_CHANGE_PHONE:
-            return 'sms-change-phone' . $phone;
-        case PhoneSmsLog::TYPE_BIND_NEW_PHONE:
-            return 'sms-type-bind-new-phone' . $phone;
-        case PhoneSmsLog::TYPE_TALK_BIND:
-            return 'sms-type-talk-bind' . $phone;
-        default:
-            return 'sms-' . $phone;
-    }
+    return match ($type) {
+        PhoneSmsLog::TYPE_LOGIN => 'sms-login' . $phone,
+        PhoneSmsLog::TYPE_REGISTER => 'sms-register' . $phone,
+        PhoneSmsLog::TYPE_CHANGE_PASSWORD => 'sms-change-password' . $phone,
+        PhoneSmsLog::TYPE_CHANGE_PAY_PASSWORD => 'sms-change-pay-password' . $phone,
+        PhoneSmsLog::TYPE_CHANGE_PHONE => 'sms-change-phone' . $phone,
+        PhoneSmsLog::TYPE_BIND_NEW_PHONE => 'sms-type-bind-new-phone' . $phone,
+        PhoneSmsLog::TYPE_TALK_BIND => 'sms-type-talk-bind' . $phone,
+        default => 'sms-' . $phone,
+    };
 }
 
 /**
@@ -1183,13 +902,6 @@ function setSmsKey(string $phone, int $type): string
  */
 function verifySMS(string $country_code, string $phone, string $code, int $type): string
 {
-//    switch ($country_code) {
-//        case PhoneSmsLog::COUNTRY_CODE_JP:
-//            $phone = ltrim($phone, '0');
-//            break;
-//        default:
-//            break;
-//    }
     $phoneCode = Cache::get(setSmsKey($phone, $type));
 
     return $phoneCode == $code;
@@ -1203,26 +915,17 @@ function verifySMS(string $country_code, string $phone, string $code, int $type)
  */
 function getContent(int $type, string $source): string
 {
-    switch ($type) {
-        case PhoneSmsLog::TYPE_LOGIN:
-            return config($source . '-sms.login_content');
-        case PhoneSmsLog::TYPE_REGISTER:
-            return config($source . '-sms.register_content');
-        case PhoneSmsLog::TYPE_CHANGE_PASSWORD:
-            return config($source . '-sms.change_password_content');
-        case PhoneSmsLog::TYPE_CHANGE_PAY_PASSWORD:
-            return config($source . '-sms.change_pay_password');
-        case PhoneSmsLog::TYPE_CHANGE_PHONE:
-            return config($source . '-sms.change_phone');
-        case PhoneSmsLog::TYPE_BIND_NEW_PHONE:
-            return config($source . '-sms.bind_new_phone');
-        case PhoneSmsLog::TYPE_TALK_BIND:
-            return config($source . '-sms.talk_bind');
-        case PhoneSmsLog::TYPE_LINE_BIND:
-            return config($source . '-sms.line_bind');
-        default:
-            return config($source . '-sms.sm_content');
-    }
+    return match ($type) {
+        PhoneSmsLog::TYPE_LOGIN => config($source . '-sms.login_content'),
+        PhoneSmsLog::TYPE_REGISTER => config($source . '-sms.register_content'),
+        PhoneSmsLog::TYPE_CHANGE_PASSWORD => config($source . '-sms.change_password_content'),
+        PhoneSmsLog::TYPE_CHANGE_PAY_PASSWORD => config($source . '-sms.change_pay_password'),
+        PhoneSmsLog::TYPE_CHANGE_PHONE => config($source . '-sms.change_phone'),
+        PhoneSmsLog::TYPE_BIND_NEW_PHONE => config($source . '-sms.bind_new_phone'),
+        PhoneSmsLog::TYPE_TALK_BIND => config($source . '-sms.talk_bind'),
+        PhoneSmsLog::TYPE_LINE_BIND => config($source . '-sms.line_bind'),
+        default => config($source . '-sms.sm_content'),
+    };
 }
 
 /**
@@ -1284,7 +987,7 @@ function withdrawBack(
  * @param $action
  * @return void
  */
-function saveChannelFinancialRecord($target, $action)
+function saveChannelFinancialRecord($target, $action): void
 {
     $channelFinancialRecord = new ChannelFinancialRecord();
     $channelFinancialRecord->action = $action;
@@ -1299,39 +1002,11 @@ function saveChannelFinancialRecord($target, $action)
 }
 
 /**
- * 上传base64图片
- * @param $img
- * @param $path
- * @return false|string
- */
-function uploadBaseImg($img, $path)
-{
-    if (preg_match('/^(data:\s*image\/(\w+);base64,)/', $img, $result)) {
-        $type = $result[2];//图片后缀
-        $savePath = '/storage/' . $path . '/' . date("Ymd", time()) . "/";
-        $newPath = public_path() . $savePath;
-        if (!file_exists($newPath)) {
-            //检查是否有该文件夹，如果没有就创建，并给予最高权限
-            mkdir($newPath, 0755, true);
-        }
-
-        $filename = time() . '_' . uniqid() . ".{$type}"; //文件名
-        $newPath = $newPath . $filename;
-        //写入操作
-        if (file_put_contents($newPath, base64_decode(str_replace($result[1], '', $img)))) {
-            return env('APP_URL', 'http://127.0.0.1:8787') . $savePath . $filename;
-        }
-        return false;
-    }
-    return false;
-}
-
-/**
  * 保存网络头像
  * @param $avatar
  * @return false|mixed|string
  */
-function saveImg($avatar)
+function saveImg($avatar): mixed
 {
     try {
         $avatarContent = file_get_contents($avatar);
@@ -1393,11 +1068,11 @@ function createPlayer(array $data, string $currency, int $departmentId, bool $ph
     if (!empty($data['avatar'])) {
         $player->avatar = saveAvatar($data['avatar']);
     }
-    isset($data['nickname']) && !empty($data['nickname']) && $player->name = $data['nickname'];
+    !empty($data['nickname']) && $player->name = $data['nickname'];
     if ($phoneBind) {
-        isset($data['talk_phone']) && !empty($data['talk_phone']) && $player->phone = trim(trim($data['talk_phone'],
+        !empty($data['talk_phone']) && $player->phone = trim(trim($data['talk_phone'],
             '+'), '');
-        isset($data['talk_country_code']) && !empty($data['talk_country_code']) && $player->country_code = trim($data['talk_country_code'],
+        !empty($data['talk_country_code']) && $player->country_code = trim($data['talk_country_code'],
             '+');
     }
     isset($data['userUid']) && !empty($data['userUid']) && $player->talk_user_id = $data['userUid'];
@@ -1411,28 +1086,6 @@ function createPlayer(array $data, string $currency, int $departmentId, bool $ph
 }
 
 /**
- * 检查充值订单取消超时订单
- * @throws Exception
- */
-function cancelRecharge()
-{
-    /** @var SystemSetting $setting */
-    $setting = SystemSetting::where('status', 1)->where('feature', 'recharge_order_expiration')->first();
-    if (!empty($setting)) {
-        $playerRechargeRecord = PlayerRechargeRecord::where('type', PlayerRechargeRecord::TYPE_SELF)
-            ->where('status', PlayerRechargeRecord::STATUS_WAIT)
-            ->where('created_at', '<', Carbon::now()->subMinutes($setting->num))
-            ->get();
-        /** @var PlayerRechargeRecord $order */
-        foreach ($playerRechargeRecord as $order) {
-            $order->status = PlayerRechargeRecord::STATUS_RECHARGED_SYSTEM_CANCEL;
-            $order->cancel_time = date('Y-m-d H:i:s');
-            $order->save();
-        }
-    }
-}
-
-/**
  * 发送socket消息
  * @param $channels
  * @param $content
@@ -1440,7 +1093,7 @@ function cancelRecharge()
  * @return bool|string
  * @throws PushException
  */
-function sendSocketMessage($channels, $content, string $form = 'system')
+function sendSocketMessage($channels, $content, string $form = 'system'): bool|string
 {
     try {
         // 发送进入保留状态消息
@@ -1464,17 +1117,17 @@ function sendSocketMessage($channels, $content, string $form = 'system')
  * @param Player $player
  * @return void
  */
-function addPlayerExtend(Player $player)
+function addPlayerExtend(Player $player): void
 {
-    $registerPresent = SystemSetting::where('feature', 'register_present')->where('status', 1)->value('num') ?? 0;
+    $registerPresent = SystemSetting::query()->where('feature', 'register_present')->where('status', 1)->value('num') ?? 0;
 
-    PlayerPlatformCash::firstOrCreate([
+    PlayerPlatformCash::query()->firstOrCreate([
         'player_id' => $player->id,
         'platform_id' => PlayerPlatformCash::PLATFORM_SELF,
         'money' => $registerPresent,
     ]);
 
-    PlayerExtend::firstOrCreate([
+    PlayerExtend::query()->firstOrCreate([
         'player_id' => $player->id,
     ]);
 
@@ -1525,14 +1178,15 @@ function getStrategyUrl($strategy_id): string
 /**
  * 获取渠道信息
  * @param $siteId
- * @return array
+ * @return Channel|array
  */
-function getChannel($siteId): array
+function getChannel($siteId): array|Channel
 {
     $cacheKey = "channel_" . $siteId;
     $channel = Cache::get($cacheKey);
     if (empty($channel)) {
-        $channel = Channel::where('id', $siteId)->whereNull('deleted_at')->first()->toArray();
+        /** @var Channel $channel */
+        $channel = Channel::query()->where('id', $siteId)->whereNull('deleted_at')->first()->toArray();
         if (!empty($channel)) {
             $cacheKey = "channel_" . $channel->site_id;
             Cache::set($cacheKey, $channel->toArray());
@@ -1556,7 +1210,7 @@ function setPromoter($id, $ratio, $name): bool
     DB::beginTransaction();
     try {
         /** @var Player $player */
-        $player = Player::find($id);
+        $player = Player::query()->find($id);
         if (empty($player)) {
             throw new Exception(trans('player_not_found', [], 'message'));
         }
@@ -1566,14 +1220,14 @@ function setPromoter($id, $ratio, $name): bool
         $promoter = new PlayerPromoter();
 
         /** @var PlayerPromoter $parentPromoter */
-        $parentPromoter = PlayerPromoter::where('player_id', $player->recommend_id)->first();
+        $parentPromoter = PlayerPromoter::query()->where('player_id', $player->recommend_id)->first();
         $maxRatio = $parentPromoter->ratio ?? 100;
         if ($ratio > $maxRatio) {
             throw new Exception(trans('ratio_max_error', ['{max_ratio}' => $maxRatio], 'message'));
         }
 
         /** @var PlayerPromoter $subPromoter */
-        $subPromoter = PlayerPromoter::where('recommend_id', $player->id)->orderBy('ratio', 'asc')->first();
+        $subPromoter = PlayerPromoter::query()->where('recommend_id', $player->id)->orderBy('ratio', 'asc')->first();
         if (!empty($subPromoter)) {
             if ($ratio < $subPromoter->ratio) {
                 throw new Exception(trans('ratio_min_error', ['{min_ratio}' => $subPromoter->ratio], 'message'));
@@ -1620,7 +1274,7 @@ function setPromoterPortrait($id, $ratio, $name): bool
     DB::beginTransaction();
     try {
         /** @var Player $player */
-        $player = Player::find($id);
+        $player = Player::query()->find($id);
         if (empty($player)) {
             throw new Exception(trans('player_not_found', [], 'message'));
         }
@@ -1630,14 +1284,14 @@ function setPromoterPortrait($id, $ratio, $name): bool
         $promoter = new PlayerPromoter();
 
         /** @var PlayerPromoter $parentPromoter */
-        $parentPromoter = PlayerPromoter::where('player_id', $player->recommend_id)->first();
+        $parentPromoter = PlayerPromoter::query()->where('player_id', $player->recommend_id)->first();
         $maxRatio = 100;
         if ($ratio > $maxRatio) {
             throw new Exception(trans('ratio_max_error', ['{max_ratio}' => $maxRatio], 'message'));
         }
 
         /** @var PlayerPromoter $subPromoter */
-        $subPromoter = PlayerPromoter::where('recommend_id', $player->id)->orderBy('ratio', 'asc')->first();
+        $subPromoter = PlayerPromoter::query()->where('recommend_id', $player->id)->orderBy('ratio', 'asc')->first();
         if (!empty($subPromoter)) {
             if ($ratio < 0) {
                 throw new Exception(trans('ratio_min_error', ['{min_ratio}' => 0], 'message'));
@@ -1684,7 +1338,7 @@ function setPromoterPortrait($id, $ratio, $name): bool
  * @return array|mixed|null
  * @throws \Exception
  */
-function doCurl(string $url, int $gaming_user_id, int $machine_id, array $params = [])
+function doCurl(string $url, int $gaming_user_id, int $machine_id, array $params = []): mixed
 {
     $result = Http::timeout(7)->contentType('application/json')->accept('application/json')->asJson()->post($url,
         $params);
@@ -1728,7 +1382,7 @@ function fishMachineOpenAny(Player $player, Machine $machine, int $money, FishSe
         $openScore = checkMachineOpenAny($machine, $money, 0);
         //记录游戏局记录
         /** @var PlayerGameRecord $gameRecord */
-        $gameRecord = PlayerGameRecord::where('machine_id', $machine->id)
+        $gameRecord = PlayerGameRecord::query()->where('machine_id', $machine->id)
             ->where('player_id', $player->id)
             ->where('status', PlayerGameRecord::STATUS_START)
             ->orderBy('created_at', 'desc')
@@ -2689,7 +2343,7 @@ function machineWash(
 ): bool|PlayerLotteryRecord
 {
     try {
-        $lang = Translation::getLocale();
+        $lang = locale();
         $services = MachineServices::createServices($machine, $lang);
         if ($services->last_point_at + 5 >= time()) {
             throw new Exception(trans('exception_msg.point_must_5seconds', [], 'message', $lang));
