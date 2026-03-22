@@ -7,7 +7,6 @@ use app\filesystem\Filesystem;
 use app\model\ApiErrorLog;
 use app\model\Channel;
 use app\model\ChannelFinancialRecord;
-use app\model\ChannelPlatformReverseWater;
 use app\model\GameType;
 use app\model\LevelList;
 use app\model\Machine;
@@ -29,24 +28,18 @@ use app\model\PlayerGameLog;
 use app\model\PlayerGameRecord;
 use app\model\PlayerGiftRecord;
 use app\model\PlayerLoginRecord;
+use app\model\PlayerLotteryRecord;
 use app\model\PlayerMoneyEditLog;
 use app\model\PlayerPlatformCash;
 use app\model\PlayerPromoter;
 use app\model\PlayerRechargeRecord;
 use app\model\PlayerRegisterRecord;
-use app\model\PlayerReverseWaterDetail;
 use app\model\PlayerWithdrawRecord;
-use app\model\PlayGameRecord;
-use app\model\PromoterProfitRecord;
-use app\model\PromoterProfitSettlementRecord;
 use app\model\SystemSetting;
 use app\service\FishServices;
-use app\service\JackpotService;
-use app\service\MediaServer;
-use app\service\SlotService;
+use app\service\LotteryServices;
 use app\exception\PlayerCheckException;
 use app\service\ActivityServices;
-use app\service\game\GameServiceFactory;
 use app\service\machine\MachineServices;
 use app\service\machine\Slot;
 use Carbon\Carbon;
@@ -153,7 +146,7 @@ function createCode(): string
  * @param AllOfException $e
  * @return mixed
  */
-function getValidationMessages(AllOfException $e)
+function getValidationMessages(AllOfException $e): mixed
 {
     $message = $e->getMessages([
         'notOptional' => trans('required', [], 'validator'),
@@ -280,51 +273,6 @@ function getGameTypeCateList(): array
 }
 
 /**
- * 取得近7日 近30日累積轉數/壓/得
- * @param $machine_id
- * @return int[]
- */
-function getMachineGamingLog($machine_id): array
-{
-    $today = date('Y-m-d');
-    /** @var MachineOpenCard $machineOpenCard */
-    $machineOpenCard = MachineOpenCard::where('machine_id', $machine_id)
-        ->orderBy('id', 'desc')
-        ->first();
-
-    if (!empty($machineOpenCard)) {
-        /** @var MachineGamingLog $machineGamingLog */
-        $machineGamingLog = MachineGamingLog::where('machine_id', $machine_id)
-            ->where('date', $today)
-            ->where('updated_at', '>=', $machineOpenCard->created_at)
-            ->first();
-    } else {
-        /** @var MachineGamingLog $machineGamingLog */
-        $machineGamingLog = MachineGamingLog::where('machine_id', $machine_id)
-            ->where('date', $today)
-            ->first();
-    }
-    if (empty($machineGamingLog)) {
-        return [
-            'seventh_turn_point' => 0,
-            'thirty_turn_point' => 0,
-            'seventh_pressure' => 0,
-            'seventh_score' => 0,
-            'thirty_pressure' => 0,
-            'thirty_score' => 0,
-        ];
-    }
-    return [
-        'seventh_turn_point' => $machineGamingLog->turn_point - $machineGamingLog->seventh_turn_point,
-        'thirty_turn_point' => $machineGamingLog->turn_point - $machineGamingLog->thirty_turn_point,
-        'seventh_pressure' => $machineGamingLog->pressure - $machineGamingLog->seventh_pressure,
-        'seventh_score' => $machineGamingLog->score - $machineGamingLog->seventh_score,
-        'thirty_pressure' => $machineGamingLog->pressure - $machineGamingLog->thirty_pressure,
-        'thirty_score' => $machineGamingLog->score - $machineGamingLog->thirty_score,
-    ];
-}
-
-/**
  * @param $player_id
  * @param int $is_system
  * @return bool
@@ -356,38 +304,9 @@ function kickSingleMachinePlayer($player_id, int $is_system = 0): bool
  * @param $number
  * @return float|int
  */
-function floorToPointSecondNumber($number)
+function floorToPointSecondNumber($number): float|int
 {
     return floor($number * 100) / 100;
-}
-
-/**
- * 機台是否開獎中
- * @param Machine $machine
- * @param bool $isSystem
- * @return bool
- * @throws Exception
- */
-function checkLottery(Machine $machine, bool $isSystem = false): bool
-{
-    //鋼珠
-    if ($machine->type == GameType::TYPE_STEEL_BALL) {
-        $result = (new JackpotService($machine))->machineAction('check_lottery', [], $isSystem);
-        if (isset($result['result']) && $result['result'] == 1) {
-            return true;
-        }
-    }
-
-    //斯洛
-    if ($machine->type == GameType::TYPE_SLOT) {
-        $result = (new SlotService($machine))->machineAction('check_wash_key_status', [], $isSystem);
-        //其中一個不為0 就是開獎中
-        if ((isset($result['small_reward']) && !empty($result['small_reward'])) || (isset($result['big_reward']) && !empty($result['big_reward']))) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 
@@ -402,12 +321,13 @@ function checkLottery(Machine $machine, bool $isSystem = false): bool
  * @throws Exception|PushException
  */
 function machineOpenAny(
-    Player $player,
-    Machine $machine,
-    float $money,
-    float $giftScore,
+    Player                   $player,
+    Machine                  $machine,
+    float                    $money,
+    float                    $giftScore,
     ?MachineCategoryGiveRule $machineCategoryGiveRule
-): bool {
+): bool
+{
     $orgTurn = 0;
     // 增加业务锁
     $actionLockerKey = 'machine_open_lock' . $machine->id;
@@ -1315,9 +1235,10 @@ function getContent(int $type, string $source): string
  */
 function withdrawBack(
     PlayerWithdrawRecord $playerWithdrawRecord,
-    string $rejectReason = '',
-    int $withdrawStatus = PlayerWithdrawRecord::STATUS_PENDING_REJECT
-): string {
+    string               $rejectReason = '',
+    int                  $withdrawStatus = PlayerWithdrawRecord::STATUS_PENDING_REJECT
+): string
+{
     DB::beginTransaction();
     try {
         // 更新提现订单
@@ -1804,8 +1725,7 @@ function fishMachineOpenAny(Player $player, Machine $machine, int $money, FishSe
         }
         //扣點後餘額
         $afterGameAmount = $player->machine_wallet->money;
-        $checkOpen = checkMachineOpenAny($machine, $money, 0);
-        $openScore = $checkOpen['open_score'];
+        $openScore = checkMachineOpenAny($machine, $money, 0);
         //记录游戏局记录
         /** @var PlayerGameRecord $gameRecord */
         $gameRecord = PlayerGameRecord::where('machine_id', $machine->id)
@@ -1865,7 +1785,8 @@ function createGameLog(
     float $afterGameAmount,
     $gift_score,
     float $beforeGameAmount
-): PlayerGameLog {
+): PlayerGameLog
+{
     if (empty($gameRecord) || $gameRecord->status == PlayerGameRecord::STATUS_END) {
         $gameRecord = new PlayerGameRecord();
         $gameRecord->game_id = $machine->machineCategory->game_id;
@@ -1918,13 +1839,14 @@ function createGameLog(
  * @return void
  */
 function createPlayerDeliveryRecord(
-    Player $player,
+    Player        $player,
     PlayerGameLog $playerGameLog,
-    Machine $machine,
-    int $money,
-    float $beforeGameAmount,
-    float $afterGameAmount
-): void {
+    Machine       $machine,
+    int           $money,
+    float         $beforeGameAmount,
+    float         $afterGameAmount
+): void
+{
     $playerDeliveryRecord = new PlayerDeliveryRecord;
     $playerDeliveryRecord->player_id = $player->id;
     $playerDeliveryRecord->department_id = $player->department_id;
@@ -1974,144 +1896,9 @@ function openAnyCheck(Machine $machine, Player $player, int $money): void
  * @param $machineId
  * @return mixed
  */
-function getGivePoints($playerId, $machineId)
+function getGivePoints($playerId, $machineId): mixed
 {
     return Cache::get('gift_cache_' . $machineId . '_' . $playerId);
-}
-
-/**
- * 获取堆栈信息
- * @return void
- */
-function getStackList(): void
-{
-    $line = [];
-    $debugList = array_reverse(debug_backtrace());
-    foreach ($debugList as $key => $val) {
-        $class = $val['class'] ?? "";
-        $arg = $val['args'];
-        $parameter = '';
-        $stringLine = '';
-        if (!empty($arg) && is_array($arg)) {
-            foreach ($arg as $v) {
-                $className = $v;
-                if (is_object($v)) {
-                    $className = get_class($v);
-                } elseif (is_array($v)) {
-                    $className = json_encode($v);
-                }
-                $parameter .= $className . ',';
-            }
-        }
-        $stringLine .= '程序执行' . $key . ':=>';
-        $stringLine .= '[1.所在文件（' . $val['file'] . '）]，';
-        $stringLine .= '[2.函数调用情况[第' . $val['line'] . '行]：' . $class . '->' . $val['function'] . '(' . $parameter . ')]' . "\n";
-        $line[] = $stringLine;
-    }
-    Log::error("堆栈信息", $line);
-}
-
-/**
- * 设置机台在线数据
- * @param Machine $machine
- * @return array|false
- */
-function setMachineLive(Machine $machine)
-{
-    try {
-        $machineStatus = [];
-        $cacheKey = 'machine_live_status_' . $machine->id;
-        $millisecond = millisecond();
-        $machineCache = Cache::get($cacheKey);
-        if (empty($machineCache) || (isset($machineCache['time']) && $machineCache['time'] < $millisecond)) {
-            switch ($machine->type) {
-                case GameType::TYPE_STEEL_BALL:
-                    $service = new JackpotService($machine);
-                    $combineStatus = $service->machineAction('combine_status', [], true);
-                    $machineStatus['turn_point'] = $combineStatus['turn_point'] ?? 0;
-                    $machineStatus['total_turn'] = $combineStatus['total_turn'] ?? 0;
-                    $result = $service->machineAction('check_lottery', [], true);
-                    if (isset($result['result']) && $result['result'] == 1) {
-                        $checkLottery = 1;
-                    }
-                    // 获取珠数
-                    $machineStatus['display_score'] = $service->machineAction('display_score', [],
-                        true)['score'] ?? 0;
-                    $machineStatus['check_lottery'] = $checkLottery ?? 0;
-                    $machineStatus['gaming_user_id'] = $machine->gaming_user_id;
-                    if ($machineStatus['turn_point'] == 0) {
-                        /** @var PlayerGiftRecord $playerGiftRecord */
-                        $playerGiftRecord = PlayerGiftRecord::where('machine_id', $machine->id)->orderBy('id',
-                            'desc')->first();
-                        if (!empty($playerGiftRecord)) {
-                            $giftCacheKey = 'gift_cache_' . $machine->id . '_' . $playerGiftRecord->player_id;
-                            $giftCache = Cache::get($giftCacheKey);
-                            if ($giftCache && $giftCache['time'] < $millisecond) {
-                                Cache::delete($giftCacheKey);
-                            }
-                        }
-                    }
-                    if (!empty($machineCache)) {
-                        $machineStatus['last_data'] = [
-                            'turn_point' => $machineCache['turn_point'],
-                            'total_turn' => $machineCache['total_turn'],
-                            'display_score' => $machineCache['display_score'],
-                            'check_lottery' => $machineCache['check_lottery'],
-                            'gaming_user_id' => $machineCache['gaming_user_id'],
-                        ];
-                    } else {
-                        $machineStatus['last_data'] = $machineStatus;
-                    }
-                    break;
-                case GameType::TYPE_SLOT:
-                    $service = new SlotService($machine);
-                    $combineStatus = $service->machineAction('combine_status', [], true);
-                    $machineStatus['pressure'] = $combineStatus['pressure'] ?? 0;
-                    $machineStatus['score'] = $combineStatus['score'] ?? 0;
-                    $machineStatus['seven_display'] = $combineStatus['seven_display'] ?? 0;
-                    $result = $service->machineAction('check_wash_key_status', [], true);
-                    if ((isset($result['small_reward']) && !empty($result['small_reward'])) || (isset($result['big_reward']) && !empty($result['big_reward']))) {
-                        $checkLottery = 1;
-                    }
-                    $machineStatus['check_lottery'] = $checkLottery ?? 0;
-                    $machineStatus['gaming_user_id'] = $machine->gaming_user_id;
-                    // 分数为0清理缓存
-                    /** @var PlayerGiftRecord $playerGiftRecord */
-                    $playerGiftRecord = PlayerGiftRecord::where('machine_id', $machine->id)->orderBy('id',
-                        'desc')->first();
-                    if (!empty($playerGiftRecord)) {
-                        $giftCache = Cache::get('gift_cache_' . $machine->id . '_' . $playerGiftRecord->player_id);
-                        if ($giftCache && $giftCache['time'] < $millisecond) {
-                            if ($machineStatus['seven_display'] == 0 || ($machineStatus['seven_display'] >= $giftCache['open_point'] * $giftCache['condition'])) {
-                                Cache::delete('gift_cache_' . $machine->id . '_' . $playerGiftRecord->player_id);
-                            }
-                        }
-                    }
-                    if (!empty($machineCache)) {
-                        $machineStatus['last_data'] = [
-                            'pressure' => $machineCache['pressure'],
-                            'score' => $machineCache['score'],
-                            'seven_display' => $machineCache['seven_display'],
-                            'check_lottery' => $machineCache['check_lottery'],
-                            'gaming_user_id' => $machineCache['gaming_user_id'],
-                        ];
-                    } else {
-                        $machineStatus['last_data'] = $machineStatus;
-                    }
-                    break;
-                default:
-                    return false;
-            }
-            $machineStatus['status'] = 200;
-            $machineStatus['time'] = $millisecond;
-            $machineStatus['give_data'] = getGivePoints($machine->gaming_user_id, $machine->id);
-            Cache::set($cacheKey, $machineStatus, 600);
-        }
-    } catch (Exception $e) {
-        return false;
-    }
-
-    return $machineStatus ?? $machineCache;
 }
 
 /**
@@ -2144,7 +1931,8 @@ function crc8(
     bool $ref_in = true,
     bool $ref_out = true,
     bool $has_fill = true
-): string {
+): string
+{
     if (!is_scalar($str)) {
         throw new exception(
             "Variable for CRC calculation must be a scalar."
@@ -2356,31 +2144,6 @@ function jackPotCheckCRC8(string $data): bool
 }
 
 /**
- * 检查data55
- * @param string $data
- * @return bool
- * @throws Exception
- */
-function checkData55(string $data): bool
-{
-    $str = substr($data, 8, 8);
-    $data55 = substr($data, 20, 4);
-
-    $result = intval(hexdec(substr($str, 0, 2))) ^ intval(hexdec(substr($str, 2, 2))) ^ intval(hexdec(substr($str, 4,
-            2))) ^ 0x55;
-    $result = sprintf("%02X", $result);
-    $hex = "";
-    for ($i = strlen($result) - 1; $i >= 0; $i--) {
-        $hex .= sprintf("%02X", hexdec($result[$i]));
-    }
-    if ($data55 != $hex) {
-        throw new Exception('data55检查不通过');
-    }
-
-    return true;
-}
-
-/**
  * 解码数据位
  * @param $msg
  * @return string
@@ -2419,142 +2182,6 @@ function jackpotDecodeData($msg): string
 }
 
 /**
- * 结算
- * @param $id
- * @param int $userId
- * @param string $userName
- * @return void
- * @throws Exception
- */
-function doSettlement($id, int $userId = 0, string $userName = '')
-{
-    /** @var PlayerPromoter $playerPromoter */
-    $playerPromoter = PlayerPromoter::where('player_id', $id)->first();
-    if (empty($playerPromoter)) {
-        throw new Exception(trans('profit_amount_not_found', [], 'message'));
-    }
-    if ($playerPromoter->status == 0) {
-        throw new Exception(trans('player_promoter_has_disable', [], 'message'));
-    }
-    if (!isset($playerPromoter->profit_amount)) {
-        throw new Exception(trans('profit_amount_not_found', [], 'message'));
-    }
-    $profitAmount = PromoterProfitRecord::where('status', PromoterProfitRecord::STATUS_UNCOMPLETED)
-        ->where('promoter_player_id', $id)
-        ->first([
-            DB::raw('SUM(`withdraw_amount`) as total_withdraw_amount'),
-            DB::raw('SUM(`recharge_amount`) as total_recharge_amount'),
-            DB::raw('SUM(`commission`) as total_commission_amount'),
-            DB::raw('SUM(`bonus_amount`) as total_bonus_amount'),
-            DB::raw('SUM(`admin_deduct_amount`) as total_admin_deduct_amount'),
-            DB::raw('SUM(`admin_add_amount`) as total_admin_add_amount'),
-            DB::raw('SUM(`present_amount`) as total_present_amount'),
-            DB::raw('SUM(`machine_up_amount`) as total_machine_up_amount'),
-            DB::raw('SUM(`machine_down_amount`) as total_machine_down_amount'),
-            DB::raw('SUM(`lottery_amount`) as total_lottery_amount'),
-            DB::raw('SUM(`profit_amount`) as total_profit_amount'),
-            DB::raw('SUM(`player_profit_amount`) as total_player_profit_amount'),
-            DB::raw('SUM(`game_amount`) as total_game_amount'),
-        ])
-        ->toArray();
-
-    DB::beginTransaction();
-    try {
-        $promoterProfitSettlementRecord = new PromoterProfitSettlementRecord();
-        $promoterProfitSettlementRecord->department_id = $playerPromoter->player->department_id;
-        $promoterProfitSettlementRecord->promoter_player_id = $playerPromoter->player_id;
-        $promoterProfitSettlementRecord->total_withdraw_amount = $profitAmount['total_withdraw_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_recharge_amount = $profitAmount['total_recharge_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_commission_amount = $profitAmount['total_commission_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_bonus_amount = $profitAmount['total_bonus_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_admin_deduct_amount = $profitAmount['total_admin_deduct_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_admin_add_amount = $profitAmount['total_admin_add_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_present_amount = $profitAmount['total_present_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_machine_up_amount = $profitAmount['total_machine_up_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_machine_down_amount = $profitAmount['total_machine_down_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_lottery_amount = $profitAmount['total_lottery_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_profit_amount = $profitAmount['total_profit_amount'];
-        $promoterProfitSettlementRecord->total_player_profit_amount = $profitAmount['total_player_profit_amount'] ?? 0;
-        $promoterProfitSettlementRecord->total_game_amount = $profitAmount['total_game_amount'] ?? 0;
-        $promoterProfitSettlementRecord->last_profit_amount = $playerPromoter->last_profit_amount;
-        $promoterProfitSettlementRecord->adjust_amount = $playerPromoter->adjust_amount;
-        $promoterProfitSettlementRecord->type = PromoterProfitSettlementRecord::TYPE_SETTLEMENT;
-        $promoterProfitSettlementRecord->tradeno = createOrderNo();
-        $promoterProfitSettlementRecord->user_id = $userId;
-        $promoterProfitSettlementRecord->user_name = $userName;
-        $settlement = $amount = bcsub(bcadd($promoterProfitSettlementRecord->total_profit_amount,
-            $promoterProfitSettlementRecord->adjust_amount, 2),
-            $promoterProfitSettlementRecord->total_commission_amount, 2);
-        if ($amount > 0) {
-            if ($playerPromoter->settlement_amount < 0) {
-                $diffAmount = bcadd($amount, $playerPromoter->settlement_amount, 2);
-                $settlement = max($diffAmount, 0);
-            }
-        }
-        $promoterProfitSettlementRecord->actual_amount = $settlement;
-        $promoterProfitSettlementRecord->save();
-        // 更新结算报表
-        PromoterProfitRecord::where('status', PromoterProfitRecord::STATUS_UNCOMPLETED)
-            ->where('promoter_player_id', $id)
-            ->update([
-                'status' => PromoterProfitRecord::STATUS_COMPLETED,
-                'settlement_time' => date('Y-m-d H:i:s'),
-                'settlement_tradeno' => $promoterProfitSettlementRecord->tradeno,
-                'settlement_id' => $promoterProfitSettlementRecord->id,
-            ]);
-        // 结算后这些数据清零
-        $playerPromoter->profit_amount = 0;
-        $playerPromoter->player_profit_amount = 0;
-        $playerPromoter->team_recharge_total_amount = 0;
-        $playerPromoter->total_commission = 0;
-        $playerPromoter->team_withdraw_total_amount = 0;
-        $playerPromoter->adjust_amount = 0;
-        // 更新数据
-        $playerPromoter->team_profit_amount = bcsub($playerPromoter->team_profit_amount,
-            $promoterProfitSettlementRecord->total_profit_amount, 2);
-        $playerPromoter->last_profit_amount = $settlement;
-        $playerPromoter->settlement_amount = bcadd($playerPromoter->settlement_amount, $amount, 2);
-        $playerPromoter->team_settlement_amount = bcadd($playerPromoter->team_settlement_amount,
-            $promoterProfitSettlementRecord->total_profit_amount, 2);
-        $playerPromoter->last_settlement_time = date('Y-m-d', strtotime('-1 day'));
-
-        if (!empty($playerPromoter->path)) {
-            PlayerPromoter::where('player_id', '!=', $playerPromoter->player_id)
-                ->whereIn('player_id', explode(',', $playerPromoter->path))
-                ->update([
-                    'team_profit_amount' => DB::raw("team_profit_amount - {$promoterProfitSettlementRecord->total_profit_amount}"),
-                    'team_settlement_amount' => DB::raw("team_settlement_amount + $promoterProfitSettlementRecord->total_profit_amount"),
-                ]);
-        }
-        if ($settlement > 0) {
-            // 增加钱包余额
-            $amountBefore = $playerPromoter->player->machine_wallet->money;
-            $amountAfter = bcadd($amountBefore, $settlement, 2);
-            $playerDeliveryRecord = new PlayerDeliveryRecord;
-            $playerDeliveryRecord->player_id = $playerPromoter->player_id;
-            $playerDeliveryRecord->department_id = $playerPromoter->department_id;
-            $playerDeliveryRecord->target = $promoterProfitSettlementRecord->getTable();
-            $playerDeliveryRecord->target_id = $promoterProfitSettlementRecord->id;
-            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_PROFIT;
-            $playerDeliveryRecord->source = 'profit';
-            $playerDeliveryRecord->amount = $settlement;
-            $playerDeliveryRecord->amount_before = $amountBefore;
-            $playerDeliveryRecord->amount_after = $amountAfter;
-            $playerDeliveryRecord->tradeno = $promoterProfitSettlementRecord->tradeno ?? '';
-            $playerDeliveryRecord->remark = '';
-            $playerDeliveryRecord->save();
-
-            $playerPromoter->player->machine_wallet->money = $amountAfter;
-        }
-        $playerPromoter->push();
-        DB::commit();
-    } catch (\Exception $e) {
-        DB::rollback();
-        throw new Exception($e->getMessage());
-    }
-}
-
-/**
  * slot自动卡检查crc8
  * @param string $data
  * @return bool
@@ -2588,7 +2215,7 @@ function decodeStatus($data): string
  * @param int $playerId
  * @throws PushException
  */
-function sendMachineException(Machine $machine, $type, int $playerId = 0)
+function sendMachineException(Machine $machine, $type, int $playerId = 0): void
 {
     $notice = new Notice();
     $notice->department_id = 1;
@@ -2698,77 +2325,11 @@ function millisecondsToTimeFormat($millisecond): string
 }
 
 /**
- * 发送提现待审核消息
- * @return void
- * @throws PushException
- */
-function reviewedWithdrawMessage()
-{
-    $subQuery = PlayerWithdrawRecord::query()
-        ->select(DB::raw('MAX(id) as id'))
-        ->where('status', PlayerWithdrawRecord::STATUS_WAIT)
-        ->groupBy('department_id');
-    /** @var PlayerWithdrawRecord $playerLotteryRecord */
-    $playerWithdrawRecordList = PlayerWithdrawRecord::query()
-        ->whereIn('id', $subQuery)
-        ->get();
-    if (!empty($playerWithdrawRecordList)) {
-        /** @var PlayerWithdrawRecord $item */
-        foreach ($playerWithdrawRecordList as $item) {
-            sendSocketMessage('private-admin_group-channel-' . $item->department_id, [
-                'msg_type' => 'player_create_withdraw_order',
-                'id' => $item->id,
-                'player_id' => $item->player_id,
-                'player_name' => $item->player_name,
-                'player_phone' => $item->player_phone,
-                'money' => $item->money,
-                'point' => $item->point,
-                'status' => $item->status,
-                'tradeno' => $item->tradeno,
-            ]);
-        }
-    }
-}
-
-/**
- * 发送充值待审核消息
- * @return void
- * @throws PushException
- */
-function reviewedRechargeMessage()
-{
-    $subQuery = PlayerRechargeRecord::query()
-        ->select(DB::raw('MAX(id) as id'))
-        ->where('status', PlayerRechargeRecord::STATUS_RECHARGING)
-        ->whereIn('type', [PlayerRechargeRecord::TYPE_SELF, PlayerRechargeRecord::TYPE_BUSINESS])
-        ->groupBy('department_id');
-    /** @var PlayerRechargeRecord $playerRechargeRecord */
-    $playerRechargeRecordList = PlayerRechargeRecord::query()
-        ->whereIn('id', $subQuery)
-        ->get();
-    if (!empty($playerRechargeRecordList)) {
-        /** @var PlayerRechargeRecord $item */
-        foreach ($playerRechargeRecordList as $item) {
-            sendSocketMessage('private-admin_group-channel-' . $item->department_id, [
-                'msg_type' => 'player_examine_recharge_order',
-                'id' => $item->id,
-                'player_id' => $item->player_id,
-                'player_name' => $item->player_name,
-                'player_phone' => $item->player_phone,
-                'money' => $item->money,
-                'status' => $item->status,
-                'tradeno' => $item->tradeno,
-            ]);
-        }
-    }
-}
-
-/**
  * 获取当前usdt汇率
  * @param $currency
  * @return mixed|null
  */
-function getUSDTExchangeRate($currency)
+function getUSDTExchangeRate($currency): mixed
 {
     $currency = strtolower($currency);
     $cacheKey = 'usdt_rate_' . $currency;
@@ -2871,163 +2432,6 @@ function dateFormat($datetimeString): string
 }
 
 /**
- * 获取结算日期条件
- * @param $type
- * @param $column
- * @return array
- */
-function getDateWhere($type, $column): array
-{
-    $where = [];
-
-    switch ($type) {
-        case 1: // 今天
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::today()->startOfDay())
-                        ->where($column, '<=', Carbon::today()->endOfDay());
-                }
-            ];
-            break;
-        case 2: // 昨天
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::yesterday()->startOfDay())
-                        ->where($column, '<=', Carbon::yesterday()->endOfDay());
-                }
-            ];
-            break;
-        case 3: // 本周
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::today()->startOfWeek()->startOfDay())
-                        ->where($column, '<=', Carbon::today()->endOfWeek()->endOfDay());
-                }
-            ];
-            break;
-        case 4: // 上周
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::today()->subWeek()->startOfWeek()->startOfDay())
-                        ->where($column, '<=', Carbon::today()->subWeek()->endOfWeek()->endOfDay());
-                }
-            ];
-            break;
-        case 5: // 本月
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::today()->firstOfMonth()->startOfDay())
-                        ->where($column, '<=', Carbon::today()->endOfMonth()->endOfDay());
-                }
-            ];
-            break;
-        case 6: // 上月
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::today()->subMonth()->firstOfMonth()->startOfDay())
-                        ->where($column, '<=', Carbon::today()->subMonth()->endOfMonth()->endOfDay());
-                }
-            ];
-            break;
-        default:
-            break;
-    }
-
-    return $where;
-}
-
-/**
- * @return void
- */
-function nationalPromoterRebate(): void
-{
-    $log = Log::channel('national_promoter');
-    ini_set('memory_limit', '512M');
-    $log->info('全民代理统计开始: NationalPromoterRebate' . date('Y-m-d H:i:s'));
-    $time = date('Y-m-d H:i:s');
-    $playGameRecord = PlayGameRecord::query()
-        ->where('national_promoter_action', 0)
-        ->where('created_at', '<=', $time)
-        ->where('settlement_status', PlayGameRecord::SETTLEMENT_STATUS_SETTLED)
-        ->selectRaw("player_id, sum(bet) as all_bet, sum(diff) as all_diff")
-        ->groupBy('player_id')
-        ->get();
-    if (empty($playGameRecord->toArray())) {
-        $log->info('全民代理统计开始: NationalPromoterRebate' . date('Y-m-d H:i:s') . '未产生数据');
-        return;
-    }
-    foreach ($playGameRecord as $item) {
-        Db::beginTransaction();
-        try {
-            $log->info('全民代理统计: NationalPromoterRebate' . date('Y-m-d H:i:s'), [
-                $item->toArray()
-            ]);
-            //计算所有玩家打码量
-            if ($item->all_bet > 0 && !empty($item->player->national_promoter)) {
-                //当前玩家打码量
-                $item->player->national_promoter->chip_amount = bcadd($item->player->national_promoter->chip_amount,
-                    $item->all_bet, 2);
-                //根据打码量查询玩家当前全民代理等级
-                /** @var LevelList $levelId */
-                $levelId = LevelList::query()
-                    ->where('department_id', $item->player->department_id)
-                    ->where('must_chip_amount', '<=', $item->player->national_promoter->chip_amount)
-                    ->orderBy('must_chip_amount', 'desc')
-                    ->first();
-                if (!empty($levelId) && isset($levelId->id)) {
-                    //根据打码量提升玩家全民代理等级
-                    $item->player->national_promoter->level = $levelId->id;
-                }
-                $item->player->push();
-                if (!empty($item->player->recommend_id) && $item->all_diff != 0 && $item->player->national_promoter->status == 1 && !empty($levelId)) {
-                    /** @var Player $recommendPromoter */
-                    $recommendPromoter = Player::query()->with([
-                        'national_promoter',
-                        'national_promoter.level_list'
-                    ])->find($item->player->recommend_id);
-                    if (!empty($recommendPromoter->national_promoter) && $recommendPromoter->is_promoter < 1 && $recommendPromoter->status_national == 1) {
-                        $damageRebateRatio = isset($recommendPromoter->national_promoter->level_list->damage_rebate_ratio) ? $recommendPromoter->national_promoter->level_list->damage_rebate_ratio : 0;
-                        $money = bcdiv(bcmul(-$item->all_diff, $damageRebateRatio, 2), 100, 2);
-                        $recommendPromoter->national_promoter->pending_amount = bcadd($recommendPromoter->national_promoter->pending_amount,
-                            $money, 2);
-                        $recommendPromoter->push();
-                        /** @var NationalProfitRecord $nationalProfitRecord */
-                        $nationalProfitRecord = NationalProfitRecord::query()->where('uid', $item->player->id)
-                            ->where('type', 1)
-                            ->whereDate('created_at', date('Y-m-d'))
-                            ->first();
-                        if (!empty($nationalProfitRecord)) {
-                            $nationalProfitRecord->money = bcadd($nationalProfitRecord->money, $money, 2);
-                        } else {
-                            $nationalProfitRecord = new NationalProfitRecord();
-                            $nationalProfitRecord->uid = $item->player->id;
-                            $nationalProfitRecord->recommend_id = $item->player->recommend_id;
-                            $nationalProfitRecord->money = $money;
-                            $nationalProfitRecord->type = 1;
-                        }
-                        $nationalProfitRecord->save();
-                    }
-                }
-            }
-            PlayGameRecord::query()
-                ->where('national_promoter_action', 0)
-                ->where('settlement_status', PlayGameRecord::SETTLEMENT_STATUS_SETTLED)
-                ->where('player_id', $item->player_id)
-                ->where('created_at', '<=', $time)
-                ->update([
-                    'national_promoter_action' => 1,
-                    'national_damage_ratio' => $damageRebateRatio ?? 0
-                ]);
-            DB::commit();
-        } catch (\Exception $e) {
-            DB::rollBack();
-            $log->error('全民代理统计错误: NationalPromoterRebate' . date('Y-m-d H:i:s') . $e->getMessage());
-        }
-    }
-    $log->info('全民代理统计结束: NationalPromoterRebate' . date('Y-m-d H:i:s'));
-}
-
-/**
  * 生成随机1位字符串
  * @param int $length
  * @return string
@@ -3045,239 +2449,6 @@ function generateRandomString(int $length = 1): string
     }
 
     return $randomString;
-}
-
-/**
- * @return void
- */
-function playerLeve(): void
-{
-    $playGameRecord = PlayerReverseWaterDetail::query()
-        ->selectRaw('sum(point) as bet, sum(all_diff) as diff, player_id')
-        ->groupBy('player_id')
-        ->get()->toArray();
-    $playerGameLog = Db::select("SELECT
-        	sum( pressure + turn_point * turn_used_point) AS bet,
-            	player_id
-            FROM
-            	(
-            	SELECT
-            		max( pressure ) AS pressure,
-            		max( turn_point) AS turn_point,
-            		max( turn_used_point) AS turn_used_point,
-            		game_record_id,
-            		player_id
-            	FROM
-            		player_game_log
-            	WHERE
-            		created_at > '2025-01-23'
-            		AND game_record_id NOT IN ( SELECT id FROM player_game_record WHERE STATUS = 1 AND created_at > '2025-01-23' )
-            	GROUP BY
-            		game_record_id,
-            		player_id
-            	) AS a
-            GROUP BY
-            	player_id");
-    $record = [];
-    $log = [];
-    foreach ($playGameRecord as $gameRecord) {
-        $record[$gameRecord['player_id']] = $gameRecord;
-    }
-    foreach ($playerGameLog as $gameLog) {
-        $log[$gameLog->player_id] = ['bet' => $gameLog->bet, 'player_id' => $gameLog->player_id];
-    }
-    foreach ($record as $key => $value) {
-        if (isset($log[$key])) {
-            $log[$key]['bet'] += $value['bet'];
-        } else {
-            $log[$key]['bet'] = $value['bet'];
-            $log[$key]['player_id'] = $value['player_id'];
-        }
-    }
-    foreach ($log as $item) {
-        try {
-            $player = Player::query()->find($item['player_id']);
-            //玩家是全民代理
-            if (!empty($player->national_promoter) && $item['bet'] > 0) {
-                //当前玩家打码量
-                $player->national_promoter->chip_amount = $item['bet'];
-                //根据打码量查询玩家当前全民代理等级
-                /** @var LevelList $levelId */
-                $levelId = LevelList::query()
-                    ->where('department_id', $player->department_id)
-                    ->where('must_chip_amount', '<=', $player->national_promoter->chip_amount)
-                    ->orderBy('must_chip_amount', 'desc')
-                    ->first();
-                if (!empty($levelId) && isset($levelId->id)) {
-                    //根据打码量提升玩家全民代理等级
-                    $player->national_promoter->level = $levelId->id;
-                }
-                $player->push();
-            }
-        } catch (\Exception $e) {
-            Log::info($e->getMessage());
-        }
-    }
-
-    return;
-}
-
-
-/**
- * 返水测试
- * @param $playerId
- * @return array|void
- */
-function testRakeBack($playerId)
-{
-    $now = Carbon::now()->format('H:i:s');
-// 构建渠道配置映射表
-    $waterMap = [];
-    $departmentIds = Channel::query()->where('reverse_water_status', 1)->pluck('department_id');
-
-    ChannelPlatformReverseWater::query()
-        ->whereIn('department_id', $departmentIds)
-        ->where('status', 1)
-        ->where('checkout_time', '<=', $now)
-        ->each(function ($waterModel) use (&$waterMap) {
-            $waterMap[$waterModel->department_id][$waterModel->platform_id] = $waterModel;
-        });
-
-    if (empty($waterMap)) {
-        return;
-    }
-
-    $playRecords = PlayGameRecord::with('player:id,department_id,status_reverse_water')
-        ->select([
-            'player_id',
-            'platform_id',
-            DB::raw('SUM(bet) as total_bet'),
-            DB::raw('SUM(diff) as total_diff'),
-            DB::raw('GROUP_CONCAT(id ORDER BY id) as record_ids')
-        ])
-        ->whereDate('created_at', date('Y-m-d'))
-        ->where('is_reverse', 0)
-        ->whereHas('player', function ($query) use ($waterMap) {
-            $query->whereIn('department_id', array_keys($waterMap))
-                ->where('status_reverse_water', 1);
-        })
-        ->where('player_id', $playerId)
-        ->groupBy('player_id', 'platform_id')
-        ->get();
-
-
-    $groupData = [];
-    /** @var PlayGameRecord $record */
-    foreach ($playRecords as $record) {
-        if (!$player = $record->player) {
-            continue;
-        }
-
-        $key = "{$record->player_id}_{$record->platform_id}";
-
-        $recordIds = explode(',', $record->record_ids ?? '');
-        $validIds = array_filter($recordIds, function ($id) {
-            return is_numeric($id) && $id !== '';
-        });
-
-        if (!isset($groupData[$key])) {
-            $groupData[$key] = [
-                'player' => $player,
-                'waterModel' => $waterMap[$player->department_id][$record->platform_id] ?? null,
-                'total_bet' => (float)$record->total_bet,
-                'total_diff' => (float)$record->total_diff,
-                'record_ids' => $validIds
-            ];
-        }
-    }
-
-    $insertData = [];
-    $playGameIds = [];
-    $noticeData = [];
-    $time = Carbon::now();
-
-    foreach ($groupData as $item) {
-        if (!$item['waterModel'] || $item['total_bet'] <= 0) {
-            continue;
-        }
-
-        /** @var Player $player */
-        $player = $item['player'];
-        // 获取玩家等级反水比例
-        $levelRatio = $player->national_promoter()
-            ->first()
-            ?->level_list()
-            ->first()->reverse_water ?? 0;
-
-        // 获取平台反水比例
-        $waterRatio = $item['waterModel']->setting()
-            ->where('point', '<=', $item['total_bet'])
-            ->orderBy('point', 'desc')
-            ->value('ratio') ?? 0;
-
-        $reverseWater = (float)bcmul($item['total_bet'], ($levelRatio + $waterRatio) / 100, 2);
-
-        $insertData[] = [
-            'admin_id' => 0,
-            'player_id' => $player->id,
-            'platform_id' => $item['waterModel']->platform_id,
-            'point' => $item['total_bet'],
-            'all_diff' => $item['total_diff'],
-            'date' => date('Y-m-d'),
-            'reverse_water' => $reverseWater,
-            'level_ratio' => $levelRatio,
-            'created_at' => $time,
-            'platform_ratio' => $waterRatio,
-            'status' => 0
-        ];
-
-        $playGameIds = array_merge($playGameIds, $item['record_ids']);
-
-        if (!isset($noticeData[$player->id])) {
-            $noticeData[$player->id] = [
-                'reverse_water' => 0,
-                'department_id' => $player->department_id,
-                'date' => date('Y-m-d')
-            ];
-        }
-        $noticeData[$player->id]['reverse_water'] += $reverseWater;
-    }
-
-    $noticeInsert = [];
-    Db::beginTransaction();
-    try {
-        PlayerReverseWaterDetail::query()->insert($insertData);
-        $detailIds = PlayerReverseWaterDetail::query()
-            ->where('date', date('Y-m-d'))
-            ->pluck('id', 'player_id')
-            ->toArray();
-
-        foreach ($noticeData as $playerId => $item) {
-            $noticeInsert[] = [
-                'department_id' => $item['department_id'],
-                'player_id' => $playerId,
-                'source_id' => $detailIds[$playerId] ?? 0,
-                'type' => Notice::TYPE_REVERSE_WATER,
-                'receiver' => Notice::RECEIVER_PLAYER,
-                'is_private' => 1,
-                'title' => '電子遊戲反水獎勵',
-                'created_at' => $time,
-                'content' => sprintf('恭喜您在昨日的電子遊戲中獲得反水獎勵，奖励游戏点数%.2f', $item['reverse_water'])
-            ];
-        }
-
-        //批量插入消息通知
-        Notice::query()->insert($noticeInsert);
-
-        PlayGameRecord::query()->whereIn('id', $playGameIds)->update(['is_reverse' => 1]);
-        Db::commit();
-    } catch (\Exception $e) {
-        echo $e->getMessage();
-        Log::channel('reverse_water')->error('反水错误: ' . $e->getMessage());
-        Db::rollback();
-    }
-
-    return $insertData;
 }
 
 /**
@@ -3361,55 +2532,6 @@ function getPullUrl($machineCode, $machineTencentPlayId, string $ip = ''): strin
 }
 
 /**
- * 批量添加流地址
- * 如果不传key和过期时间，将返回不含防盗链的url
- * @return bool
- */
-function addPush(): bool
-{
-    $insertData = [];
-    $machineTencentPlay = MachineTencentPlay::query()->get();
-    $machineMediaList = MachineMedia::with('machine') // 预加载 machine 关联
-    ->whereIn('push_ip', [
-        '60.249.10.215:5080',
-        '118.163.197.107:5080',
-        '118.163.197.108:5080',
-        '118.163.177.107:5080',
-        '118.163.177.108:5080'
-    ])
-        ->has('machine') // 确保 machine 关联不为空
-        ->get();
-    /** @var MachineMedia $media */
-    foreach ($machineMediaList as $media) {
-        /** @var MachineTencentPlay $item */
-        foreach ($machineTencentPlay as $item) {
-            $pushData = getPushUrl($media->machine->code, $item->push_domain, $item->push_key);
-            try {
-                (new MediaServer($media->push_ip, $media->media_app))->rtmpEndpoint($pushData['rtmp_url'],
-                    $pushData['endpoint_service_id'], $media->stream_name);
-            } catch (\Exception $e) {
-                Log::error('批量添加流地址:' . $e->getMessage());
-            }
-            $insertData[] = [
-                'machine_id' => $media->machine_id,
-                'media_id' => $media->id,
-                'stream_name' => $media->stream_name,
-                'endpoint_service_id' => $pushData['endpoint_service_id'],
-                'expiration_date' => $pushData['expiration_date'],
-                'machine_code' => $media->machine->code,
-                'rtmp_url' => $pushData['rtmp_url'],
-                'created_at' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s'),
-                'machine_tencent_play_id' => $item->id,
-            ];
-        }
-    }
-    MachineMediaPush::query()->insert($insertData);
-
-    return true;
-}
-
-/**
  * 判断玩家ip所在启动
  * @param $ip
  * @return bool
@@ -3428,41 +2550,6 @@ function isIPInChina($ip): bool
     }
 
     return false;
-}
-
-/**
- * 清理媒体流
- * @return void
- */
-function mediaClear(): void
-{
-    MachineMedia::query()
-        ->whereHas('machine', function ($query) {
-            $query->where('status', 1)->whereNull('deleted_at');
-        })->chunk(100, function ($machineMediaList) {
-            /** @var MachineMedia $machineMedia */
-            foreach ($machineMediaList as $machineMedia) {
-                $mediaServer = new MediaServer($machineMedia->push_ip, $machineMedia->media_app);
-                try {
-                    $endpointServiceId = [];
-                    $streamInfo = $mediaServer->getBroadcasts($machineMedia->stream_name);
-                    if (!empty($streamInfo['endPointList'])) {
-                        foreach ($streamInfo['endPointList'] as $endPoint) {
-                            if (!MachineMediaPush::query()->where('endpoint_service_id',
-                                $endPoint['endpointServiceId'])->exists()) {
-                                $mediaServer->deleteRtmpEndpoint($endPoint['endpointServiceId'],
-                                    $machineMedia->stream_name);
-                            }
-                            $endpointServiceId[] = $endPoint['endpointServiceId'];
-                        }
-                    }
-                    $mediaServer->log->error('MediaClear',
-                        [$streamInfo, $endpointServiceId, $machineMedia->machine->code]);
-                } catch (Exception $e) {
-                    $mediaServer->log->error('MediaClear', [$e->getMessage(), $machineMedia->machine->code]);
-                }
-            }
-        });
 }
 
 /**
@@ -3493,72 +2580,6 @@ function getViewers($machineId): mixed
     }
 
     return $viewers;
-}
-
-/**
- * 获取结算日期条件
- * @param $type
- * @param $column
- * @return array
- */
-function getWhereDate($type, $column): array
-{
-    $where = [];
-
-    switch ($type) {
-        case 1: // 今天
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::today()->startOfDay())
-                        ->where($column, '<=', Carbon::today()->endOfDay());
-                }
-            ];
-            break;
-        case 2: // 昨天
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::yesterday()->startOfDay())
-                        ->where($column, '<=', Carbon::yesterday()->endOfDay());
-                }
-            ];
-            break;
-        case 3: // 本周
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::today()->startOfWeek()->format('Y-m-d'))
-                        ->where($column, '<=', Carbon::today()->endOfWeek()->format('Y-m-d'));
-                }
-            ];
-            break;
-        case 4: // 上周
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::today()->subWeek()->startOfWeek()->format('Y-m-d'))
-                        ->where($column, '<=', Carbon::today()->subWeek()->endOfWeek()->format('Y-m-d'));
-                }
-            ];
-            break;
-        case 5: // 本月
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::today()->firstOfMonth()->format('Y-m-d'))
-                        ->where($column, '<=', Carbon::today()->endOfMonth()->format('Y-m-d'));
-                }
-            ];
-            break;
-        case 6: // 上月
-            $where[] = [
-                function ($query) use ($column) {
-                    $query->where($column, '>=', Carbon::today()->subMonth()->firstOfMonth()->format('Y-m-d'))
-                        ->where($column, '<=', Carbon::today()->subMonth()->endOfMonth()->format('Y-m-d'));
-                }
-            ];
-            break;
-        default:
-            break;
-    }
-
-    return $where;
 }
 
 /**
@@ -3648,22 +2669,423 @@ function deleteToGCS($imagePath): void
     }
 }
 
-
-if(!function_exists('getWebIds')){
-    /**
-     * 批量生成各渠道webid
-     * @return array
-     */
-    function getWebIds($typeArr)
-    {
-        //TODO 确认各平台webid规则之后再进行优化处理
-        $webIds = [];
-
-        foreach ($typeArr as $type){
-            $webIds[$type] = GameServiceFactory::generateWebId();
+/**
+ * 洗分
+ * @param Player $player
+ * @param Machine $machine
+ * @param string $path
+ * @param int $is_system
+ * @param bool $hasLottery
+ * @return PlayerLotteryRecord|true
+ * @throws Exception
+ * @throws PushException
+ */
+function machineWash(
+    Player  $player,
+    Machine $machine,
+    string  $path = 'leave',
+    int     $is_system = 0,
+    bool    $hasLottery = false
+): bool|PlayerLotteryRecord
+{
+    try {
+        $lang = Translation::getLocale();
+        $services = MachineServices::createServices($machine, $lang);
+        if ($services->last_point_at + 5 >= time()) {
+            throw new Exception(trans('exception_msg.point_must_5seconds', [], 'message', $lang));
         }
-
-        return $webIds;
+        // 洗分限制（强制退出洗分）
+        $giftPoint = getGivePoints($player->id, $machine->id);
+        $gamingTurnPoint = 0; // 转数
+        $gamingPressure = 0; // 压分
+        $gamingScore = 0; // 得分
+        $money = 0; // 机台下分
+        //斯洛 需要判斷下分限制
+        switch ($machine->type) {
+            case GameType::TYPE_STEEL_BALL:
+                // 弃台需要下转,下珠
+                if ($path == 'leave') {
+                    if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
+                        $services->sendCmd($services::PUSH . $services::PUSH_STOP, 0, 'player', $player->id,
+                            $is_system);
+                        if ($services->auto == 1) {
+                            $services->sendCmd($services::AUTO_UP_TURN, 0, 'player', $player->id, $is_system);
+                        }
+                        if ($services->score > 0) {
+                            $services->sendCmd($services::SCORE_TO_POINT, 0, 'player', $player->id, $is_system);
+                        }
+                        if ($services->turn > 0) {
+                            $services->sendCmd($services::TURN_DOWN_ALL, 0, 'player', $player->id, $is_system);
+                        }
+                    }
+                    if ($machine->control_type == Machine::CONTROL_TYPE_SONG) {
+                        if ($services->auto == 1) {
+                            $services->sendCmd($services::AUTO_UP_TURN, 0, 'player', $player->id, $is_system);
+                        }
+                        $services->sendCmd($services::MACHINE_TURN, 0, 'player', $player->id, $is_system);
+                        $services->sendCmd($services::MACHINE_SCORE, 0, 'player', $player->id, $is_system);
+                        if ($services->score > 0) {
+                            $services->sendCmd($services::SCORE_TO_POINT, 0, 'player', $player->id, $is_system);
+                        }
+                        if ($services->turn > 0) {
+                            $services->sendCmd($services::TURN_DOWN_ALL, 0, 'player', $player->id, $is_system);
+                        }
+                    }
+                }
+                $services->sendCmd($services::MACHINE_POINT, 0, 'player', $player->id, $is_system);
+                $services->sendCmd($services::WIN_NUMBER, 0, 'player', $player->id, $is_system);
+                $gamingTurnPoint = $services->player_win_number;
+                $money = $services->point;
+                if (!empty($giftPoint) && $path == 'leave') {
+                    $money = max($money - $giftPoint['gift_point'], 0);
+                }
+                break;
+            case GameType::TYPE_SLOT:
+                if ($services->move_point == 1 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
+                    $services->sendCmd($services::MOVE_POINT_OFF, 0, 'player', $player->id, $is_system);
+                }
+                if ($services->auto == 1) {
+                    $services->sendCmd($services::OUT_OFF, 0, 'player', $player->id, $is_system);
+                }
+                $services->sendCmd($services::STOP_ONE, 0, 'player', $player->id, $is_system);
+                $services->sendCmd($services::STOP_TWO, 0, 'player', $player->id, $is_system);
+                $services->sendCmd($services::STOP_THREE, 0, 'player', $player->id, $is_system);
+                $services->sendCmd($services::READ_SCORE, 0, 'player', $player->id, $is_system);
+                Log::channel('song_slot_machine')->info('slot -> wash', [
+                    'point' => $money,
+                    'code' => $machine->code,
+                    'bet' => $services->bet,
+                    'player_pressure' => $services->player_pressure,
+                ]);
+                $services->sendCmd($services::READ_BET, 0, 'player', $player->id, $is_system);
+                $gamingPressure = bcsub($services->bet, $services->player_pressure);
+                $gamingScore = bcsub($services->win, $services->player_score);
+                $money = $services->point;
+                Log::channel('slot_machine')->info('slot -> wash', [
+                    'point' => $money,
+                    'code' => $machine->code,
+                ]);
+                if (!empty($giftPoint)) {
+                    if ($money < $giftPoint['open_point'] * $giftPoint['condition']) {
+                        $money = max($money - $giftPoint['gift_point'], 0);
+                    }
+                }
+                break;
+        }
+    } catch (\Exception $e) {
+        throw new Exception($e->getMessage());
     }
+
+    /** 彩金预留检查 */
+    if ($hasLottery && $machine->type == GameType::TYPE_SLOT && $path == 'down' && $money > 0) {
+        try {
+            $playerLotteryRecord = (new LotteryServices())->setMachine($machine)->setPlayer($player)->fixedPotCheckLottery($money,
+                true);
+            if ($playerLotteryRecord) {
+                return $playerLotteryRecord;
+            }
+        } catch (\Exception $e) {
+            throw new Exception($e->getMessage());
+        }
+    }
+    DB::beginTransaction();
+    try {
+        if ($money >= 0) {
+            $machine = machineWashZero($player, $machine, $money, $is_system, max($gamingPressure, 0),
+                max($gamingScore, 0), max($gamingTurnPoint, 0), $path);
+        }
+        if ($path == 'leave') {
+            if ($services->keeping == 1) {
+                // 更新保留日志
+                updateKeepingLog($machine->id, $player->id);
+            }
+            $machine->gaming = 0;
+            $machine->gaming_user_id = 0;
+            $machine->save();
+
+            if ($machine->type == GameType::TYPE_STEEL_BALL) {
+                $activityServices = new ActivityServices($machine, $player);
+                $activityServices->playerFinishActivity(true);
+            }
+            /** TODO 计算打码量 */
+        }
+        // 斯洛离开机台或弃台下分重置活动 检查彩金中奖情况
+        if ($machine->type == GameType::TYPE_SLOT) {
+            // 离开机台参与活动结束
+            $activityServices = new ActivityServices($machine, $player);
+            $activityServices->playerFinishActivity(true);
+            // 下分检查彩金获奖情况
+            if ($money > 0) {
+                $playerLotteryRecord = (new LotteryServices())->setMachine($machine)->setPlayer($player)->fixedPotCheckLottery($money,
+                    false, $path == 'leave');
+            }
+        }
+        DB::commit();
+        // 执行下分操作
+        switch ($machine->type) {
+            case GameType::TYPE_STEEL_BALL:
+                $services->sendCmd($services::WASH_ZERO, 0, 'player', $player->id, $is_system);
+                $services->sendCmd($services::CLEAR_LOG, 0, 'player', $player->id, $is_system);
+                $services->player_win_number = 0;
+                break;
+            case GameType::TYPE_SLOT:
+                $services->sendCmd($services::WASH_ZERO, 0, 'player', $player->id, $is_system);
+                $services->sendCmd($services::ALL_DOWN, 0, 'player', $player->id, $is_system);
+                $services->player_pressure = 0;
+                $services->player_score = 0;
+                $services->bet = 0;
+                break;
+        }
+    } catch (\Exception $e) {
+        DB::rollback();
+        throw new Exception($e->getMessage());
+    }
+    // 游戏结束同步Redis彩金到数据库（新版：独立彩池模式）
+    // 强制同步所有彩金的Redis数据到数据库
+    try {
+        LotteryServices::forceSyncRedisToDatabase();
+    } catch (\Exception $e) {
+        Log::error('游戏结束同步彩金失败: ' . $e->getMessage());
+    }
+    queueClient::send('media-recording', [
+        'machine_id' => $machine->id,
+        'action' => 'stop',
+    ], 10);
+    //下分成功 下分&下轉限制歸零 開獎中結束 關閉 push auto
+    $services->last_play_time = time();
+    if ($path == 'leave') {
+        $services->gaming_user_id = 0;
+        $services->gaming = 0;
+        $services->keeping_user_id = 0;
+        $services->keeping = 0;
+        $services->last_keep_at = 0;
+        $services->keep_seconds = 0;
+        if ($machine->type == GameType::TYPE_SLOT) {
+            $services->player_pressure = 0;
+            $services->player_score = 0;
+        }
+        if ($machine->type == GameType::TYPE_STEEL_BALL) {
+            $services->player_win_number = 0;
+        }
+        $services->player_open_point = 0;
+        $services->player_wash_point = 0;
+    }
+    switch ($machine->type) {
+        case GameType::TYPE_STEEL_BALL:
+            if ($path == 'leave') {
+                $services->gift_bet = 0;
+                Cache::delete('gift_cache_' . $machine->id . '_' . $player->id);
+            }
+            break;
+        case GameType::TYPE_SLOT:
+            Cache::delete('gift_cache_' . $machine->id . '_' . $player->id);
+            break;
+    }
+
+    // 清理消息缓存
+    LotteryServices::clearNoticeCache($player->id, $machine->id);
+
+    return $playerLotteryRecord ?? true;
 }
 
+/**
+ * 洗分清零算法
+ * @param Player $player
+ * @param Machine $machine
+ * @param $money
+ * @param int $is_system
+ * @param int $gamingPressure
+ * @param int $gamingScore
+ * @param int $gamingTurnPoint
+ * @param string $action
+ * @return Machine
+ * @throws Exception
+ */
+function machineWashZero(
+    Player  $player,
+    Machine $machine,
+            $money,
+    int     $is_system = 0,
+    int     $gamingPressure = 0,
+    int     $gamingScore = 0,
+    int     $gamingTurnPoint = 0,
+    string  $action = 'leave'
+): Machine
+{
+    try {
+        $services = MachineServices::createServices($machine);
+        $control_open_point = !empty($machine->control_open_point) ? $machine->control_open_point : 100;
+        //记录游戏局记录
+        /** @var PlayerGameRecord $gameRecord */
+        $gameRecord = PlayerGameRecord::query()->where('machine_id', $machine->id)
+            ->where('player_id', $player->id)
+            ->where('status', PlayerGameRecord::STATUS_START)
+            ->orderBy('created_at', 'desc')
+            ->first();
+        /** @var PlayerPlatformCash $machineWallet */
+        $machineWallet = PlayerPlatformCash::query()->where('platform_id',
+            PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
+        $beforeGameAmount = $machineWallet->money;
+        if ($money > 0) {
+            //api洗分
+            $wash_point = $money;
+            //依照比值轉成錢包幣值 無條件捨去
+            $game_amount = floor($money * ($machine->odds_x ?? 1) / ($machine->odds_y ?? 1));
+            $machineWallet->money = bcadd($machineWallet->money, $game_amount, 2);
+            $machineWallet->save();
+            if (!empty($gameRecord)) {
+                $gameRecord->wash_point = bcadd($gameRecord->wash_point, $wash_point, 2);
+                $gameRecord->wash_amount = bcadd($gameRecord->wash_amount, $game_amount, 2);
+                $gameRecord->after_game_amount = $machineWallet->money;
+                if ($action == 'leave') {
+                    $gameRecord->status = PlayerGameRecord::STATUS_END;
+                    /** TODO 计算客损 */
+                    $diff = bcsub($gameRecord->wash_amount, $gameRecord->open_amount, 2);
+                    nationalPromoterSettlement([
+                        ['player_id' => $player->id, 'bet' => 0, 'diff' => $diff]
+                    ]);
+                    if (!empty($player->recommend_id)) {
+                        $recommendPromoter = Player::query()->find($player->recommend_id);
+                        $gameRecord->national_damage_ratio = $recommendPromoter->national_promoter->level_list->damage_rebate_ratio ?? 0;
+                    }
+                }
+                $gameRecord->save();
+            }
+
+            //添加机台点数转换记录
+            $playerGameLog = addPlayerGameLog($player, $machine, $gameRecord, $control_open_point);
+            $playerGameLog->wash_point = $wash_point;
+            $playerGameLog->game_amount = $game_amount;
+            $playerGameLog->before_game_amount = $beforeGameAmount;
+            $playerGameLog->after_game_amount = $machineWallet->money;
+            $playerGameLog->action = ($action == 'leave' ? PlayerGameLog::ACTION_LEAVE : PlayerGameLog::ACTION_DOWN);
+            $playerGameLog->chip_amount = 0;
+            if ($machine->type == GameType::TYPE_SLOT) {
+                $ratio = ($machine->odds_x ?? 1) / ($machine->odds_y ?? 1);
+                $playerGameLog->chip_amount = bcmul($gamingPressure, $ratio, 2);
+            } elseif ($machine->type == GameType::TYPE_STEEL_BALL) {
+                $playerGameLog->chip_amount = bcmul($machine->machineCategory->turn_used_point, $gamingTurnPoint);
+            }
+            extracted($is_system, $playerGameLog, $gamingPressure, $gamingScore, $gamingTurnPoint);
+
+            //寫入金流明細
+            $playerDeliveryRecord = new PlayerDeliveryRecord;
+            $playerDeliveryRecord->player_id = $player->id;
+            $playerDeliveryRecord->department_id = $player->department_id;
+            $playerDeliveryRecord->target = $playerGameLog->getTable();
+            $playerDeliveryRecord->target_id = $playerGameLog->id;
+            $playerDeliveryRecord->machine_id = $machine->id;
+            $playerDeliveryRecord->machine_name = $machine->name;
+            $playerDeliveryRecord->machine_type = $machine->type;
+            $playerDeliveryRecord->code = $machine->code;
+            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_MACHINE_DOWN;
+            $playerDeliveryRecord->source = 'game_machine';
+            $playerDeliveryRecord->amount = $game_amount;
+            $playerDeliveryRecord->amount_before = $beforeGameAmount;
+            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
+            $playerDeliveryRecord->remark = $target->remark ?? '';
+            $playerDeliveryRecord->user_id = 0;
+            $playerDeliveryRecord->user_name = '';
+            $playerDeliveryRecord->save();
+
+            //保存下分時間
+            $services->last_point_at = time();
+            //累計該玩家洗分
+            $services->player_wash_point = bcadd($services->player_wash_point, $wash_point);
+        } else {
+            //添加机台点数转换记录
+            $playerGameLog = addPlayerGameLog($player, $machine, $gameRecord, $control_open_point);
+            $playerGameLog->wash_point = 0;
+            $playerGameLog->game_amount = 0;
+            $playerGameLog->before_game_amount = $machineWallet->money;
+            $playerGameLog->after_game_amount = $machineWallet->money;
+            $playerGameLog->action = ($action == 'leave' ? PlayerGameLog::ACTION_LEAVE : PlayerGameLog::ACTION_DOWN);
+            extracted($is_system, $playerGameLog, $gamingPressure, $gamingScore, $gamingTurnPoint);
+
+            if (!empty($gameRecord)) {
+                $gameRecord->after_game_amount = $machineWallet->money;
+                if ($action == 'leave') {
+                    $gameRecord->status = PlayerGameRecord::STATUS_END;
+                    /** TODO 计算客损 */
+                    $diff = bcsub($gameRecord->wash_amount, $gameRecord->open_amount, 2);
+                    nationalPromoterSettlement([
+                        ['player_id' => $player->id, 'bet' => 0, 'diff' => $diff]
+                    ]);
+                    if (!empty($player->recommend_id)) {
+                        $recommendPromoter = Player::query()->find($player->recommend_id);
+                        $gameRecord->national_damage_ratio = $recommendPromoter->national_promoter->level_list->damage_rebate_ratio ?? 0;
+                    }
+                }
+                $gameRecord->save();
+            }
+            //保存下分時間
+            $services->last_point_at = time();
+        }
+    } catch (Exception $e) {
+        throw new Exception($e->getMessage());
+    }
+
+    return $machine;
+}
+
+/**
+ * @param int $is_system
+ * @param PlayerGameLog $playerGameLog
+ * @param int $gamingPressure 押分
+ * @param int $gamingScore 得分
+ * @param int $gamingTurnPoint 转数
+ * @return void
+ */
+function extracted(
+    int           $is_system,
+    PlayerGameLog $playerGameLog,
+    int           $gamingPressure,
+    int           $gamingScore,
+    int           $gamingTurnPoint
+): void
+{
+    $playerGameLog->is_system = $is_system;
+    $playerGameLog->pressure = $gamingPressure;
+    $playerGameLog->score = $gamingScore;
+    $playerGameLog->turn_point = $gamingTurnPoint;
+    $playerGameLog->user_id = 0;
+    $playerGameLog->user_name = '';
+    $playerGameLog->save();
+}
+
+/**
+ * @param Player $player
+ * @param Machine $machine
+ * @param PlayerGameRecord|null $gameRecord
+ * @param int $control_open_point
+ * @return PlayerGameLog
+ */
+function addPlayerGameLog(
+    Player            $player,
+    Machine           $machine,
+    ?PlayerGameRecord $gameRecord,
+    int               $control_open_point
+): PlayerGameLog
+{
+    $odds = $machine->odds_x . ':' . $machine->odds_y;
+    if ($machine->type == GameType::TYPE_STEEL_BALL) {
+        $odds = $machine->machineCategory->name;
+    }
+    $playerGameLog = new PlayerGameLog;
+    $playerGameLog->player_id = $player->id;
+    $playerGameLog->parent_player_id = $player->recommend_id ?? 0;
+    $playerGameLog->agent_player_id = $player->recommend_promoter->recommend_id ?? 0;
+    $playerGameLog->department_id = $player->department_id;
+    $playerGameLog->machine_id = $machine->id;
+    $playerGameLog->game_record_id = isset($gameRecord) && !empty($gameRecord->id) ? $gameRecord->id : 0;
+    $playerGameLog->game_id = $machine->machineCategory->game_id;
+    $playerGameLog->type = $machine->type;
+    $playerGameLog->odds = $odds;
+    $playerGameLog->control_open_point = $control_open_point;
+    $playerGameLog->open_point = 0;
+    $playerGameLog->turn_used_point = $machine->machineCategory->turn_used_point;
+    $playerGameLog->is_test = $player->is_test; //标记测试数据
+
+    return $playerGameLog;
+}
