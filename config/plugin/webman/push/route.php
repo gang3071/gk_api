@@ -62,13 +62,10 @@ Route::post(parse_url(config('plugin.webman.push.app.channel_hook'), PHP_URL_PAT
         if ($event['name'] === 'channel_added') {
             $channels_online[] = $event['channel'];
         } else if ($event['name'] === 'channel_removed') {
-            \support\Log::error('离线日志', [$event]);
             $channels_offline[] = $event['channel'];
             if (str_contains($event['channel'], 'player-')) {
-                \support\Log::error('离线日志1', [$event]);
                 $player_id = str_replace('player-', '', $event['channel']);
                 if (preg_match('/^\d+$/', $player_id)) {
-                    \support\Log::error('离线日志2', [$event]);
                     Client::send('offline-notify', [
                         'player_id' => $player_id,
                     ]);
