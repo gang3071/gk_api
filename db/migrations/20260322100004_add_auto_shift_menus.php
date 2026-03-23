@@ -31,8 +31,8 @@ final class AddAutoShiftMenus extends AbstractMigration
         } else {
             // 插入父级菜单
             $this->execute("
-                INSERT INTO admin_menus (name, title, icon, url, plugin, pid, sort, status, open, type, created_at, updated_at)
-                VALUES ('auto_shift_management', '自动交班', 'ClockCircleOutlined', '', '', 0, 150, 1, 1, " . self::TYPE_STORE . ", '{$now}', '{$now}')
+                INSERT INTO admin_menus (name, icon, url, plugin, pid, sort, status, open, type, created_at, updated_at)
+                VALUES ('auto_shift_management', 'ClockCircleOutlined', '', '', 0, 150, 1, 1, " . self::TYPE_STORE . ", '{$now}', '{$now}')
             ");
 
             $lastId = $this->query("SELECT LAST_INSERT_ID() as id")->fetch();
@@ -43,14 +43,12 @@ final class AddAutoShiftMenus extends AbstractMigration
         $childMenus = [
             [
                 'name' => 'auto_shift_config',
-                'title' => '交班配置',
                 'icon' => 'SettingOutlined',
                 'url' => 'ex-admin/addons-webman-controller-ChannelAutoShiftController/config',
                 'sort' => 1,
             ],
             [
                 'name' => 'auto_shift_logs',
-                'title' => '执行日志',
                 'icon' => 'FileTextOutlined',
                 'url' => 'ex-admin/addons-webman-controller-ChannelAutoShiftController/logs',
                 'sort' => 2,
@@ -68,7 +66,6 @@ final class AddAutoShiftMenus extends AbstractMigration
             if (!$existingChild) {
                 $insertData[] = [
                     'name' => $child['name'],
-                    'title' => $child['title'],
                     'icon' => $child['icon'],
                     'url' => $child['url'],
                     'plugin' => '',
