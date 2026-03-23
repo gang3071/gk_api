@@ -32,6 +32,8 @@ class ApiHandler extends ExceptionHandler
     public $dontReport = [
         NestedValidationException::class,
         ValidationException::class,
+        JwtTokenException::class,
+        JwtTokenExpiredException::class,
     ];
 
     public function render(Request $request, Throwable $exception): Response
