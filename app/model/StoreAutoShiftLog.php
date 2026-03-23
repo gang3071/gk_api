@@ -6,6 +6,26 @@ use support\Model;
 
 /**
  * 自动交班执行日志模型
+ *
+ * @property int $id 主键ID
+ * @property int $config_id 配置ID
+ * @property int $department_id 部门/渠道ID
+ * @property int $bind_admin_user_id 绑定的管理员用户ID（代理/店家）
+ * @property int|null $shift_record_id 关联的交班记录ID
+ * @property string $start_time 统计开始时间
+ * @property string $end_time 统计结束时间
+ * @property string $execute_time 执行时间
+ * @property int $status 执行状态（1=成功，2=失败，3=部分成功）
+ * @property float $machine_amount 机台投钞金额
+ * @property int $machine_point 机台投钞点数
+ * @property float $total_in 总收入（送分）
+ * @property float $total_out 总支出（取分）
+ * @property float $lottery_amount 彩金金额
+ * @property float $total_profit 总利润
+ * @property int $execution_duration 执行耗时（毫秒）
+ * @property string|null $error_message 错误信息
+ * @property string $created_at 创建时间
+ * @property string $updated_at 更新时间
  */
 class StoreAutoShiftLog extends Model
 {
@@ -34,16 +54,7 @@ class StoreAutoShiftLog extends Model
     }
 
     /**
-     * 关联绑定玩家（旧方法，已废弃）
-     * @deprecated 使用 bindAdminUser() 替代
-     */
-    public function bindPlayer()
-    {
-        return $this->belongsTo(Player::class, 'bind_player_id', 'id');
-    }
-
-    /**
-     * 关联绑定的代理/店家（新方法）
+     * 关联绑定的代理/店家
      */
     public function bindAdminUser()
     {

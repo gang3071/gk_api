@@ -25,7 +25,6 @@ class AutoShiftService
             ->where('department_id', $departmentId)
             ->where('bind_admin_user_id', $bindAdminUserId)
             ->where('is_enabled', 1)
-            ->where('status', StoreAutoShiftConfig::STATUS_NORMAL)
             ->first();
 
         return $config !== null;
@@ -67,7 +66,6 @@ class AutoShiftService
             $config->shift_time_2 = $data['shift_time_2'] ?? '16:00:00';
             $config->shift_time_3 = $data['shift_time_3'] ?? '00:00:00';
             $config->auto_settlement = $data['auto_settlement'] ?? 1;
-            $config->status = StoreAutoShiftConfig::STATUS_NORMAL;
 
             // 验证配置
             $validation = $this->validateConfig($config);
@@ -466,7 +464,6 @@ class AutoShiftService
     {
         return StoreAutoShiftConfig::query()
             ->where('is_enabled', 1)
-            ->where('status', StoreAutoShiftConfig::STATUS_NORMAL)
             ->where('next_shift_time', '<=', Carbon::now())
             ->get()
             ->toArray();
