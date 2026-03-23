@@ -17,35 +17,33 @@ final class SimplifyAutoShiftConfig extends AbstractMigration
     {
         $table = $this->table('store_auto_shift_config');
 
-        // 添加3个交班时间字段
+        // 添加3个交班时间字段（默认值：早班08:00、中班16:00、晚班00:00）
         $table->addColumn('shift_time_1', 'time', [
-                'null' => true,
+                'null' => false,
+                'default' => '08:00:00',
                 'after' => 'is_enabled',
-                'comment' => '交班时间1（格式：HH:mm:ss）',
+                'comment' => '早班交班时间（08:00）',
             ])
             ->addColumn('shift_time_2', 'time', [
-                'null' => true,
+                'null' => false,
+                'default' => '16:00:00',
                 'after' => 'shift_time_1',
-                'comment' => '交班时间2（格式：HH:mm:ss）',
+                'comment' => '中班交班时间（16:00）',
             ])
             ->addColumn('shift_time_3', 'time', [
-                'null' => true,
-                'after' => 'shift_time_2',
-                'comment' => '交班时间3（格式：HH:mm:ss）',
-            ])
-            ->addColumn('enable_notification', 'boolean', [
                 'null' => false,
-                'default' => 1,
-                'after' => 'auto_settlement',
-                'comment' => '是否启用通知（0=否，1=是）',
+                'default' => '00:00:00',
+                'after' => 'shift_time_2',
+                'comment' => '晚班交班时间（00:00）',
             ])
             ->save();
 
-        // 将原有的 shift_time 数据迁移到 shift_time_1
+        // 将原有的 shift_time 数据迁移到 shift_time_1，如果没有则使用默认值
         $this->execute("
             UPDATE store_auto_shift_config
-            SET shift_time_1 = shift_time
-            WHERE shift_time IS NOT NULL
+            SET shift_time_1 = COALESCE(shift_time, '08:00:00'),
+                shift_time_2 = '16:00:00',
+                shift_time_3 = '00:00:00'
         ");
     }
 
@@ -59,7 +57,6 @@ final class SimplifyAutoShiftConfig extends AbstractMigration
         $table->removeColumn('shift_time_1')
             ->removeColumn('shift_time_2')
             ->removeColumn('shift_time_3')
-            ->removeColumn('enable_notification')
             ->save();
     }
 }

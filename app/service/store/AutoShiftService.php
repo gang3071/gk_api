@@ -63,11 +63,10 @@ class AutoShiftService
 
             // 更新配置
             $config->is_enabled = $data['is_enabled'] ?? 0;
-            $config->shift_time_1 = $data['shift_time_1'] ?? null;
-            $config->shift_time_2 = $data['shift_time_2'] ?? null;
-            $config->shift_time_3 = $data['shift_time_3'] ?? null;
+            $config->shift_time_1 = $data['shift_time_1'] ?? '08:00:00';
+            $config->shift_time_2 = $data['shift_time_2'] ?? '16:00:00';
+            $config->shift_time_3 = $data['shift_time_3'] ?? '00:00:00';
             $config->auto_settlement = $data['auto_settlement'] ?? 1;
-            $config->enable_notification = $data['enable_notification'] ?? 1;
             $config->status = StoreAutoShiftConfig::STATUS_NORMAL;
 
             // 验证配置
@@ -113,11 +112,6 @@ class AutoShiftService
      */
     private function validateConfig(StoreAutoShiftConfig $config): array
     {
-        // 验证至少设置一个交班时间
-        if (empty($config->shift_time_1) && empty($config->shift_time_2) && empty($config->shift_time_3)) {
-            return ['valid' => false, 'message' => '请至少设置一个交班时间'];
-        }
-
         // 验证时间格式
         foreach (['shift_time_1', 'shift_time_2', 'shift_time_3'] as $field) {
             if (!empty($config->$field)) {
@@ -132,14 +126,14 @@ class AutoShiftService
 
     /**
      * 计算下次交班时间
-     * 从3个时间段中找到最近的一个
+     * 从3个交班时间（早班08:00、中班16:00、晚班00:00）中找到最近的一个
      */
     public function calculateNextShiftTime(StoreAutoShiftConfig $config): ?Carbon
     {
         $now = Carbon::now();
         $times = [];
 
-        // 收集所有设置的交班时间
+        // 收集所有设置的交班时间（早班、中班、晚班）
         foreach (['shift_time_1', 'shift_time_2', 'shift_time_3'] as $field) {
             if (!empty($config->$field)) {
                 $time = Carbon::parse($config->$field);
@@ -154,7 +148,7 @@ class AutoShiftService
             }
         }
 
-        // 如果没有设置任何时间，返回null
+        // 如果没有设置任何时间，返回null（理论上不会发生，因为有默认值）
         if (empty($times)) {
             return null;
         }
@@ -280,17 +274,15 @@ class AutoShiftService
                 'total_profit' => $statistics['total_profit']
             ]);
 
-            // 发送成功通知
-            if ($config->enable_notification) {
-                $this->sendNotification($config, 'success', [
-                    'shift_record_id' => $shiftRecord->id,
-                    'start_time' => $startTime->toDateTimeString(),
-                    'end_time' => $endTime->toDateTimeString(),
-                    'total_profit' => $statistics['total_profit'],
-                    'total_in' => $statistics['total_in'],
-                    'total_out' => $statistics['total_out'],
-                ]);
-            }
+            // 发送成功通知（始终发送）
+            $this->sendNotification($config, 'success', [
+                'shift_record_id' => $shiftRecord->id,
+                'start_time' => $startTime->toDateTimeString(),
+                'end_time' => $endTime->toDateTimeString(),
+                'total_profit' => $statistics['total_profit'],
+                'total_in' => $statistics['total_in'],
+                'total_out' => $statistics['total_out'],
+            ]);
 
             return [
                 'code' => 0,
@@ -330,14 +322,12 @@ class AutoShiftService
                 'trace' => $e->getTraceAsString()
             ]);
 
-            // 发送失败通知
-            if ($config->enable_notification) {
-                $this->sendNotification($config, 'failed', [
-                    'error' => $e->getMessage(),
-                    'start_time' => $startTime ? $startTime->toDateTimeString() : null,
-                    'end_time' => $endTime ? $endTime->toDateTimeString() : null,
-                ]);
-            }
+            // 发送失败通知（始终发送）
+            $this->sendNotification($config, 'failed', [
+                'error' => $e->getMessage(),
+                'start_time' => $startTime ? $startTime->toDateTimeString() : null,
+                'end_time' => $endTime ? $endTime->toDateTimeString() : null,
+            ]);
 
             return ['code' => 1, 'msg' => '自动交班失败: ' . $e->getMessage()];
         }
@@ -405,6 +395,16 @@ class AutoShiftService
             $channel = "admin-{$config->bind_admin_user_id}";
             $event = 'auto-shift-notification';
 
+            // 判断当前是哪个班次
+            $currentHour = (int)date('H');
+            if ($currentHour >= 8 && $currentHour < 16) {
+                $shiftName = '早班';
+            } elseif ($currentHour >= 16) {
+                $shiftName = '中班';
+            } else {
+                $shiftName = '晚班';
+            }
+
             // 构建推送消息
             $message = [
                 'type' => 'auto_shift',
@@ -412,23 +412,28 @@ class AutoShiftService
                 'timestamp' => time(),
                 'datetime' => date('Y-m-d H:i:s'),
                 'config_id' => $config->id,
+                'shift_name' => $shiftName,
                 'data' => $data,
             ];
 
             // 根据状态添加标题和内容
             if ($status === 'success') {
-                $message['title'] = '自动交班成功';
+                $message['title'] = "{$shiftName}交班成功";
                 $message['content'] = sprintf(
-                    '交班时间：%s ~ %s\n总利润：%.2f',
+                    "交班时段：%s\n统计时间：%s ~ %s\n总收入：¥%.2f\n总支出：¥%.2f\n总利润：¥%.2f",
+                    $shiftName,
                     $data['start_time'] ?? '',
                     $data['end_time'] ?? '',
+                    $data['total_in'] ?? 0,
+                    $data['total_out'] ?? 0,
                     $data['total_profit'] ?? 0
                 );
                 $message['level'] = 'success';
             } else {
-                $message['title'] = '自动交班失败';
+                $message['title'] = "{$shiftName}交班失败";
                 $message['content'] = sprintf(
-                    '失败时间：%s\n错误信息：%s',
+                    "交班时段：%s\n失败时间：%s\n错误信息：%s",
+                    $shiftName,
                     date('Y-m-d H:i:s'),
                     $data['error'] ?? '未知错误'
                 );
@@ -441,6 +446,7 @@ class AutoShiftService
             \Log::info('发送自动交班通知', [
                 'channel' => $channel,
                 'event' => $event,
+                'shift_name' => $shiftName,
                 'status' => $status,
                 'result' => $result ? 'success' : 'failed',
             ]);
