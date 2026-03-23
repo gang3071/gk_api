@@ -9,6 +9,7 @@ use app\model\StoreAutoShiftConfig;
 use app\model\StoreAutoShiftLog;
 use Carbon\Carbon;
 use support\Db;
+use Webman\Push\Api;
 
 /**
  * 自动交班服务
@@ -18,11 +19,11 @@ class AutoShiftService
     /**
      * 检查是否启用自动交班
      */
-    public function isAutoShiftEnabled(int $departmentId, int $bindPlayerId): bool
+    public function isAutoShiftEnabled(int $departmentId, int $bindAdminUserId): bool
     {
         $config = StoreAutoShiftConfig::query()
             ->where('department_id', $departmentId)
-            ->where('bind_player_id', $bindPlayerId)
+            ->where('bind_admin_user_id', $bindAdminUserId)
             ->where('is_enabled', 1)
             ->where('status', StoreAutoShiftConfig::STATUS_NORMAL)
             ->first();
@@ -33,11 +34,11 @@ class AutoShiftService
     /**
      * 获取自动交班配置
      */
-    public function getConfig(int $departmentId, int $bindPlayerId)
+    public function getConfig(int $departmentId, int $bindAdminUserId)
     {
         return StoreAutoShiftConfig::query()
             ->where('department_id', $departmentId)
-            ->where('bind_player_id', $bindPlayerId)
+            ->where('bind_admin_user_id', $bindAdminUserId)
             ->first();
     }
 
@@ -51,24 +52,22 @@ class AutoShiftService
 
             $config = StoreAutoShiftConfig::query()
                 ->where('department_id', $data['department_id'])
-                ->where('bind_player_id', $data['bind_player_id'])
+                ->where('bind_admin_user_id', $data['bind_admin_user_id'])
                 ->first();
 
             if (!$config) {
                 $config = new StoreAutoShiftConfig();
                 $config->department_id = $data['department_id'];
-                $config->bind_player_id = $data['bind_player_id'];
+                $config->bind_admin_user_id = $data['bind_admin_user_id'];
             }
 
             // 更新配置
             $config->is_enabled = $data['is_enabled'] ?? 0;
-            $config->shift_mode = $data['shift_mode'] ?? StoreAutoShiftConfig::MODE_DAILY;
-            $config->shift_time = $data['shift_time'] ?? '02:00:00';
-            $config->shift_weekdays = $data['shift_weekdays'] ?? null;
-            $config->shift_interval_hours = $data['shift_interval_hours'] ?? null;
+            $config->shift_time_1 = $data['shift_time_1'] ?? null;
+            $config->shift_time_2 = $data['shift_time_2'] ?? null;
+            $config->shift_time_3 = $data['shift_time_3'] ?? null;
             $config->auto_settlement = $data['auto_settlement'] ?? 1;
-            $config->notify_on_failure = $data['notify_on_failure'] ?? 1;
-            $config->notify_phones = $data['notify_phones'] ?? null;
+            $config->enable_notification = $data['enable_notification'] ?? 1;
             $config->status = StoreAutoShiftConfig::STATUS_NORMAL;
 
             // 验证配置
@@ -91,7 +90,7 @@ class AutoShiftService
 
             \Log::info('保存自动交班配置成功', [
                 'department_id' => $data['department_id'],
-                'bind_player_id' => $data['bind_player_id'],
+                'bind_admin_user_id' => $data['bind_admin_user_id'],
                 'is_enabled' => $config->is_enabled,
                 'next_shift_time' => $config->next_shift_time
             ]);
@@ -114,41 +113,16 @@ class AutoShiftService
      */
     private function validateConfig(StoreAutoShiftConfig $config): array
     {
-        // 验证交班时间格式
-        if (!preg_match('/^\d{2}:\d{2}:\d{2}$/', $config->shift_time)) {
-            return ['valid' => false, 'message' => '交班时间格式错误'];
+        // 验证至少设置一个交班时间
+        if (empty($config->shift_time_1) && empty($config->shift_time_2) && empty($config->shift_time_3)) {
+            return ['valid' => false, 'message' => '请至少设置一个交班时间'];
         }
 
-        // 验证每周模式
-        if ($config->shift_mode == StoreAutoShiftConfig::MODE_WEEKLY) {
-            if (empty($config->shift_weekdays)) {
-                return ['valid' => false, 'message' => '每周模式必须选择至少一天'];
-            }
-            $weekdays = explode(',', $config->shift_weekdays);
-            foreach ($weekdays as $day) {
-                if (!in_array($day, [0, 1, 2, 3, 4, 5, 6])) {
-                    return ['valid' => false, 'message' => '每周交班日期值无效'];
-                }
-            }
-        }
-
-        // 验证自定义周期
-        if ($config->shift_mode == StoreAutoShiftConfig::MODE_CUSTOM) {
-            if (empty($config->shift_interval_hours) || $config->shift_interval_hours < 1) {
-                return ['valid' => false, 'message' => '自定义周期必须大于0小时'];
-            }
-            if ($config->shift_interval_hours > 168) {
-                return ['valid' => false, 'message' => '自定义周期不能超过168小时（7天）'];
-            }
-        }
-
-        // 验证通知手机号
-        if ($config->notify_on_failure && !empty($config->notify_phones)) {
-            $phones = explode(',', $config->notify_phones);
-            foreach ($phones as $phone) {
-                $phone = trim($phone);
-                if (!preg_match('/^1[3-9]\d{9}$/', $phone)) {
-                    return ['valid' => false, 'message' => '手机号格式错误: ' . $phone];
+        // 验证时间格式
+        foreach (['shift_time_1', 'shift_time_2', 'shift_time_3'] as $field) {
+            if (!empty($config->$field)) {
+                if (!preg_match('/^\d{2}:\d{2}:\d{2}$/', $config->$field)) {
+                    return ['valid' => false, 'message' => '交班时间格式错误'];
                 }
             }
         }
@@ -158,59 +132,39 @@ class AutoShiftService
 
     /**
      * 计算下次交班时间
+     * 从3个时间段中找到最近的一个
      */
-    public function calculateNextShiftTime(StoreAutoShiftConfig $config): Carbon
+    public function calculateNextShiftTime(StoreAutoShiftConfig $config): ?Carbon
     {
         $now = Carbon::now();
-        $time = Carbon::parse($config->shift_time);
+        $times = [];
 
-        switch ($config->shift_mode) {
-            case StoreAutoShiftConfig::MODE_DAILY: // 每日
+        // 收集所有设置的交班时间
+        foreach (['shift_time_1', 'shift_time_2', 'shift_time_3'] as $field) {
+            if (!empty($config->$field)) {
+                $time = Carbon::parse($config->$field);
                 $next = Carbon::today()->setTime($time->hour, $time->minute, $time->second);
+
+                // 如果时间已过，则为明天同一时间
                 if ($next->lte($now)) {
                     $next->addDay();
                 }
-                return $next;
 
-            case StoreAutoShiftConfig::MODE_WEEKLY: // 每周
-                $weekdays = array_map('intval', explode(',', $config->shift_weekdays));
-                sort($weekdays);
-                $currentWeekday = $now->dayOfWeek;
-
-                // 找到下一个交班日
-                $nextWeekday = null;
-                foreach ($weekdays as $day) {
-                    if ($day > $currentWeekday) {
-                        $nextWeekday = $day;
-                        break;
-                    } elseif ($day == $currentWeekday) {
-                        // 今天有交班，检查时间是否已过
-                        $todayShift = Carbon::today()->setTime($time->hour, $time->minute, $time->second);
-                        if ($todayShift->gt($now)) {
-                            $nextWeekday = $day;
-                            break;
-                        }
-                    }
-                }
-
-                // 如果本周没有了，取下周第一个
-                if ($nextWeekday === null) {
-                    $nextWeekday = $weekdays[0];
-                    $daysToAdd = 7 - $currentWeekday + $nextWeekday;
-                } else {
-                    $daysToAdd = $nextWeekday - $currentWeekday;
-                }
-
-                $next = Carbon::today()->addDays($daysToAdd)->setTime($time->hour, $time->minute, $time->second);
-                return $next;
-
-            case StoreAutoShiftConfig::MODE_CUSTOM: // 自定义周期
-                $lastShift = $config->last_shift_time ? Carbon::parse($config->last_shift_time) : $now;
-                return $lastShift->copy()->addHours($config->shift_interval_hours);
-
-            default:
-                return $now->addDay();
+                $times[] = $next;
+            }
         }
+
+        // 如果没有设置任何时间，返回null
+        if (empty($times)) {
+            return null;
+        }
+
+        // 返回最近的时间
+        usort($times, function($a, $b) {
+            return $a->timestamp <=> $b->timestamp;
+        });
+
+        return $times[0];
     }
 
     /**
@@ -242,7 +196,7 @@ class AutoShiftService
             // 如果有上次交班时间，从上次结束时间开始
             if ($config->last_shift_time) {
                 $lastRecord = StoreAgentShiftHandoverRecord::query()
-                    ->where('bind_player_id', $config->bind_player_id)
+                    ->where('bind_admin_user_id', $config->bind_admin_user_id)
                     ->where('is_auto_shift', 1)
                     ->orderBy('id', 'desc')
                     ->first();
@@ -269,7 +223,7 @@ class AutoShiftService
 
             // 4. 统计账变数据
             $statistics = $this->calculateShiftStatistics(
-                $config->bind_player_id,
+                $config->bind_admin_user_id,
                 $startTime->toDateTimeString(),
                 $endTime->toDateTimeString()
             );
@@ -277,7 +231,7 @@ class AutoShiftService
             // 5. 创建交班记录
             $shiftRecord = new StoreAgentShiftHandoverRecord();
             $shiftRecord->department_id = $config->department_id;
-            $shiftRecord->bind_player_id = $config->bind_player_id;
+            $shiftRecord->bind_admin_user_id = $config->bind_admin_user_id;
             $shiftRecord->start_time = $startTime;
             $shiftRecord->end_time = $endTime;
             $shiftRecord->machine_amount = $statistics['machine_amount'];
@@ -294,7 +248,7 @@ class AutoShiftService
             $log = new StoreAutoShiftLog();
             $log->config_id = $config->id;
             $log->department_id = $config->department_id;
-            $log->bind_player_id = $config->bind_player_id;
+            $log->bind_admin_user_id = $config->bind_admin_user_id;
             $log->shift_record_id = $shiftRecord->id;
             $log->start_time = $startTime;
             $log->end_time = $endTime;
@@ -326,6 +280,18 @@ class AutoShiftService
                 'total_profit' => $statistics['total_profit']
             ]);
 
+            // 发送成功通知
+            if ($config->enable_notification) {
+                $this->sendNotification($config, 'success', [
+                    'shift_record_id' => $shiftRecord->id,
+                    'start_time' => $startTime->toDateTimeString(),
+                    'end_time' => $endTime->toDateTimeString(),
+                    'total_profit' => $statistics['total_profit'],
+                    'total_in' => $statistics['total_in'],
+                    'total_out' => $statistics['total_out'],
+                ]);
+            }
+
             return [
                 'code' => 0,
                 'msg' => '自动交班成功',
@@ -346,7 +312,7 @@ class AutoShiftService
                 $log = new StoreAutoShiftLog();
                 $log->config_id = $config->id;
                 $log->department_id = $config->department_id;
-                $log->bind_player_id = $config->bind_player_id;
+                $log->bind_admin_user_id = $config->bind_admin_user_id;
                 $log->start_time = $startTime ?? Carbon::now();
                 $log->end_time = $endTime ?? Carbon::now();
                 $log->execute_time = Carbon::now();
@@ -364,9 +330,13 @@ class AutoShiftService
                 'trace' => $e->getTraceAsString()
             ]);
 
-            // 发送告警通知
-            if ($config->notify_on_failure && $config->notify_phones) {
-                $this->sendFailureNotification($config, $e->getMessage());
+            // 发送失败通知
+            if ($config->enable_notification) {
+                $this->sendNotification($config, 'failed', [
+                    'error' => $e->getMessage(),
+                    'start_time' => $startTime ? $startTime->toDateTimeString() : null,
+                    'end_time' => $endTime ? $endTime->toDateTimeString() : null,
+                ]);
             }
 
             return ['code' => 1, 'msg' => '自动交班失败: ' . $e->getMessage()];
@@ -376,7 +346,7 @@ class AutoShiftService
     /**
      * 统计交班数据
      */
-    private function calculateShiftStatistics(int $bindPlayerId, string $startTime, string $endTime): array
+    private function calculateShiftStatistics(int $bindAdminUserId, string $startTime, string $endTime): array
     {
         $currency = Currency::query()->first();
 
@@ -395,12 +365,7 @@ class AutoShiftService
                 PlayerDeliveryRecord::TYPE_MACHINE
             ])
             ->join('player', 'player_delivery_record.player_id', '=', 'player.id')
-            ->where('player.department_id', function($query) use ($bindPlayerId) {
-                $query->select('department_id')
-                    ->from('player')
-                    ->where('id', $bindPlayerId)
-                    ->limit(1);
-            })
+            ->where('player.store_admin_id', $bindAdminUserId)
             ->where('player_delivery_record.created_at', '>', $startTime)
             ->where('player_delivery_record.created_at', '<=', $endTime)
             ->first();
@@ -424,27 +389,68 @@ class AutoShiftService
     }
 
     /**
-     * 发送失败通知
+     * 发送WebSocket通知到店家后台
      */
-    private function sendFailureNotification(StoreAutoShiftConfig $config, string $errorMsg): void
+    private function sendNotification(StoreAutoShiftConfig $config, string $status, array $data): void
     {
-        // TODO: 实现短信/邮件/企业微信通知
-        $message = sprintf(
-            "【自动交班失败】\n店家ID: %d\n失败时间: %s\n错误信息: %s",
-            $config->department_id,
-            date('Y-m-d H:i:s'),
-            $errorMsg
-        );
+        try {
+            // 创建推送API实例
+            $api = new Api(
+                env('PUSH_API_URL', 'http://10.140.0.6:3232'),
+                env('PUSH_APP_KEY', '20f94408fc4c52845f162e92a253c7a3'),
+                env('PUSH_APP_SECRET', '3151f8648a6ccd9d4515386f34127e28')
+            );
 
-        \Log::info('发送自动交班失败通知', [
-            'config_id' => $config->id,
-            'phones' => $config->notify_phones,
-            'message' => $message
-        ]);
+            // 店家管理员频道
+            $channel = "admin-{$config->bind_admin_user_id}";
+            $event = 'auto-shift-notification';
 
-        // 这里可以集成短信服务
-        // $smsService = new SmsService();
-        // $smsService->send($config->notify_phones, $message);
+            // 构建推送消息
+            $message = [
+                'type' => 'auto_shift',
+                'status' => $status,
+                'timestamp' => time(),
+                'datetime' => date('Y-m-d H:i:s'),
+                'config_id' => $config->id,
+                'data' => $data,
+            ];
+
+            // 根据状态添加标题和内容
+            if ($status === 'success') {
+                $message['title'] = '自动交班成功';
+                $message['content'] = sprintf(
+                    '交班时间：%s ~ %s\n总利润：%.2f',
+                    $data['start_time'] ?? '',
+                    $data['end_time'] ?? '',
+                    $data['total_profit'] ?? 0
+                );
+                $message['level'] = 'success';
+            } else {
+                $message['title'] = '自动交班失败';
+                $message['content'] = sprintf(
+                    '失败时间：%s\n错误信息：%s',
+                    date('Y-m-d H:i:s'),
+                    $data['error'] ?? '未知错误'
+                );
+                $message['level'] = 'error';
+            }
+
+            // 发送推送
+            $result = $api->trigger($channel, $event, $message);
+
+            \Log::info('发送自动交班通知', [
+                'channel' => $channel,
+                'event' => $event,
+                'status' => $status,
+                'result' => $result ? 'success' : 'failed',
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('发送自动交班通知失败', [
+                'config_id' => $config->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -463,13 +469,13 @@ class AutoShiftService
     /**
      * 获取执行统计
      */
-    public function getExecutionStats(int $departmentId, int $bindPlayerId, int $days = 7): array
+    public function getExecutionStats(int $departmentId, int $bindAdminUserId, int $days = 7): array
     {
         $startDate = Carbon::now()->subDays($days)->startOfDay();
 
         $logs = StoreAutoShiftLog::query()
             ->where('department_id', $departmentId)
-            ->where('bind_player_id', $bindPlayerId)
+            ->where('bind_admin_user_id', $bindAdminUserId)
             ->where('created_at', '>=', $startDate)
             ->get();
 
