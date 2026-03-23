@@ -4,7 +4,6 @@ namespace app\api\controller\v1;
 
 use app\model\Announcement;
 use app\model\Channel;
-use app\model\Game;
 use app\model\GameExtend;
 use app\model\LevelList;
 use app\model\Lottery;
