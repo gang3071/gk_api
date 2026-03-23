@@ -23,7 +23,7 @@ final class AddAutoShiftMenus extends AbstractMigration
 
         // 检查父级菜单是否已存在
         $existingParent = $this->query(
-            "SELECT id FROM admin_menus WHERE name = 'auto_shift_management' AND deleted_at IS NULL LIMIT 1"
+            "SELECT id FROM admin_menus WHERE name = 'auto_shift_management' LIMIT 1"
         )->fetch();
 
         if ($existingParent) {
@@ -62,7 +62,7 @@ final class AddAutoShiftMenus extends AbstractMigration
         foreach ($childMenus as $child) {
             // 检查子菜单是否已存在
             $existingChild = $this->query(
-                "SELECT id FROM admin_menus WHERE name = '{$child['name']}' AND deleted_at IS NULL LIMIT 1"
+                "SELECT id FROM admin_menus WHERE name = '{$child['name']}' LIMIT 1"
             )->fetch();
 
             if (!$existingChild) {
