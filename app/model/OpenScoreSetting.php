@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Class OpenScoreSetting
+ * 店家开分配置
+ *
  * @property int id 主键
- * @property int player_id 店家ID（旧字段，已废弃）
  * @property int admin_user_id 店家AdminUser ID
  * @property int score_1 开分选项1
  * @property int score_2 开分选项2
@@ -29,8 +30,7 @@ class OpenScoreSetting extends Model
     use HasDateTimeFormatter;
 
     protected $fillable = [
-        'player_id',        // 旧字段，保留兼容
-        'admin_user_id',    // 新字段
+        'admin_user_id',
         'score_1',
         'score_2',
         'score_3',
@@ -41,7 +41,6 @@ class OpenScoreSetting extends Model
     ];
 
     protected $casts = [
-        'player_id' => 'integer',
         'admin_user_id' => 'integer',
         'score_1' => 'integer',
         'score_2' => 'integer',
@@ -54,17 +53,7 @@ class OpenScoreSetting extends Model
     protected $table = 'open_score_setting';
 
     /**
-     * 店家玩家（旧方法，已废弃）
-     * @return BelongsTo
-     * @deprecated 使用 adminUser() 替代
-     */
-    public function player(): BelongsTo
-    {
-        return $this->belongsTo(Player::class, 'player_id');
-    }
-
-    /**
-     * 店家账号（新方法）
+     * 关联店家账号
      * @return BelongsTo
      */
     public function adminUser(): BelongsTo
