@@ -238,14 +238,13 @@ final class CleanBusinessData extends AbstractMigration
         ");
         echo "  ✓ 已清理: channel (保留线下直营站)\n";
 
-        // 清理渠道相关的配置表
-        $relatedTables = [
+        // 清理渠道相关的配置表（使用 department_id）
+        $departmentRelatedTables = [
             'channel_recharge_setting',        // 渠道充值配置
             'channel_recharge_method',         // 渠道充值方式
-            'channel_game_web',                // 渠道游戏配置
         ];
 
-        foreach ($relatedTables as $table) {
+        foreach ($departmentRelatedTables as $table) {
             if ($this->hasTable($table)) {
                 // 清理不属于线下渠道的配置
                 $this->execute("
@@ -259,6 +258,20 @@ final class CleanBusinessData extends AbstractMigration
             } else {
                 echo "  - 跳过(表不存在): {$table}\n";
             }
+        }
+
+        // 清理 channel_game_web（使用 channel_id）
+        if ($this->hasTable('channel_game_web')) {
+            $this->execute("
+                DELETE FROM `channel_game_web`
+                WHERE channel_id NOT IN (
+                    SELECT id FROM channel
+                    WHERE is_offline = 1 AND type = 1
+                )
+            ");
+            echo "  ✓ 已清理: channel_game_web (保留线下渠道配置)\n";
+        } else {
+            echo "  - 跳过(表不存在): channel_game_web\n";
         }
 
         // 清理已删除渠道的管理员（保留总站和线下渠道的管理员）
