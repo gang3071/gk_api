@@ -426,4 +426,17 @@ return [
     'withdraw_status_player_canceled' => 'プレイヤーキャンセル',
     'withdraw_status_system_canceled' => 'システムキャンセル',
     'withdraw_status_unknown' => '不明',
+
+    // 宝くじステータス
+    'lottery_status_unreviewed' => '未審査',
+    'lottery_status_rejected' => '拒否済み',
+    'lottery_status_passed' => '承認済み',
+    'lottery_status_completed' => '完了',
+    'lottery_status_unknown' => '不明',
+
+    // 宝くじソース
+    'lottery_source_machine' => '実機',
+    'lottery_source_game' => '電子ゲーム',
+    'lottery_source_manual' => '手動発行',
+    'lottery_source_unknown' => '不明',
 ];

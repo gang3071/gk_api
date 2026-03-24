@@ -430,4 +430,17 @@ return [
     'withdraw_status_player_canceled' => '玩家取消',
     'withdraw_status_system_canceled' => '系統取消',
     'withdraw_status_unknown' => '未知',
+
+    // 彩金狀態
+    'lottery_status_unreviewed' => '未審核',
+    'lottery_status_rejected' => '已拒絕',
+    'lottery_status_passed' => '已通過',
+    'lottery_status_completed' => '已完成',
+    'lottery_status_unknown' => '未知',
+
+    // 彩金來源
+    'lottery_source_machine' => '實體機台',
+    'lottery_source_game' => '電子遊戲',
+    'lottery_source_manual' => '手動發放',
+    'lottery_source_unknown' => '未知',
 ];
