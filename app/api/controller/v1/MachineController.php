@@ -18,6 +18,7 @@ use app\model\MachineTencentPlay;
 use app\model\OpenScoreSetting;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
+use app\model\PlayerExtend;
 use app\model\PlayerFavoriteMachine;
 use app\model\PlayerGameLog;
 use app\model\PlayerGameRecord;
@@ -1374,19 +1375,7 @@ class MachineController
                 $playerRechargeRecord->point, 2);
             $player->player_extend->recharge_amount = bcadd($player->player_extend->recharge_amount,
                 $playerRechargeRecord->point, 2);
-            //给上级投钞增加记录维护
-            $player->recommend_player->player_extend->team_machine_put_point = bcadd($player->recommend_player->player_extend->team_machine_put_point,
-                $playerRechargeRecord->point, 2);
-            $player->recommend_player->player_extend->team_machine_put_amount = bcadd($player->recommend_player->player_extend->team_machine_put_amount,
-                $playerRechargeRecord->money, 2);
-            
-            //统计线下总营收
-            if (!empty($player->recommend_id != 0)) {
-                //不是最上级
-                //总投钞+总开分-总洗分
-                $player->recommend_player->player_promoter->total_amount += (float)$money;
-                $player->recommend_player->player_promoter->children_total_amount += (float)$money;
-            }
+
             $player->push();
             $playerDeliveryRecord = new PlayerDeliveryRecord;
             $playerDeliveryRecord->player_id = $playerRechargeRecord->player_id;
