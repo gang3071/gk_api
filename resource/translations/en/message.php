@@ -429,4 +429,17 @@ return [
     'withdraw_status_player_canceled' => 'Player Canceled',
     'withdraw_status_system_canceled' => 'System Canceled',
     'withdraw_status_unknown' => 'Unknown',
+
+    // Lottery status
+    'lottery_status_unreviewed' => 'Unreviewed',
+    'lottery_status_rejected' => 'Rejected',
+    'lottery_status_passed' => 'Passed',
+    'lottery_status_completed' => 'Completed',
+    'lottery_status_unknown' => 'Unknown',
+
+    // Lottery source
+    'lottery_source_machine' => 'Physical Machine',
+    'lottery_source_game' => 'Electronic Game',
+    'lottery_source_manual' => 'Manual',
+    'lottery_source_unknown' => 'Unknown',
 ];

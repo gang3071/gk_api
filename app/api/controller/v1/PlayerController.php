@@ -21,6 +21,7 @@ use app\model\PlayerBank;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerFavoriteMachine;
 use app\model\PlayerGameRecord;
+use app\model\PlayerLotteryRecord;
 use app\model\PlayerMoneyEditLog;
 use app\model\PlayerPlatformCash;
 use app\model\PlayerPresentRecord;
@@ -3582,6 +3583,81 @@ class PlayerController
                 'withdraw_status_text' => $statusText,
                 'remark' => $record->remark,
                 'tradeno' => $record->tradeno,
+                'created_at' => $record->created_at,
+            ];
+        }
+
+        return jsonSuccessResponse('success', [
+            'list' => $list,
+        ]);
+    }
+
+    /**
+     * 彩金中奖记录列表
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function getLotteryRecords(Request $request): Response
+    {
+        $player = checkPlayer();
+        $data = $request->all();
+
+        // 构建查询
+        $query = PlayerLotteryRecord::query()
+            ->where('player_id', $player->id)
+            ->orderBy('id', 'desc');
+
+        // 按状态筛选
+        if (isset($data['status']) && $data['status'] !== '') {
+            $query->where('status', $data['status']);
+        }
+
+        // 按来源筛选
+        if (isset($data['source']) && $data['source'] !== '') {
+            $query->where('source', $data['source']);
+        }
+
+        // 分页查询
+        $records = $query->forPage($data['page'] ?? 1, $data['size'] ?? 10)->get();
+
+        $list = [];
+        foreach ($records as $record) {
+            // 状态文本
+            $statusText = match ($record->status) {
+                PlayerLotteryRecord::STATUS_UNREVIEWED => trans('lottery_status_unreviewed', [], 'message'),
+                PlayerLotteryRecord::STATUS_REJECT => trans('lottery_status_rejected', [], 'message'),
+                PlayerLotteryRecord::STATUS_PASS => trans('lottery_status_passed', [], 'message'),
+                PlayerLotteryRecord::STATUS_COMPLETE => trans('lottery_status_completed', [], 'message'),
+                default => trans('lottery_status_unknown', [], 'message'),
+            };
+
+            // 来源文本
+            $sourceText = match ($record->source) {
+                PlayerLotteryRecord::SOURCE_MACHINE => trans('lottery_source_machine', [], 'message'),
+                PlayerLotteryRecord::SOURCE_GAME => trans('lottery_source_game', [], 'message'),
+                PlayerLotteryRecord::SOURCE_MANUAL => trans('lottery_source_manual', [], 'message'),
+                default => trans('lottery_source_unknown', [], 'message'),
+            };
+
+            $list[] = [
+                'id' => $record->id,
+                'lottery_name' => $record->lottery_name,
+                'amount' => $record->amount,
+                'bet' => $record->bet,
+                'odds' => $record->odds,
+                'machine_name' => $record->machine_name,
+                'machine_code' => $record->machine_code,
+                'lottery_pool_amount' => $record->lottery_pool_amount,
+                'lottery_rate' => $record->lottery_rate,
+                'lottery_type' => $record->lottery_type,
+                'lottery_multiple' => $record->lottery_multiple,
+                'status' => $record->status,
+                'status_text' => $statusText,
+                'source' => $record->source,
+                'source_text' => $sourceText,
+                'reject_reason' => $record->reject_reason,
+                'audit_at' => $record->audit_at,
                 'created_at' => $record->created_at,
             ];
         }

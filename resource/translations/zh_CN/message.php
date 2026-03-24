@@ -440,4 +440,17 @@ return [
     'withdraw_status_player_canceled' => '玩家取消',
     'withdraw_status_system_canceled' => '系统取消',
     'withdraw_status_unknown' => '未知',
+
+    // 彩金状态
+    'lottery_status_unreviewed' => '未审核',
+    'lottery_status_rejected' => '已拒绝',
+    'lottery_status_passed' => '已通过',
+    'lottery_status_completed' => '已完成',
+    'lottery_status_unknown' => '未知',
+
+    // 彩金来源
+    'lottery_source_machine' => '实体机台',
+    'lottery_source_game' => '电子游戏',
+    'lottery_source_manual' => '手动发放',
+    'lottery_source_unknown' => '未知',
 ];

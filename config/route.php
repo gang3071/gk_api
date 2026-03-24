@@ -262,6 +262,8 @@ Route::group('/api', function () {
         Route::post('/open-score-records', [\app\api\controller\v1\PlayerController::class, 'getOpenScoreRecords']);
         // 洗分记录列表
         Route::post('/present-auto-records', [\app\api\controller\v1\PlayerController::class, 'getPresentAutoRecords']);
+        // 彩金中奖记录列表
+        Route::post('/lottery-records', [\app\api\controller\v1\PlayerController::class, 'getLotteryRecords']);
 
         // ========== 充值满赠相关接口 ==========
         // 获取充值满赠活动列表
