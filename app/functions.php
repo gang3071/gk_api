@@ -118,6 +118,9 @@ function checkPlayer(bool $hasTransfer = true): Player
         ]);
     }
 
+    // 确保 player_extend 存在，不存在则创建
+    PlayerExtend::query()->firstOrCreate(['player_id' => $player->id]);
+
     return $player;
 }
 
