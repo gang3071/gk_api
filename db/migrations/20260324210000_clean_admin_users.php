@@ -36,9 +36,9 @@ final class CleanAdminUsers extends AbstractMigration
                 echo "  - 保留账号数量: {$result['count']} 个\n";
 
                 // 显示保留的账号信息
-                $admin = $this->fetchRow("SELECT id, username, name FROM admin_users WHERE id = 1");
+                $admin = $this->fetchRow("SELECT id, username, nickname FROM admin_users WHERE id = 1");
                 if ($admin) {
-                    echo "  - 保留账号: ID={$admin['id']}, Username={$admin['username']}, Name={$admin['name']}\n";
+                    echo "  - 保留账号: ID={$admin['id']}, Username={$admin['username']}, Nickname={$admin['nickname']}\n";
                 } else {
                     echo "  ⚠ 警告: id=1 的账号不存在！\n";
                 }
