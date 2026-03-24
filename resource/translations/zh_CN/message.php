@@ -429,5 +429,15 @@ return [
     'machine_lock' => '{code}机台已锁,请排障后解锁机台',
     'point_not_enough' => '机台分数必须大于6才能开启自动',
     'machine_point_insufficient' => '{code} 机台, 分数不足100无法上转',
-    'one_payment_recharge_close' => 'onePay充值通道已关闭'
+    'one_payment_recharge_close' => 'onePay充值通道已关闭',
+
+    // 洗分状态
+    'withdraw_status_processing' => '提现中',
+    'withdraw_status_success' => '成功',
+    'withdraw_status_failed' => '失败',
+    'withdraw_status_pending_payment' => '待打款',
+    'withdraw_status_rejected' => '不通过',
+    'withdraw_status_player_canceled' => '玩家取消',
+    'withdraw_status_system_canceled' => '系统取消',
+    'withdraw_status_unknown' => '未知',
 ];

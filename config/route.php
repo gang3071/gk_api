@@ -256,8 +256,12 @@ Route::group('/api', function () {
         Route::post('/exit-game', [\app\api\controller\v1\IndexController::class, 'exitGame']);
         // 获取开分配置
         Route::post('/get-open-score-setting', [\app\api\controller\v1\MachineController::class, 'getOpenScoreSetting']);
-        // 获取开分配置
+        // 开分业务
         Route::post('/open-score', [\app\api\controller\v1\PlayerController::class, 'openScore']);
+        // 开分记录列表
+        Route::post('/open-score-records', [\app\api\controller\v1\PlayerController::class, 'getOpenScoreRecords']);
+        // 洗分记录列表
+        Route::post('/present-auto-records', [\app\api\controller\v1\PlayerController::class, 'getPresentAutoRecords']);
 
         // ========== 充值满赠相关接口 ==========
         // 获取充值满赠活动列表

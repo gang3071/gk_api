@@ -3492,4 +3492,102 @@ class PlayerController
 
         return $settings;
     }
+
+    /**
+     * 开分记录列表
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function getOpenScoreRecords(Request $request): Response
+    {
+        $player = checkPlayer();
+        $data = $request->all();
+
+        // 构建查询
+        $query = PlayerDeliveryRecord::query()
+            ->where('player_id', $player->id)
+            ->where('type', PlayerDeliveryRecord::TYPE_RECHARGE)
+            ->orderBy('id', 'desc');
+
+        // 按金额筛选
+        if (!empty($data['score_option'])) {
+            $query->where('amount', $data['score_option']);
+        } elseif (!empty($data['custom'])) {
+            $query->where('amount', $data['custom']);
+        }
+
+        // 分页查询
+        $records = $query->forPage($data['page'] ?? 1, $data['size'] ?? 10)->get();
+
+        $list = [];
+        foreach ($records as $record) {
+            $list[] = [
+                'id' => $record->id,
+                'amount' => $record->amount,
+                'point' => $record->point,
+                'amount_before' => $record->amount_before,
+                'amount_after' => $record->amount_after,
+                'remark' => $record->remark,
+                'tradeno' => $record->tradeno,
+                'created_at' => $record->created_at,
+            ];
+        }
+
+        return jsonSuccessResponse('success', [
+            'list' => $list,
+        ]);
+    }
+
+    /**
+     * 洗分记录列表
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function getPresentAutoRecords(Request $request): Response
+    {
+        $player = checkPlayer();
+        $data = $request->all();
+
+        // 构建查询
+        $query = PlayerDeliveryRecord::query()
+            ->where('player_id', $player->id)
+            ->where('type', PlayerDeliveryRecord::TYPE_WITHDRAWAL)
+            ->orderBy('id', 'desc');
+
+        // 分页查询
+        $records = $query->forPage($data['page'] ?? 1, $data['size'] ?? 10)->get();
+
+        $list = [];
+        foreach ($records as $record) {
+            $statusText = match ($record->withdraw_status) {
+                1 => trans('withdraw_status_processing', [], 'message'),
+                2 => trans('withdraw_status_success', [], 'message'),
+                3 => trans('withdraw_status_failed', [], 'message'),
+                4 => trans('withdraw_status_pending_payment', [], 'message'),
+                5 => trans('withdraw_status_rejected', [], 'message'),
+                6 => trans('withdraw_status_player_canceled', [], 'message'),
+                7 => trans('withdraw_status_system_canceled', [], 'message'),
+                default => trans('withdraw_status_unknown', [], 'message'),
+            };
+
+            $list[] = [
+                'id' => $record->id,
+                'amount' => $record->amount,
+                'point' => $record->point,
+                'amount_before' => $record->amount_before,
+                'amount_after' => $record->amount_after,
+                'withdraw_status' => $record->withdraw_status,
+                'withdraw_status_text' => $statusText,
+                'remark' => $record->remark,
+                'tradeno' => $record->tradeno,
+                'created_at' => $record->created_at,
+            ];
+        }
+
+        return jsonSuccessResponse('success', [
+            'list' => $list,
+        ]);
+    }
 }

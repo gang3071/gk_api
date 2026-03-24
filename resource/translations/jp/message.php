@@ -415,5 +415,15 @@ return [
     'machine_lock' => '{code}テーブルはロックされているので、障害物を取り除いてからテーブルをロック解除してください',
     'point_not_enough' => 'テーブルスコアは6より大きくなければ自動を開始できません',
     'machine_point_insufficient' => '{code} 机台、点数が100未満では回転できません',
-    'one_payment_recharge_close' => 'onePay リチャージ パス ロード 已关闭'
+    'one_payment_recharge_close' => 'onePay リチャージ パス ロード 已关闭',
+
+    // 出金ステータス
+    'withdraw_status_processing' => '処理中',
+    'withdraw_status_success' => '成功',
+    'withdraw_status_failed' => '失敗',
+    'withdraw_status_pending_payment' => '支払待ち',
+    'withdraw_status_rejected' => '拒否',
+    'withdraw_status_player_canceled' => 'プレイヤーキャンセル',
+    'withdraw_status_system_canceled' => 'システムキャンセル',
+    'withdraw_status_unknown' => '不明',
 ];

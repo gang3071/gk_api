@@ -419,5 +419,15 @@ return [
     'machine_lock' => '{code}機台已鎖，請排障後解鎖機台',
     'point_not_enough' => '機台分數必須大於6才能開啟自動',
     'machine_point_insufficient' => '{code} 機台，分數不足100無法上轉',
-    'one_payment_recharge_close' => 'onePay充值頻道已關閉'
+    'one_payment_recharge_close' => 'onePay充值頻道已關閉',
+
+    // 洗分狀態
+    'withdraw_status_processing' => '提現中',
+    'withdraw_status_success' => '成功',
+    'withdraw_status_failed' => '失敗',
+    'withdraw_status_pending_payment' => '待打款',
+    'withdraw_status_rejected' => '不通過',
+    'withdraw_status_player_canceled' => '玩家取消',
+    'withdraw_status_system_canceled' => '系統取消',
+    'withdraw_status_unknown' => '未知',
 ];

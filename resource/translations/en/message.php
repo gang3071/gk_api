@@ -418,5 +418,15 @@ return [
     'machine_lock' => '{code}The machine is locked. Please unlock the machine after troubleshooting',
     'point_not_enough' => 'The machine score must be greater than 6 to enable automatic operation',
     'machine_point_insufficient' => '{code} Machine, score less than 100, unable to move up',
-    'one_payment_recharge_close' => 'onePay Recharge Pass Load has been closed'
+    'one_payment_recharge_close' => 'onePay Recharge Pass Load has been closed',
+
+    // Withdrawal status
+    'withdraw_status_processing' => 'Processing',
+    'withdraw_status_success' => 'Success',
+    'withdraw_status_failed' => 'Failed',
+    'withdraw_status_pending_payment' => 'Pending Payment',
+    'withdraw_status_rejected' => 'Rejected',
+    'withdraw_status_player_canceled' => 'Player Canceled',
+    'withdraw_status_system_canceled' => 'System Canceled',
+    'withdraw_status_unknown' => 'Unknown',
 ];
