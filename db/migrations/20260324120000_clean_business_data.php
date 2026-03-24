@@ -300,12 +300,13 @@ final class CleanBusinessData extends AbstractMigration
         if ($this->hasTable('machine')) {
             $this->execute("
                 UPDATE machine
-                SET player_id = 0,
-                    player_uuid = '',
-                    player_name = '',
-                    player_phone = '',
+                SET gaming_user_id = 0,
+                    keeping_user_id = 0,
+                    gaming = 0,
+                    keeping = 0,
+                    is_use = 0,
                     updated_at = NOW()
-                WHERE player_id > 0
+                WHERE gaming_user_id > 0 OR keeping_user_id > 0
             ");
             echo "  ✓ 已重置: machine 的玩家绑定\n";
         } else {
