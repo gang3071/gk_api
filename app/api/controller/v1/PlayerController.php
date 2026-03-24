@@ -888,7 +888,7 @@ class PlayerController
     }
     
     /**
-     * 竖版转点
+     * 洗分（线下代理提现）
      * @param Request $request
      * @return Response
      * @throws PlayerCheckException|Exception
@@ -898,16 +898,8 @@ class PlayerController
         Request $request
     ): Response {
         $player = checkPlayer();
-        //没有推广员
-        if (empty($player->recommend_id)) {
-            return jsonFailResponse(trans('player_promoter_not_fount', [], 'message'));
-        }
-        /** @var Player $acceptPlayer */
-        $acceptPlayer = Player::where('id', $player->recommend_id)->whereNull('deleted_at')->where('department_id',
-            \request()->department_id)->first();
-        if (empty($acceptPlayer)) {
-            return jsonFailResponse(trans('present_player_not_found', [], 'message'));
-        }
+
+        // 基础验证
         if ($player->is_coin == 1) {
             return jsonFailResponse(trans('coin_cannot_present', [], 'message'));
         }
@@ -923,7 +915,7 @@ class PlayerController
             return jsonFailResponse('餘額不足100，無法洗分');
         }
 
-        // 使用计算后的金额作为洗分金额
+        // 渠道和货币验证
         /** @var Channel $channel */
         $channel = Channel::query()->where('department_id', \request()->department_id)->first();
         if ($player->status_withdraw != 1) {
@@ -939,10 +931,11 @@ class PlayerController
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
         $money = bcdiv($washAmount, $currency->ratio, 2);
-        //驗證通過
+
+        // 开始事务处理
         DB::beginTransaction();
         try {
-            // 生成订单
+            // 生成提现订单
             $playerWithdrawRecord = new PlayerWithdrawRecord();
             $playerWithdrawRecord->player_id = $player->id;
             $playerWithdrawRecord->talk_user_id = $player->talk_user_id;
@@ -955,8 +948,7 @@ class PlayerController
             $playerWithdrawRecord->money = $money;
             $playerWithdrawRecord->point = $washAmount;
             $playerWithdrawRecord->fee = 0;
-            $playerWithdrawRecord->inmoney = bcsub($playerWithdrawRecord->money, $playerWithdrawRecord->fee,
-                2); // 实际提现金额
+            $playerWithdrawRecord->inmoney = bcsub($playerWithdrawRecord->money, $playerWithdrawRecord->fee, 2);
             $playerWithdrawRecord->currency = $channel->currency;
             $playerWithdrawRecord->bank_name = '';
             $playerWithdrawRecord->account = '';
@@ -966,19 +958,24 @@ class PlayerController
             $playerWithdrawRecord->type = PlayerWithdrawRecord::TYPE_SELF;
             $playerWithdrawRecord->status = PlayerWithdrawRecord::STATUS_SUCCESS;
             $playerWithdrawRecord->bank_type = 4;
+            $playerWithdrawRecord->remark = '線下代理洗分';
             $playerWithdrawRecord->save();
+
             $beforeGameAmount = $player->machine_wallet->money;
+
             // 玩家钱包扣减
             /** @var PlayerPlatformCash $machineWallet */
             $machineWallet = PlayerPlatformCash::query()->where('platform_id',
                 PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
             $machineWallet->money = bcsub($machineWallet->money, $playerWithdrawRecord->point, 2);
             $machineWallet->save();
-            // 更新玩家统计
+
+            // 更新玩家提现统计
             $player->player_extend->withdraw_amount = bcadd($player->player_extend->withdraw_amount,
                 $playerWithdrawRecord->point, 2);
             $player->push();
-            //寫入金流明細
+
+            // 写入金流明细
             $playerDeliveryRecord = new PlayerDeliveryRecord;
             $playerDeliveryRecord->player_id = $playerWithdrawRecord->player_id;
             $playerDeliveryRecord->department_id = $playerWithdrawRecord->department_id;
@@ -991,33 +988,16 @@ class PlayerController
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
             $playerDeliveryRecord->amount_after = $machineWallet->money;
             $playerDeliveryRecord->tradeno = $playerWithdrawRecord->tradeno ?? '';
-            $playerDeliveryRecord->remark = $playerWithdrawRecord->remark ?? '';
+            $playerDeliveryRecord->remark = '線下代理洗分';
             $playerDeliveryRecord->save();
-            
-            //统计线下总营收
-            if (!empty($player->recommend_id) && $player->recommend_player->player_promoter->recommend_id != 0) {
-                //不是最上级
-                //总投钞+总开分-总洗分
-                $player->recommend_player->player_promoter->total_amount -= $playerWithdrawRecord->point;
-                $player->recommend_player->player_promoter->children_total_amount -= $playerWithdrawRecord->point;
-                $player->push();
-            }
 
-            if (!empty($acceptPlayer->recommend_id)) {
-                //不是最上级
-                //总投钞+总开分-总洗分
-                $acceptPlayer->recommend_player->player_promoter->total_amount += $playerWithdrawRecord->point;
-                $acceptPlayer->recommend_player->player_promoter->children_total_amount += $playerWithdrawRecord->point;
-                $acceptPlayer->push();
-            }
-            
             DB::commit();
         } catch (Exception $e) {
             DB::rollBack();
-            Log::error('present', [$e->getTrace()]);
+            Log::error('presentAuto', [$e->getTrace()]);
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
-        
+
         return jsonSuccessResponse('success', [
             'amount' => $playerDeliveryRecord->amount,
             'created_at' => date('Y-m-d H:i:s', strtotime($playerDeliveryRecord->created_at)),
@@ -3317,7 +3297,7 @@ class PlayerController
             $playerRechargeRecord->type = PlayerRechargeRecord::TYPE_ARTIFICIAL;
             $playerRechargeRecord->point = $scoreAmount;
             $playerRechargeRecord->status = PlayerRechargeRecord::STATUS_RECHARGED_SUCCESS;
-            $playerRechargeRecord->remark = "机台按钮开分：{$scoreOption}";
+            $playerRechargeRecord->remark = "線下代理開分：{$scoreOption}";
             $playerRechargeRecord->finish_time = date('Y-m-d H:i:s');
             $playerRechargeRecord->user_id = 0;
             $playerRechargeRecord->user_name = '';
@@ -3326,83 +3306,12 @@ class PlayerController
             $playerWallet->money = bcadd($playerWallet->money, $playerRechargeRecord->point, 2);
             $playerWallet->save();
 
+            // 更新玩家充值统计
             $player->player_extend->recharge_amount = bcadd($player->player_extend->recharge_amount,
                 $playerRechargeRecord->point, 2);
-            if (isset($player->national_promoter->status) && $player->national_promoter->status == 0) {
-                $player->national_promoter->created_at = $playerRechargeRecord->finish_time;
-                $player->national_promoter->status = 1;
-                if (!empty($player->recommend_id) && $player->channel->national_promoter_status == 1) {
-                    //玩家上级推广员信息
-                    /** @var Player $recommendPlayer */
-                    $recommendPlayer = Player::query()->find($player->recommend_id);
-                    //推广员为全民代理
-                    if(!empty($recommendPlayer->national_promoter) && $recommendPlayer->is_promoter < 1){
-                        //首充返佣金额
-                        /** @var PlayerPlatformCash $recommendPlayerWallet */
-                        $recommendPlayerWallet = PlayerPlatformCash::query()->where('player_id',
-                            $player->recommend_id)->lockForUpdate()->first();
-                        $beforeRechargeAmount = $recommendPlayerWallet->money;
-                        $rechargeRebate = $recommendPlayer->national_promoter->level_list->recharge_ratio;
-                        $recommendPlayerWallet->money = bcadd($recommendPlayerWallet->money, $rechargeRebate,
-                            2);
-                        //寫入首充金流明細
-                        $playerDeliveryRecord = new PlayerDeliveryRecord;
-                        $playerDeliveryRecord->player_id = $recommendPlayer->id;
-                        $playerDeliveryRecord->department_id = $recommendPlayer->department_id;
-                        $playerDeliveryRecord->target = $playerRechargeRecord->getTable();
-                        $playerDeliveryRecord->target_id = $playerRechargeRecord->id;
-                        $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_RECHARGE_REWARD;
-                        $playerDeliveryRecord->source = 'national_promoter';
-                        $playerDeliveryRecord->amount = $rechargeRebate;
-                        $playerDeliveryRecord->amount_before = $beforeRechargeAmount;
-                        $playerDeliveryRecord->amount_after = $recommendPlayer->machine_wallet->money;
-                        $playerDeliveryRecord->tradeno = $playerRechargeRecord->tradeno ?? '';
-                        $playerDeliveryRecord->remark = $playerRechargeRecord->remark ?? '';
-                        $playerDeliveryRecord->save();
-
-                        //首冲成功之后全民代理邀请奖励
-                        $recommendPlayer->national_promoter->invite_num = bcadd($recommendPlayer->national_promoter->invite_num, 1, 0);
-                        $recommendPlayer->national_promoter->settlement_amount = bcadd($recommendPlayer->national_promoter->settlement_amount, $rechargeRebate, 2);
-                        /** @var NationalInvite $national_invite */
-                        $national_invite = NationalInvite::query()->where('min', '<=',
-                            $recommendPlayer->national_promoter->invite_num)
-                            ->where('max', '>=', $recommendPlayer->national_promoter->invite_num)->first();
-
-                        if (!empty($national_invite) && $national_invite->interval > 0 && $recommendPlayer->national_promoter->invite_num % $national_invite->interval == 0) {
-                            $money = $national_invite->money;
-                            $amount_before = $recommendPlayerWallet->money;
-                            $recommendPlayerWallet->money = bcadd($recommendPlayerWallet->money, $money, 2);
-                            // 寫入金流明細
-                            $playerDeliveryRecord = new PlayerDeliveryRecord;
-                            $playerDeliveryRecord->player_id = $recommendPlayer->id;
-                            $playerDeliveryRecord->department_id = $recommendPlayer->department_id;
-                            $playerDeliveryRecord->target = $national_invite->getTable();
-                            $playerDeliveryRecord->target_id = $national_invite->id;
-                            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_NATIONAL_INVITE;
-                            $playerDeliveryRecord->source = 'national_promoter';
-                            $playerDeliveryRecord->amount = $money;
-                            $playerDeliveryRecord->amount_before = $amount_before;
-                            $playerDeliveryRecord->amount_after = $recommendPlayer->machine_wallet->money;
-                            $playerDeliveryRecord->tradeno = '';
-                            $playerDeliveryRecord->remark = '';
-                            $playerDeliveryRecord->save();
-                        }
-                        $recommendPlayer->push();
-                        $recommendPlayerWallet->save();
-
-                        $nationalProfitRecord = new NationalProfitRecord();
-                        $nationalProfitRecord->uid = $playerRechargeRecord->player_id;
-                        $nationalProfitRecord->recommend_id = $playerRechargeRecord->player->recommend_id;
-                        $nationalProfitRecord->money = $rechargeRebate;
-                        $nationalProfitRecord->type = 0;
-                        $nationalProfitRecord->status = 1;
-                        $nationalProfitRecord->save();
-                    }
-                }
-            }
             $player->push();
 
-            //寫入金流明細
+            // 写入金流明细
             $playerDeliveryRecord = new PlayerDeliveryRecord;
             $playerDeliveryRecord->player_id = $playerRechargeRecord->player_id;
             $playerDeliveryRecord->department_id = $playerRechargeRecord->department_id;
@@ -3414,7 +3323,7 @@ class PlayerController
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
             $playerDeliveryRecord->amount_after = $player->machine_wallet->money;
             $playerDeliveryRecord->tradeno = $playerRechargeRecord->tradeno ?? '';
-            $playerDeliveryRecord->remark = $playerRechargeRecord->remark ?? '';
+            $playerDeliveryRecord->remark = '線下代理開分';
             $playerDeliveryRecord->save();
 
             DB::commit();
