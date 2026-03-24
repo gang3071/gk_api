@@ -419,7 +419,7 @@ final class CleanBusinessData extends AbstractMigration
     /**
      * 检查表是否存在
      */
-    private function hasTable(string $tableName): bool
+    public function hasTable(string $tableName): bool
     {
         $rows = $this->fetchAll("SHOW TABLES LIKE '{$tableName}'");
         return !empty($rows);
