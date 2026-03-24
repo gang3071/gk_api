@@ -1060,63 +1060,6 @@ class GamePlatformController
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
         
-        // $amount = $player->machine_wallet->money;
-        // if ($amount > 0) {
-        //     DB::beginTransaction();
-        //     //驗證通過
-        //     try {
-        //         //玩家加點數
-        //         /** @var PlayerPlatformCash $machineWallet */
-        //         $machineWallet = PlayerPlatformCash::query()->where('platform_id',
-        //             PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
-        //         $balance = $gameService->getBalance(['lang' => $lang]);
-        //         //驗證通過
-        //         $playerWalletTransfer = new PlayerWalletTransfer();
-        //         $playerWalletTransfer->player_id = $player->id;
-        //         $playerWalletTransfer->parent_player_id = $player->recommend_id ?? 0;
-        //         $playerWalletTransfer->agent_player_id = $player->recommend_promoter->recommend_id ?? 0;
-        //         $playerWalletTransfer->platform_id = $gamePlatform->id;
-        //         $playerWalletTransfer->department_id = $player->department_id;
-        //         $playerWalletTransfer->type = PlayerWalletTransfer::TYPE_OUT;
-        //         $playerWalletTransfer->amount = abs($amount);
-        //         $playerWalletTransfer->game_amount = $balance;
-        //         $playerWalletTransfer->player_amount = $machineWallet->money;
-        //         $playerWalletTransfer->tradeno = createOrderNo();
-        //         $playerWalletTransfer->platform_no = $gameService->depositAmount([
-        //             'amount' => $amount,
-        //             'order_no' => $playerWalletTransfer->tradeno,
-        //             'lang' => $lang,
-        //         ]);
-        //         $playerWalletTransfer->save();
-        //         $beforeGameAmount = $machineWallet->money;
-        //         // 更新玩家统计
-        //         $machineWallet->money = bcsub($machineWallet->money, $playerWalletTransfer->amount, 2);
-        //         $machineWallet->save();
-
-        //         $playerDeliveryRecord = new PlayerDeliveryRecord;
-        //         $playerDeliveryRecord->player_id = $player->id;
-        //         $playerDeliveryRecord->department_id = $player->department_id;
-        //         $playerDeliveryRecord->target = $playerWalletTransfer->getTable();
-        //         $playerDeliveryRecord->target_id = $playerWalletTransfer->id;
-        //         $playerDeliveryRecord->platform_id = $gamePlatform->id;
-        //         $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_GAME_PLATFORM_OUT;
-        //         $playerDeliveryRecord->source = 'wallet_transfer_out';
-        //         $playerDeliveryRecord->amount = $playerWalletTransfer->amount;
-        //         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-        //         $playerDeliveryRecord->amount_after = $machineWallet->money;
-        //         $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
-        //         $playerDeliveryRecord->remark = $target->remark ?? '';
-        //         $playerDeliveryRecord->user_id = 0;
-        //         $playerDeliveryRecord->user_name = '';
-        //         $playerDeliveryRecord->save();
-
-        //         DB::commit();
-        //     } catch (Exception $e) {
-        //         DB::rollBack();
-        //         return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
-        //     }
-        // }
-        
         return jsonSuccessResponse('success', ['lobby_url' => $res]);
     }
     
