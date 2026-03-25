@@ -100,7 +100,6 @@ class StoreSetting extends Model
 
         // 查询配置（按优先级排序）
         $setting = self::where('feature', $feature)
-            ->where('status', 1)
             ->where(function ($query) use ($departmentId, $adminUserId) {
                 // 具体代理/店家配置（admin_user_id）
                 $query->where(function ($q) use ($departmentId, $adminUserId) {

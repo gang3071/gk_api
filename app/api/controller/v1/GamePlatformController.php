@@ -561,17 +561,17 @@ class GamePlatformController
             $adminUserId = $player->agent_admin_id;
         }
 
-        // 如果找到了有效的店家/代理配置，获取配置值
-        if ($adminUserId) {
-            $physicalMachineSetting = StoreSetting::getSetting(
-                'enable_physical_machine',
-                $player->department_id,
-                null,
-                $adminUserId
-            );
-            if ($physicalMachineSetting && $physicalMachineSetting->status == 1) {
-                $enablePhysicalMachine = (int)$physicalMachineSetting->num === 1;
-            }
+        // 查询配置（包括店家/代理、渠道、全局三级配置）
+        $physicalMachineSetting = StoreSetting::getSetting(
+            'enable_physical_machine',
+            $player->department_id,
+            null,
+            $adminUserId
+        );
+
+        // 如果找到配置，直接使用 status 字段（1=启用，0=禁用）
+        if ($physicalMachineSetting) {
+            $enablePhysicalMachine = $physicalMachineSetting->status == 1;
         }
 
         return $enablePhysicalMachine;

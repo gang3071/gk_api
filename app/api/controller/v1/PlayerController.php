@@ -3362,12 +3362,7 @@ class PlayerController
             $adminUserId = $player->agent_admin_id;
         }
 
-        // 如果没有找到有效的店家/代理配置，返回默认值
-        if (!$adminUserId) {
-            return $settings;
-        }
-
-        // 获取店家配置 - 首页提醒消息
+        // 获取配置 - 首页提醒消息
         $homeNoticeSetting = StoreSetting::getSetting(
             'home_notice',
             $player->department_id,
@@ -3378,26 +3373,26 @@ class PlayerController
             $settings['home_notice'] = $homeNoticeSetting->content;
         }
 
-        // 获取店家配置 - 是否开启实体机台
+        // 获取配置 - 是否开启实体机台（直接使用 status 字段）
         $physicalMachineSetting = StoreSetting::getSetting(
             'enable_physical_machine',
             $player->department_id,
             null,
             $adminUserId
         );
-        if ($physicalMachineSetting && $physicalMachineSetting->status == 1) {
-            $settings['enable_physical_machine'] = (int)$physicalMachineSetting->num === 1;
+        if ($physicalMachineSetting) {
+            $settings['enable_physical_machine'] = $physicalMachineSetting->status == 1;
         }
 
-        // 获取店家配置 - 是否开启真人百家
+        // 获取配置 - 是否开启真人百家（直接使用 status 字段）
         $liveBaccaratSetting = StoreSetting::getSetting(
             'enable_live_baccarat',
             $player->department_id,
             null,
             $adminUserId
         );
-        if ($liveBaccaratSetting && $liveBaccaratSetting->status == 1) {
-            $settings['enable_live_baccarat'] = (int)$liveBaccaratSetting->num === 1;
+        if ($liveBaccaratSetting) {
+            $settings['enable_live_baccarat'] = $liveBaccaratSetting->status == 1;
         }
 
         return $settings;
