@@ -3567,8 +3567,8 @@ class PlayerController
                 'source' => $record->source,
                 'source_text' => $sourceText,
                 'reject_reason' => $record->reject_reason,
-                'audit_at' => date('Y-m-d H:i:s', strtotime($record->audit_at)),
-                'created_at' => date('Y-m-d H:i:s', strtotime($record->created_at)),
+                'audit_at' => $record->audit_at ? date('Y-m-d H:i:s', strtotime($record->audit_at)) : null,
+                'created_at' => $record->created_at ? date('Y-m-d H:i:s', strtotime($record->created_at)) : null,
             ];
         }
 
