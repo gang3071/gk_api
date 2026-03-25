@@ -69,7 +69,7 @@ final class CreateAdminForDepartment34 extends AbstractMigration
                 '部门34超级管理员',
                 'admin34@example.com',
                 1,
-                1,
+                2,
                 34,
                 1,
                 NOW(),

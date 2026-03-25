@@ -19,6 +19,7 @@ use Respect\Validation\Exceptions\ValidationException;
 use Throwable;
 use Tinywan\Jwt\Exception\JwtTokenException;
 use Tinywan\Jwt\Exception\JwtTokenExpiredException;
+use Tinywan\Jwt\Exception\JwtCacheTokenException;
 use Webman\Exception\ExceptionHandler;
 use Webman\Http\Request;
 use Webman\Http\Response;
@@ -34,11 +35,12 @@ class ApiHandler extends ExceptionHandler
         ValidationException::class,
         JwtTokenException::class,
         JwtTokenExpiredException::class,
+        JwtCacheTokenException::class,
     ];
 
     public function render(Request $request, Throwable $exception): Response
     {
-        if ($exception instanceof JwtTokenExpiredException || $exception instanceof JwtTokenException) {
+        if ($exception instanceof JwtTokenExpiredException || $exception instanceof JwtTokenException || $exception instanceof JwtCacheTokenException) {
             return json([
                 'code' => 401,
                 'msg' => $exception->getMessage()
