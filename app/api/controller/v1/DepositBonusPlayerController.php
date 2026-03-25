@@ -104,7 +104,7 @@ class DepositBonusPlayerController
             ]);
 
         } catch (\Exception $e) {
-            return jsonFailResponse('查询失败：' . $e->getMessage());
+            return jsonFailResponse(trans('query_failed', [], 'message') . ': ' . $e->getMessage());
         }
     }
 
@@ -130,7 +130,7 @@ class DepositBonusPlayerController
             // 核销二维码
             $order = $this->qrcodeService->verifyQrcode($data['qrcode_token'], $player->id);
 
-            return jsonSuccessResponse('核销成功', [
+            return jsonSuccessResponse(trans('verification_success', [], 'message'), [
                 'order_id' => $order->id,
                 'order_no' => $order->order_no,
                 'bonus_amount' => $order->bonus_amount,
@@ -145,7 +145,7 @@ class DepositBonusPlayerController
         } catch (BusinessException $e) {
             return jsonFailResponse($e->getMessage());
         } catch (\Exception $e) {
-            return jsonFailResponse('核销失败：' . $e->getMessage());
+            return jsonFailResponse(trans('verification_failed', [], 'message') . ': ' . $e->getMessage());
         }
     }
 
@@ -167,7 +167,7 @@ class DepositBonusPlayerController
             ]);
 
         } catch (\Exception $e) {
-            return jsonFailResponse('查询失败：' . $e->getMessage());
+            return jsonFailResponse(trans('query_failed', [], 'message') . ': ' . $e->getMessage());
         }
     }
 
@@ -199,7 +199,7 @@ class DepositBonusPlayerController
             return jsonSuccessResponse('success', $details);
 
         } catch (\Exception $e) {
-            return jsonFailResponse('查询失败：' . $e->getMessage());
+            return jsonFailResponse(trans('query_failed', [], 'message') . ': ' . $e->getMessage());
         }
     }
 
@@ -223,7 +223,7 @@ class DepositBonusPlayerController
             return jsonSuccessResponse('success', $orders);
 
         } catch (\Exception $e) {
-            return jsonFailResponse('查询失败：' . $e->getMessage());
+            return jsonFailResponse(trans('query_failed', [], 'message') . ': ' . $e->getMessage());
         }
     }
 
@@ -244,7 +244,7 @@ class DepositBonusPlayerController
             return jsonSuccessResponse('success', $check);
 
         } catch (\Exception $e) {
-            return jsonFailResponse('查询失败：' . $e->getMessage());
+            return jsonFailResponse(trans('query_failed', [], 'message') . ': ' . $e->getMessage());
         }
     }
 
@@ -262,7 +262,7 @@ class DepositBonusPlayerController
             return jsonSuccessResponse('success', $balance);
 
         } catch (\Exception $e) {
-            return jsonFailResponse('查询失败：' . $e->getMessage());
+            return jsonFailResponse(trans('query_failed', [], 'message') . ': ' . $e->getMessage());
         }
     }
 
@@ -302,7 +302,7 @@ class DepositBonusPlayerController
             ]);
 
         } catch (\Exception $e) {
-            return jsonFailResponse('查询失败：' . $e->getMessage());
+            return jsonFailResponse(trans('query_failed', [], 'message') . ': ' . $e->getMessage());
         }
     }
 }

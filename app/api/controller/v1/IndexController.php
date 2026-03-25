@@ -933,7 +933,7 @@ class IndexController
      */
     public function refreshToken(): Response
     {
-        return jsonFailResponse('请重新登录', [], 401021);
+        return jsonFailResponse(trans('please_relogin', [], 'message'), [], 401021);
     }
     
     #[RateLimiter(limit: 5)]

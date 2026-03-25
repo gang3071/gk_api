@@ -63,11 +63,11 @@ class IndexController
         $externalApp = ExternalApp::query()->where('app_id',
             $request->header('appId'))->whereNull('deleted_at')->where('status', 1)->first();
         if (empty($externalApp)) {
-            return jsonFailResponse('应用不存在', [], 0);
+            return jsonFailResponse(trans('app_not_found', [], 'message'), [], 0);
         }
         // 验证服务器ip
         if (!empty($externalApp->white_ip) && !in_array(request()->getRealIp(), explode(',', $externalApp->white_ip))) {
-            return jsonFailResponse('IP认证不通过', [], 0);
+            return jsonFailResponse(trans('ip_auth_failed', [], 'message'), [], 0);
         }
         $token = JwtToken::generateToken([
             'id' => $externalApp->app_id,
@@ -97,7 +97,7 @@ class IndexController
         try {
             $validator->assert($data);
         } catch (AllOfException) {
-            return jsonFailResponse('参数错误', [], 1000);
+            return jsonFailResponse(trans('param_error', [], 'message'), [], 1000);
         }
         /** @var Channel $channel */
         $channel = Channel::query()->where('department_id', \request()->department_id)->first();
@@ -167,7 +167,7 @@ class IndexController
         try {
             $validator->assert($data);
         } catch (AllOfException) {
-            return jsonFailResponse('参数错误', [], 1000);
+            return jsonFailResponse(trans('param_error', [], 'message'), [], 1000);
         }
 
         try {
@@ -831,7 +831,7 @@ class IndexController
         try {
             $validator->assert($data);
         } catch (AllOfException) {
-            return jsonFailResponse('参数错误', [], 1000);
+            return jsonFailResponse(trans('param_error', [], 'message'), [], 1000);
         }
 
         try {
@@ -859,7 +859,7 @@ class IndexController
         try {
             $validator->assert($data);
         } catch (AllOfException) {
-            return jsonFailResponse('参数错误', [], 1000);
+            return jsonFailResponse(trans('param_error', [], 'message'), [], 1000);
         }
 
         try {
