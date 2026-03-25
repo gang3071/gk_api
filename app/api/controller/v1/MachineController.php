@@ -1830,7 +1830,7 @@ class MachineController
 
         // 获取当前玩家的开分配置
         $setting = OpenScoreSetting::query()
-            ->where('player_id', $player->id)
+            ->where('admin_user_id', $player->store_admin_id)
             ->first();
 
         // 如果没有配置，返回默认配置
