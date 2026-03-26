@@ -3221,7 +3221,7 @@ class PlayerController
 
         // 如果选择custom选项，验证custom_amount参数
         if ($data['score_option'] === 'custom') {
-            $customValidator = v::key('custom_amount', v::numericVal()->min(1)->max(100000)->notEmpty()->setName('自定义金额'));
+            $customValidator = v::key('custom_amount', v::numericVal()->min(1)->max(200000)->notEmpty()->setName('自定义金额'));
             try {
                 $customValidator->assert($data);
             } catch (AllOfException $e) {
