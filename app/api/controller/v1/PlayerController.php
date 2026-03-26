@@ -3435,7 +3435,7 @@ class PlayerController
                 'amount_after' => $record->amount_after,
                 'remark' => $record->remark,
                 'tradeno' => $record->tradeno,
-                'created_at' => $record->created_at,
+                'created_at' => date('Y-m-d H:i:s', strtotime($record->created_at)),
             ];
         }
 
