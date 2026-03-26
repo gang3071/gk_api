@@ -907,12 +907,12 @@ class PlayerController
             return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
         }
 
-        // 计算可洗分金额：保留十位，只洗到百位
+        // 计算可洗分金额：保留百位，只洗到千位
         $currentMoney = $player->machine_wallet->money;
-        $washAmount = floor($currentMoney / 100) * 100; // 向下取整到百位
+        $washAmount = floor($currentMoney / 1000) * 1000; // 向下取整到千位
 
-        if ($washAmount < 100) {
-            return jsonFailResponse(trans('insufficient_balance_100', [], 'message'));
+        if ($washAmount < 1000) {
+            return jsonFailResponse(trans('insufficient_balance_1000', [], 'message'));
         }
 
         // 渠道和货币验证

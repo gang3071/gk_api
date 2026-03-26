@@ -477,6 +477,7 @@ return [
     'verification_failed' => '核銷失敗',
     'please_relogin' => '請重新登入',
     'insufficient_balance_100' => '餘額不足100，無法洗分',
+    'insufficient_balance_1000' => '餘額不足1000，無法洗分',
     'player_not_bind_store' => '玩家未綁定店家',
     'open_point_config_not_found' => '開分配置未找到',
     'open_point_amount_invalid' => '開分金額無效',
