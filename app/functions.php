@@ -74,7 +74,7 @@ function jsonSuccessResponse(string $message = '', array $data = []): Response
     return new Response(200, ['Content-Type' => 'application/json'], json_encode([
         'code' => 200,
         'msg' => $message,
-        'data' => $data,
+        'data' => empty($data) ? new stdClass() : $data,
     ], JSON_UNESCAPED_UNICODE));
 }
 
@@ -89,7 +89,7 @@ function jsonFailResponse(string $message = '', array $data = [], int $code = 10
     return new Response(200, ['Content-Type' => 'application/json'], json_encode([
         'code' => $code,
         'msg' => $message,
-        'data' => $data,
+        'data' => empty($data) ? new stdClass() : $data,
     ], JSON_UNESCAPED_UNICODE));
 }
 
