@@ -489,4 +489,7 @@ return [
     'machine_crashed_cannot_enter_game' => '設備已爆機，無法進入遊戲',
     'machine_crash_unlocked' => '設備爆機已解鎖',
     'open_score_will_cause_crash' => '開分後將導致設備爆機，無法開分',
+    'recharge' => '充值',
+    'machine_coin_deposit' => '投钞',
+    'other' => '其他',
 ];

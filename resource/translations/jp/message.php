@@ -485,4 +485,7 @@ return [
     'machine_crashed_cannot_enter_game' => 'マシンがクラッシュしました、ゲームに入ることができません',
     'machine_crash_unlocked' => 'マシンクラッシュがロック解除されました',
     'open_score_will_cause_crash' => 'スコアを開くとマシンがクラッシュします、スコアを開くことができません',
+    'recharge' => 'チャージ',
+    'machine_coin_deposit' => 'コイン投入',
+    'other' => 'その他',
 ];

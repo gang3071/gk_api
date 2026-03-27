@@ -3069,7 +3069,6 @@ class PlayerController
      * @param Request $request
      * @return Response
      * @throws PlayerCheckException
-     * @throws \think\Exception
      */
     public function getReverseWaterDetail(Request $request): Response
     {
@@ -3091,7 +3090,6 @@ class PlayerController
      * @param Request $request
      * @return Response
      * @throws PlayerCheckException
-     * @throws \think\Exception
      */
     public function receiveReverseWater(Request $request): Response
     {
@@ -3161,7 +3159,7 @@ class PlayerController
      * 增加观看人数
      * @param Request $request
      * @return Response
-     * @throws \think\Exception|PlayerCheckException
+     * @throws PlayerCheckException
      */
     public function addViewers(Request $request): Response
     {
@@ -3189,7 +3187,7 @@ class PlayerController
      * 减少观看人数
      * @param Request $request
      * @return Response
-     * @throws \think\Exception|PlayerCheckException
+     * @throws PlayerCheckException
      */
     public function deductViewers(Request $request): Response
     {
@@ -3215,7 +3213,7 @@ class PlayerController
      * 机台按钮开分
      * @param Request $request
      * @return Response
-     * @throws \think\Exception|PlayerCheckException
+     * @throws PlayerCheckException
      */
     public function openScore(Request $request): Response
     {
@@ -3426,11 +3424,13 @@ class PlayerController
     {
         $player = checkPlayer();
         $data = $request->all();
-
-        // 构建查询
+        // 构建查询（包含充值和投钞记录）
         $query = PlayerDeliveryRecord::query()
             ->where('player_id', $player->id)
-            ->where('type', PlayerDeliveryRecord::TYPE_RECHARGE)
+            ->whereIn('type', [
+                PlayerDeliveryRecord::TYPE_RECHARGE,
+                PlayerDeliveryRecord::TYPE_MACHINE
+            ])
             ->orderBy('id', 'desc');
 
         // 按金额筛选
@@ -3444,11 +3444,20 @@ class PlayerController
         $records = $query->forPage($data['page'] ?? 1, $data['size'] ?? 10)->get();
 
         $list = [];
+        /** @var PlayerDeliveryRecord $record */
         foreach ($records as $record) {
+            // 类型名称映射
+            $typeName = match ($record->type) {
+                PlayerDeliveryRecord::TYPE_RECHARGE => trans('recharge', [], 'message'),
+                PlayerDeliveryRecord::TYPE_MACHINE => trans('machine_coin_deposit', [], 'message'),
+                default => trans('other', [], 'message'),
+            };
+
             $list[] = [
                 'id' => $record->id,
+                'type' => $record->type,
+                'type_name' => $typeName,
                 'amount' => $record->amount,
-                'point' => $record->point,
                 'amount_before' => $record->amount_before,
                 'amount_after' => $record->amount_after,
                 'remark' => $record->remark,
@@ -3483,6 +3492,7 @@ class PlayerController
         $records = $query->forPage($data['page'] ?? 1, $data['size'] ?? 10)->get();
 
         $list = [];
+        /** @var PlayerDeliveryRecord  $record */
         foreach ($records as $record) {
             $statusText = match ($record->withdraw_status) {
                 1 => trans('withdraw_status_processing', [], 'message'),
@@ -3498,7 +3508,6 @@ class PlayerController
             $list[] = [
                 'id' => $record->id,
                 'amount' => $record->amount,
-                'point' => $record->point,
                 'amount_before' => $record->amount_before,
                 'amount_after' => $record->amount_after,
                 'withdraw_status' => $record->withdraw_status,

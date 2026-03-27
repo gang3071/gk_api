@@ -488,4 +488,7 @@ return [
     'machine_crashed_cannot_enter_game' => 'Machine crashed, unable to enter game',
     'machine_crash_unlocked' => 'Machine crash unlocked',
     'open_score_will_cause_crash' => 'Opening score will cause machine crash, unable to open score',
+    'recharge' => 'Recharge',
+    'machine_coin_deposit' => 'Coin Deposit',
+    'other' => 'Other',
 ];
