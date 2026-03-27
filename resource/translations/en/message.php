@@ -475,7 +475,7 @@ return [
     'verification_success' => 'Verification successful',
     'verification_failed' => 'Verification failed',
     'please_relogin' => 'Please login again',
-    'insufficient_balance_100' => 'Insufficient balance of 100, unable to wash score',
+    'insufficient_balance_100' => 'Insufficient balance, unable to wash score',
     'insufficient_balance_1000' => 'Insufficient balance of 1000, unable to wash score',
     'player_not_bind_store' => 'Player not bound to store',
     'open_point_config_not_found' => 'Open point configuration not found',
