@@ -907,6 +907,12 @@ class PlayerController
             return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
         }
 
+        // 爆机检查：玩家不能洗分
+        $crashCheck = checkMachineCrash($player);
+        if ($crashCheck['crashed']) {
+            return jsonFailResponse(trans('machine_crashed_cannot_wash_score', [], 'message'));
+        }
+
         // 计算可洗分金额：保留十位，只洗到百位
         $currentMoney = $player->machine_wallet->money;
         $washAmount = floor($currentMoney / 100) * 100; // 向下取整到百位
@@ -3229,6 +3235,12 @@ class PlayerController
             }
         }
 
+        // 爆机检查：玩家不能开分
+        $crashCheck = checkMachineCrash($player);
+        if ($crashCheck['crashed']) {
+            return jsonFailResponse(trans('machine_crashed_cannot_open_score', [], 'message'));
+        }
+
         /** @var Channel $channel */
         $channel = Channel::query()->where('department_id', \request()->department_id)->first();
         if (empty($channel)) {
@@ -3327,6 +3339,7 @@ class PlayerController
             $playerDeliveryRecord->save();
 
             DB::commit();
+            // 爆机检查已由 PlayerPlatformCash 模型的 updated 事件自动处理
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());

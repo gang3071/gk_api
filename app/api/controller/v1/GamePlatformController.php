@@ -45,6 +45,7 @@ class GamePlatformController
     public function gamePlatformList(Request $request): Response
     {
         $player = checkPlayer();
+
         if (empty($player->channel->game_platform)) {
             return jsonFailResponse(trans('platform_no_permission', [], 'message'));
         }
@@ -1030,6 +1031,13 @@ class GamePlatformController
         }
 
         $player = checkPlayer();
+
+        // 爆机检查：玩家不能进入游戏大厅
+        $crashCheck = checkMachineCrash($player);
+        if ($crashCheck['crashed']) {
+            return jsonFailResponse(trans('machine_crashed_cannot_enter_game', [], 'message'));
+        }
+
         $data = $request->all();
         $validator = v::key('game_platform_id',
             v::stringType()->notEmpty()->setName(trans('game_platform_id', [], 'message')));
@@ -1164,6 +1172,13 @@ class GamePlatformController
         }
 
         $player = checkPlayer();
+
+        // 爆机检查：玩家不能进入游戏
+        $crashCheck = checkMachineCrash($player);
+        if ($crashCheck['crashed']) {
+            return jsonFailResponse(trans('machine_crashed_cannot_enter_game', [], 'message'));
+        }
+
         $data = $request->all();
         $validator = v::key('game_id',
             v::stringType()->notEmpty()->setName(trans('game_id', [], 'message')));
