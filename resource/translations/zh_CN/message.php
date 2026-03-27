@@ -492,4 +492,11 @@ return [
     'open_point_config_not_found' => '开分配置未找到',
     'open_point_amount_invalid' => '开分金额无效',
     'display_mode' => '显示模式',
+    'machine_crashed' => '设备已爆机',
+    'machine_crashed_contact_admin' => '设备已爆机，请联系管理员解锁',
+    'machine_crashed_cannot_open_score' => '设备已爆机，无法开分',
+    'machine_crashed_cannot_wash_score' => '设备已爆机，无法洗分',
+    'machine_crashed_cannot_enter_game' => '设备已爆机，无法进入游戏',
+    'machine_crash_unlocked' => '设备爆机已解锁',
+    'open_score_will_cause_crash' => '开分后将导致设备爆机，无法开分',
 ];

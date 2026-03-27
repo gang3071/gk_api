@@ -478,4 +478,11 @@ return [
     'open_point_config_not_found' => '開分設定が見つかりません',
     'open_point_amount_invalid' => '開分金額が無効です',
     'display_mode' => '表示モード',
+    'machine_crashed' => 'マシンがクラッシュしました',
+    'machine_crashed_contact_admin' => 'マシンがクラッシュしました、管理者に連絡してロックを解除してください',
+    'machine_crashed_cannot_open_score' => 'マシンがクラッシュしました、スコアを開くことができません',
+    'machine_crashed_cannot_wash_score' => 'マシンがクラッシュしました、スコアを洗うことができません',
+    'machine_crashed_cannot_enter_game' => 'マシンがクラッシュしました、ゲームに入ることができません',
+    'machine_crash_unlocked' => 'マシンクラッシュがロック解除されました',
+    'open_score_will_cause_crash' => 'スコアを開くとマシンがクラッシュします、スコアを開くことができません',
 ];

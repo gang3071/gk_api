@@ -481,4 +481,11 @@ return [
     'open_point_config_not_found' => 'Open point configuration not found',
     'open_point_amount_invalid' => 'Open point amount invalid',
     'display_mode' => 'Display mode',
+    'machine_crashed' => 'Machine crashed',
+    'machine_crashed_contact_admin' => 'Machine crashed, please contact administrator to unlock',
+    'machine_crashed_cannot_open_score' => 'Machine crashed, unable to open score',
+    'machine_crashed_cannot_wash_score' => 'Machine crashed, unable to wash score',
+    'machine_crashed_cannot_enter_game' => 'Machine crashed, unable to enter game',
+    'machine_crash_unlocked' => 'Machine crash unlocked',
+    'open_score_will_cause_crash' => 'Opening score will cause machine crash, unable to open score',
 ];
