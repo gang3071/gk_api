@@ -912,7 +912,7 @@ class PlayerController
         $washAmount = floor($currentMoney / 100) * 100; // 向下取整到百位
 
         if ($washAmount < 100) {
-            return jsonFailResponse('餘額不足100，無法洗分');
+            return jsonFailResponse(trans('insufficient_balance_100', [], 'message'));
         }
 
         // 渠道和货币验证
@@ -3221,7 +3221,7 @@ class PlayerController
 
         // 如果选择custom选项，验证custom_amount参数
         if ($data['score_option'] === 'custom') {
-            $customValidator = v::key('custom_amount', v::numericVal()->min(1)->max(100000)->notEmpty()->setName('自定义金额'));
+            $customValidator = v::key('custom_amount', v::numericVal()->min(1)->max(200000)->notEmpty()->setName('自定义金额'));
             try {
                 $customValidator->assert($data);
             } catch (AllOfException $e) {
@@ -3248,20 +3248,20 @@ class PlayerController
             // 获取店家开分配置
             // 新架构：使用 store_admin_id 查找店家的开分配置
             if (empty($player->store_admin_id)) {
-                return jsonFailResponse('玩家未绑定店家');
+                return jsonFailResponse(trans('player_not_bind_store', [], 'message'));
             }
 
             /** @var OpenScoreSetting $openScoreSetting */
             $openScoreSetting = OpenScoreSetting::query()->where('admin_user_id', $player->store_admin_id)->first();
             if (empty($openScoreSetting)) {
-                return jsonFailResponse('开分配置未找到');
+                return jsonFailResponse(trans('open_point_config_not_found', [], 'message'));
             }
 
             $scoreAmount = $openScoreSetting->$scoreOption;
         }
 
         if ($scoreAmount <= 0) {
-            return jsonFailResponse('开分金额无效');
+            return jsonFailResponse(trans('open_point_amount_invalid', [], 'message'));
         }
 
         /** @var Currency $currency */
@@ -3435,7 +3435,7 @@ class PlayerController
                 'amount_after' => $record->amount_after,
                 'remark' => $record->remark,
                 'tradeno' => $record->tradeno,
-                'created_at' => $record->created_at,
+                'created_at' => date('Y-m-d H:i:s', strtotime($record->created_at)),
             ];
         }
 

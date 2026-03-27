@@ -85,7 +85,7 @@ class TalkOAuthController
             case 'register':
                 return $this->registerPlayer($data);
             default:
-                return jsonFailResponse('类型错误');
+                return jsonFailResponse(trans('type_error', [], 'message'));
         }
     }
 

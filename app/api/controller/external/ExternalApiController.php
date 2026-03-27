@@ -68,11 +68,11 @@ class ExternalApiController
         $externalApp = ExternalApp::where('app_id', $data['appID'])->where('app_secret',
             $data['appSecret'])->whereNull('deleted_at')->where('status', 1)->first();
         if (empty($externalApp)) {
-            return jsonFailResponse('应用不存在', [], 0);
+            return jsonFailResponse(trans('app_not_found', [], 'message'), [], 0);
         }
         // 验证服务器ip
         if (!empty($externalApp->white_ip) && !in_array(request()->getRealIp(), explode(',', $externalApp->white_ip))) {
-            return jsonFailResponse('IP认证不通过', [], 0);
+            return jsonFailResponse(trans('ip_auth_failed', [], 'message'), [], 0);
         }
 
         // 返回授权token
@@ -638,7 +638,7 @@ class ExternalApiController
 
             // 验证type参数
             if ($type !== null && !in_array($type, [1, 2, 9])) {
-                return jsonFailResponse('type参数错误，仅支持 1=斯洛, 2=钢珠, 9=电子游戏', [], 0);
+                return jsonFailResponse(trans('machine_type_param_error', [], 'message'), [], 0);
             }
 
             $lotteryPoolData = [];
@@ -735,7 +735,7 @@ class ExternalApiController
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return jsonFailResponse('获取数据失败', [], 0);
+            return jsonFailResponse(trans('get_data_failed', [], 'message'), [], 0);
         }
     }
 
@@ -949,7 +949,7 @@ class ExternalApiController
 
             // 验证参数
             if (empty($data['player_id']) || empty($data['bet'])) {
-                return jsonFailResponse('参数错误：player_id和bet不能为空', [], 0);
+                return jsonFailResponse(trans('player_bet_param_required', [], 'message'), [], 0);
             }
 
             $playerId = intval($data['player_id']);
@@ -959,7 +959,7 @@ class ExternalApiController
             // 获取玩家
             $player = Player::find($playerId);
             if (!$player) {
-                return jsonFailResponse('玩家不存在', [], 0);
+                return jsonFailResponse(trans('player_not_found', [], 'message'), [], 0);
             }
 
             // 调用中奖检测服务
@@ -979,7 +979,7 @@ class ExternalApiController
                 ->first();
 
             if ($latestRecord) {
-                return jsonSuccessResponse('中奖检测完成', [
+                return jsonSuccessResponse(trans('lottery_check_completed', [], 'message'), [
                     'has_win' => true,
                     'lottery_id' => $latestRecord->lottery_id,
                     'lottery_name' => $latestRecord->lottery_name,
@@ -989,7 +989,7 @@ class ExternalApiController
                     'created_at' => $latestRecord->created_at,
                 ]);
             } else {
-                return jsonSuccessResponse('中奖检测完成', [
+                return jsonSuccessResponse(trans('lottery_check_completed', [], 'message'), [
                     'has_win' => false,
                     'message' => '未中奖'
                 ]);
@@ -1001,7 +1001,7 @@ class ExternalApiController
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            return jsonFailResponse('测试失败：' . $e->getMessage(), [], 0);
+            return jsonFailResponse(trans('test_failed', [], 'message') . ': ' . $e->getMessage(), [], 0);
         }
     }
 
@@ -1017,7 +1017,7 @@ class ExternalApiController
 
             // 验证参数
             if (empty($data['lottery_id'])) {
-                return jsonFailResponse('参数错误：lottery_id不能为空', [], 0);
+                return jsonFailResponse(trans('lottery_id_required', [], 'message'), [], 0);
             }
 
             $lotteryId = intval($data['lottery_id']);
@@ -1026,7 +1026,7 @@ class ExternalApiController
 
             // 验证类型参数
             if (!in_array($type, ['game', 'machine'])) {
-                return jsonFailResponse('参数错误：type 只支持 game 或 machine', [], 0);
+                return jsonFailResponse(trans('lottery_type_param_error', [], 'message'), [], 0);
             }
 
             $redis = \support\Redis::connection();
@@ -1045,7 +1045,7 @@ class ExternalApiController
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return jsonFailResponse('触发失败：' . $e->getMessage(), [], 0);
+            return jsonFailResponse(trans('trigger_failed', [], 'message') . ': ' . $e->getMessage(), [], 0);
         }
     }
 
@@ -1061,7 +1061,7 @@ class ExternalApiController
         // 获取彩金池
         $lottery = \app\model\GameLottery::find($lotteryId);
         if (!$lottery) {
-            return jsonFailResponse('电子游戏彩金池不存在', [], 0);
+            return jsonFailResponse(trans('game_lottery_pool_not_found', [], 'message'), [], 0);
         }
 
         // 检查是否已经在爆彩中
@@ -1069,7 +1069,7 @@ class ExternalApiController
         $existingBurst = $redis->get($burstKey);
 
         if ($existingBurst) {
-            return jsonFailResponse('该彩金池已经在爆彩中', [], 0);
+            return jsonFailResponse(trans('lottery_pool_in_progress', [], 'message'), [], 0);
         }
 
         // 设置爆彩开始时间
@@ -1088,7 +1088,7 @@ class ExternalApiController
             'expire_time' => date('Y-m-d H:i:s', $currentTime + $expireSeconds),
         ]);
 
-        return jsonSuccessResponse('电子游戏爆彩触发成功', [
+        return jsonSuccessResponse(trans('game_lottery_trigger_success', [], 'message'), [
             'type' => 'game',
             'lottery_id' => $lotteryId,
             'lottery_name' => $lottery->name,
@@ -1112,7 +1112,7 @@ class ExternalApiController
         // 获取机台彩金池
         $lottery = Lottery::find($lotteryId);
         if (!$lottery) {
-            return jsonFailResponse('机台彩金池不存在', [], 0);
+            return jsonFailResponse(trans('machine_lottery_pool_not_found', [], 'message'), [], 0);
         }
 
         // 检查是否已经在爆彩中
@@ -1120,7 +1120,7 @@ class ExternalApiController
         $existingBurst = $redis->get($burstKey);
 
         if ($existingBurst) {
-            return jsonFailResponse('该彩金池已经在爆彩中', [], 0);
+            return jsonFailResponse(trans('lottery_pool_in_progress', [], 'message'), [], 0);
         }
 
         // 设置爆彩开始时间
@@ -1144,7 +1144,7 @@ class ExternalApiController
             'expire_time' => date('Y-m-d H:i:s', $currentTime + $expireSeconds),
         ]);
 
-        return jsonSuccessResponse('机台爆彩触发成功', [
+        return jsonSuccessResponse(trans('machine_lottery_trigger_success', [], 'message'), [
             'type' => 'machine',
             'lottery_id' => $lotteryId,
             'lottery_name' => $lottery->name,
@@ -1221,7 +1221,7 @@ class ExternalApiController
 
             // 验证参数
             if (empty($data['lottery_id'])) {
-                return jsonFailResponse('参数错误：lottery_id不能为空', [], 0);
+                return jsonFailResponse(trans('lottery_id_required', [], 'message'), [], 0);
             }
 
             $lotteryId = intval($data['lottery_id']);
@@ -1229,7 +1229,7 @@ class ExternalApiController
 
             // 验证类型参数
             if (!in_array($type, ['game', 'machine'])) {
-                return jsonFailResponse('参数错误：type 只支持 game 或 machine', [], 0);
+                return jsonFailResponse(trans('lottery_type_param_error', [], 'message'), [], 0);
             }
 
             $redis = \support\Redis::connection();
@@ -1238,14 +1238,14 @@ class ExternalApiController
                 // 电子游戏彩金
                 $lottery = \app\model\GameLottery::find($lotteryId);
                 if (!$lottery) {
-                    return jsonFailResponse('电子游戏彩金池不存在', [], 0);
+                    return jsonFailResponse(trans('game_lottery_pool_not_found', [], 'message'), [], 0);
                 }
                 $burstKey = 'game_lottery_burst:' . $lotteryId;
             } else {
                 // 机台彩金
                 $lottery = Lottery::find($lotteryId);
                 if (!$lottery) {
-                    return jsonFailResponse('机台彩金池不存在', [], 0);
+                    return jsonFailResponse(trans('machine_lottery_pool_not_found', [], 'message'), [], 0);
                 }
                 $burstKey = 'machine_lottery_burst:' . $lotteryId;
             }
@@ -1266,7 +1266,7 @@ class ExternalApiController
                     $result['game_type_name'] = $lottery->game_type == 1 ? '老虎机' : '钢珠机';
                 }
 
-                return jsonSuccessResponse('查询成功', $result);
+                return jsonSuccessResponse(trans('query_success', [], 'message'), $result);
             }
 
             $startTime = intval($startTime);
@@ -1313,14 +1313,14 @@ class ExternalApiController
                 $result['game_type_name'] = $lottery->game_type == 1 ? '老虎机' : '钢珠机';
             }
 
-            return jsonSuccessResponse('查询成功', $result);
+            return jsonSuccessResponse(trans('query_success', [], 'message'), $result);
 
         } catch (\Exception $e) {
             Log::error('testGetBurstStatus error: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return jsonFailResponse('查询失败：' . $e->getMessage(), [], 0);
+            return jsonFailResponse(trans('query_failed', [], 'message') . ': ' . $e->getMessage(), [], 0);
         }
     }
 
@@ -1336,7 +1336,7 @@ class ExternalApiController
 
             // 验证参数
             if (empty($data['lottery_id'])) {
-                return jsonFailResponse('参数错误：lottery_id不能为空', [], 0);
+                return jsonFailResponse(trans('lottery_id_required', [], 'message'), [], 0);
             }
 
             $lotteryId = intval($data['lottery_id']);
@@ -1344,7 +1344,7 @@ class ExternalApiController
 
             // 验证类型参数
             if (!in_array($type, ['game', 'machine'])) {
-                return jsonFailResponse('参数错误：type 只支持 game 或 machine', [], 0);
+                return jsonFailResponse(trans('lottery_type_param_error', [], 'message'), [], 0);
             }
 
             $redis = \support\Redis::connection();
@@ -1353,14 +1353,14 @@ class ExternalApiController
                 // 电子游戏彩金
                 $lottery = \app\model\GameLottery::find($lotteryId);
                 if (!$lottery) {
-                    return jsonFailResponse('电子游戏彩金池不存在', [], 0);
+                    return jsonFailResponse(trans('game_lottery_pool_not_found', [], 'message'), [], 0);
                 }
                 $burstKey = 'game_lottery_burst:' . $lotteryId;
             } else {
                 // 机台彩金
                 $lottery = Lottery::find($lotteryId);
                 if (!$lottery) {
-                    return jsonFailResponse('机台彩金池不存在', [], 0);
+                    return jsonFailResponse(trans('machine_lottery_pool_not_found', [], 'message'), [], 0);
                 }
                 $burstKey = 'machine_lottery_burst:' . $lotteryId;
             }
@@ -1385,9 +1385,9 @@ class ExternalApiController
 
                 Log::info('【测试】结束爆彩', $result);
 
-                return jsonSuccessResponse('爆彩已结束', $result);
+                return jsonSuccessResponse(trans('lottery_ended', [], 'message'), $result);
             } else {
-                return jsonFailResponse('该彩金池未在爆彩中', [], 0);
+                return jsonFailResponse(trans('lottery_pool_not_in_progress', [], 'message'), [], 0);
             }
 
         } catch (\Exception $e) {
@@ -1395,7 +1395,7 @@ class ExternalApiController
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return jsonFailResponse('结束失败：' . $e->getMessage(), [], 0);
+            return jsonFailResponse(trans('end_failed', [], 'message') . ': ' . $e->getMessage(), [], 0);
         }
     }
 
@@ -1464,16 +1464,16 @@ class ExternalApiController
             $algorithm = $data['algorithm'] ?? 'checkSmart';
 
             if ($winRatio < 0 || $winRatio > 1) {
-                return jsonFailResponse('参数错误：win_ratio必须在0-1之间', [], 0);
+                return jsonFailResponse(trans('win_ratio_range_error', [], 'message'), [], 0);
             }
 
             if ($testCount <= 0 || $testCount > 100000) {
-                return jsonFailResponse('参数错误：test_count必须在1-100000之间', [], 0);
+                return jsonFailResponse(trans('test_count_range_error', [], 'message'), [], 0);
             }
 
             $allowedAlgorithms = ['checkSmart', 'checkByBigInt', 'checkByHighPrecision', 'checkByProbabilityPool', 'checkBySimple'];
             if (!in_array($algorithm, $allowedAlgorithms)) {
-                return jsonFailResponse('参数错误：不支持的算法', [], 0);
+                return jsonFailResponse(trans('unsupported_algorithm', [], 'message'), [], 0);
             }
 
             // 执行测试
@@ -1525,7 +1525,7 @@ class ExternalApiController
                 'duration' => $duration,
             ]);
 
-            return jsonSuccessResponse('测试完成', [
+            return jsonSuccessResponse(trans('test_completed', [], 'message'), [
                 'algorithm' => $algorithm,
                 'win_ratio' => $winRatio,
                 'test_count' => $testCount,
@@ -1542,7 +1542,7 @@ class ExternalApiController
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return jsonFailResponse('测试失败：' . $e->getMessage(), [], 0);
+            return jsonFailResponse(trans('test_failed', [], 'message') . ': ' . $e->getMessage(), [], 0);
         }
     }
 
@@ -1558,7 +1558,7 @@ class ExternalApiController
 
             // 验证参数
             if (empty($data['player_id'])) {
-                return jsonFailResponse('参数错误：player_id不能为空', [], 0);
+                return jsonFailResponse(trans('player_bet_param_required', [], 'message'), [], 0);
             }
 
             $playerId = intval($data['player_id']);
@@ -1797,14 +1797,14 @@ class ExternalApiController
                 ] : null,
             ];
 
-            return jsonSuccessResponse('中奖消息发送成功', $result);
+            return jsonSuccessResponse(trans('lottery_message_sent', [], 'message'), $result);
 
         } catch (\Exception $e) {
             Log::error('testSendWinMessage error: ' . $e->getMessage(), [
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return jsonFailResponse('发送失败：' . $e->getMessage(), [], 0);
+            return jsonFailResponse(trans('send_failed', [], 'message') . ': ' . $e->getMessage(), [], 0);
         }
     }
 }
