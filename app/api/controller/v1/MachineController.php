@@ -1369,6 +1369,7 @@ class MachineController
             //寫入金流明細
             $beforeGameAmount = $player->machine_wallet->money;
             $player->machine_wallet->money = bcadd($player->machine_wallet->money, $money, 2);
+            $player->machine_wallet->save(); // 必须显式保存钱包
             $player->player_extend->machine_put_amount = bcadd($player->player_extend->machine_put_amount,
                 $playerRechargeRecord->money, 2);
             $player->player_extend->machine_put_point = bcadd($player->player_extend->machine_put_point,

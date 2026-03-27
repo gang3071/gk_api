@@ -407,6 +407,8 @@ class ExternalApiController
                 $playerRechargeRecord->remark = $remark??'';
                 $playerRechargeRecord->finish_time = date('Y-m-d H:i:s');
                 $playerRechargeRecord->player->machine_wallet->money = bcadd($playerRechargeRecord->player->machine_wallet->money,$playerRechargeRecord->point, 2);
+                $afterGameAmount = $playerRechargeRecord->player->machine_wallet->money; // 保存更新后的余额
+                $playerRechargeRecord->player->machine_wallet->save(); // 必须显式保存钱包
                 //全民代理首充返佣
                 if (!isset($firstRecharge) && !empty($playerRechargeRecord->player->recommend_id) && $playerRechargeRecord->player->channel->national_promoter_status == 1) {
                     //玩家上级推广员信息
@@ -424,6 +426,7 @@ class ExternalApiController
                         $rechargeRebate = $recommendPlayer->national_promoter->level_list->recharge_ratio;
                         $beforeRechargeAmount = $recommendPlayer->machine_wallet->money;
                         $recommendPlayer->machine_wallet->money = bcadd($recommendPlayer->machine_wallet->money, $rechargeRebate, 2);
+                        $recommendPlayer->machine_wallet->save(); // 必须显式保存钱包
 
                         //寫入首充金流明細
                         $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -452,6 +455,7 @@ class ExternalApiController
                             $money = $national_invite->money;
                             $amount_before = $recommendPlayer->machine_wallet->money;
                             $recommendPlayer->machine_wallet->money = $recommendPlayer->machine_wallet->money + $money;
+                            $recommendPlayer->machine_wallet->save(); // 必须显式保存钱包
                             // 寫入金流明細
                             $playerDeliveryRecord = new PlayerDeliveryRecord;
                             $playerDeliveryRecord->player_id = $recommendPlayer->id;
@@ -493,7 +497,7 @@ class ExternalApiController
                 $playerDeliveryRecord->source = 'self_recharge';
                 $playerDeliveryRecord->amount = $playerRechargeRecord->point;
                 $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                $playerDeliveryRecord->amount_after = $playerRechargeRecord->player->machine_wallet->money;
+                $playerDeliveryRecord->amount_after = $afterGameAmount;
                 $playerDeliveryRecord->tradeno = $playerRechargeRecord->tradeno ?? '';
                 $playerDeliveryRecord->remark = $playerRechargeRecord->remark ?? '';
                 $playerDeliveryRecord->save();

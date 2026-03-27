@@ -1526,6 +1526,7 @@ class PlayerController
                             // 玩家钱包扣减
                             $player->machine_wallet->money = bcsub($player->machine_wallet->money,
                                 $playerWithdrawRecord->point, 2);
+                            $player->machine_wallet->save(); // 必须显式保存钱包
                             // 更新玩家统计
                             $player->player_extend->withdraw_amount = bcadd($player->player_extend->withdraw_amount,
                                 $playerWithdrawRecord->point, 2);
@@ -1741,6 +1742,7 @@ class PlayerController
                     // 玩家钱包扣减
                     $player->machine_wallet->money = bcsub($player->machine_wallet->money, $playerWithdrawRecord->point,
                         2);
+                    $player->machine_wallet->save(); // 必须显式保存钱包
                     // 更新玩家统计
                     $player->player_extend->withdraw_amount = bcadd($player->player_extend->withdraw_amount,
                         $playerWithdrawRecord->point, 2);
@@ -2568,6 +2570,8 @@ class PlayerController
                 $playerRechargeRecord->finish_time = date('Y-m-d H:i:s');
                 $playerRechargeRecord->save();
                 $player->machine_wallet->money = bcadd($player->machine_wallet->money, $playerRechargeRecord->point, 2);
+                $afterGameAmount = $player->machine_wallet->money; // 保存更新后的余额
+                $player->machine_wallet->save(); // 必须显式保存钱包
                 $player->player_extend->recharge_amount = bcadd($player->player_extend->recharge_amount,
                     $playerRechargeRecord->point, 2);
                 $player->push();
@@ -2581,7 +2585,7 @@ class PlayerController
                 $playerDeliveryRecord->source = 'gb_recharge';
                 $playerDeliveryRecord->amount = $playerRechargeRecord->point;
                 $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                $playerDeliveryRecord->amount_after = $player->machine_wallet->money;
+                $playerDeliveryRecord->amount_after = $afterGameAmount;
                 $playerDeliveryRecord->tradeno = $playerRechargeRecord->tradeno ?? '';
                 $playerDeliveryRecord->remark = $playerRechargeRecord->remark ?? '';
                 $playerDeliveryRecord->save();
@@ -3316,6 +3320,7 @@ class PlayerController
             $playerRechargeRecord->save();
 
             $playerWallet->money = bcadd($playerWallet->money, $playerRechargeRecord->point, 2);
+            $afterGameAmount = $playerWallet->money; // 保存更新后的余额
             $playerWallet->save();
 
             // 更新玩家充值统计
@@ -3333,7 +3338,7 @@ class PlayerController
             $playerDeliveryRecord->source = 'artificial_recharge';
             $playerDeliveryRecord->amount = $playerRechargeRecord->point;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $player->machine_wallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = $playerRechargeRecord->tradeno ?? '';
             $playerDeliveryRecord->remark = '線下代理開分';
             $playerDeliveryRecord->save();
