@@ -2,6 +2,7 @@
 
 namespace app\api\controller\v1;
 
+use app\exception\PlayerCheckException;
 use app\model\Channel;
 use app\model\ChannelMachine;
 use app\model\Currency;
@@ -18,7 +19,6 @@ use app\model\MachineTencentPlay;
 use app\model\OpenScoreSetting;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
-use app\model\PlayerExtend;
 use app\model\PlayerFavoriteMachine;
 use app\model\PlayerGameLog;
 use app\model\PlayerGameRecord;
@@ -28,12 +28,11 @@ use app\model\PlayerPlatformCash;
 use app\model\PlayerRechargeRecord;
 use app\model\PlayHistory;
 use app\model\SystemSetting;
-use app\service\MediaServer;
-use app\exception\PlayerCheckException;
 use app\service\ActivityServices;
 use app\service\machine\Jackpot;
 use app\service\machine\MachineServices;
 use app\service\machine\Slot;
+use app\service\MediaServer;
 use Carbon\Carbon;
 use Exception;
 use GatewayWorker\Lib\Gateway;
@@ -1313,6 +1312,13 @@ class MachineController
     public function rechargeAndWithdraw(Request $request): Response
     {
         $player = checkPlayer();
+
+        // 爆机检查：玩家不能投钞
+        $crashCheck = checkMachineCrash($player);
+        if ($crashCheck['crashed']) {
+            return jsonFailResponse(trans('machine_crashed_cannot_recharge', [], 'message'));
+        }
+
         $data = $request->all();
         $validator = v::arrayType()
             ->key('amount', v::numericVal()->notEmpty()->setName(trans('amount', [], 'store_machine_message')));
@@ -1321,7 +1327,7 @@ class MachineController
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         /** @var Channel $channel */
         $channel = Channel::where('department_id', \request()->department_id)->first();
         if (empty($channel)) {

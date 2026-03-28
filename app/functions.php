@@ -3,6 +3,7 @@
  * Here is your custom functions.
  */
 
+use app\exception\PlayerCheckException;
 use app\filesystem\Filesystem;
 use app\model\ApiErrorLog;
 use app\model\Channel;
@@ -11,12 +12,9 @@ use app\model\GameType;
 use app\model\LevelList;
 use app\model\Machine;
 use app\model\MachineCategoryGiveRule;
-use app\model\MachineGamingLog;
 use app\model\MachineKeepingLog;
-use app\model\MachineKickLog;
 use app\model\MachineMedia;
 use app\model\MachineMediaPush;
-use app\model\MachineOpenCard;
 use app\model\MachineTencentPlay;
 use app\model\NationalProfitRecord;
 use app\model\Notice;
@@ -37,13 +35,11 @@ use app\model\PlayerRegisterRecord;
 use app\model\PlayerWithdrawRecord;
 use app\model\StoreSetting;
 use app\model\SystemSetting;
+use app\service\ActivityServices;
 use app\service\FishServices;
 use app\service\LotteryServices;
-use app\exception\PlayerCheckException;
-use app\service\ActivityServices;
 use app\service\machine\MachineServices;
 use app\service\machine\Slot;
-use Carbon\Carbon;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Database\Eloquent\Builder;
@@ -134,10 +130,13 @@ function checkPlayer(bool $hasTransfer = true): Player
  */
 function checkMachineCrash(Player $player): array
 {
-    $currentAmount = $player->machine_wallet->money ?? 0;
+    // 直接通过玩家ID查询钱包的爆机状态
+    $wallet = PlayerPlatformCash::where('player_id', $player->id)
+        ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
+        ->first();
 
-    // 只检查钱包的 is_crashed 字段
-    $isCrashed = isset($player->machine_wallet->is_crashed) && $player->machine_wallet->is_crashed == 1;
+    $currentAmount = $wallet->money ?? 0;
+    $isCrashed = $wallet && $wallet->is_crashed == 1;
 
     // 获取爆机金额配置（用于返回信息）
     $crashAmount = null;
@@ -171,17 +170,17 @@ function notifyMachineCrash(Player $player, array $crashInfo): void
     try {
         // 玩家端消息
         $playerMessage = [
-            'type' => 'machine_crash',
+            'msg_type' => 'machine_crash',
             'player_id' => $player->id,
             'crash_amount' => $crashInfo['crash_amount'],
             'current_amount' => $crashInfo['current_amount'],
-            'message' => trans('machine_crashed_contact_admin', [], 'message'),
+            'message' => '⚠️ 您的設備餘額已達到爆機金額，請聯繫管理員處理！',
             'timestamp' => time(),
         ];
 
         // 后台消息（包含更多信息）
         $adminMessage = [
-            'type' => 'machine_crash',
+            'msg_type' => 'machine_crash',
             'event' => 'player_crashed',
             'player_id' => $player->id,
             'player_name' => $player->name ?? '',
@@ -195,7 +194,7 @@ function notifyMachineCrash(Player $player, array $crashInfo): void
         ];
 
         // 1. 发送给玩家
-        $playerChannel = 'player_' . $player->id;
+        $playerChannel = 'player-' . $player->id;
         sendSocketMessage([$playerChannel], $playerMessage, 'system');
 
         // 2. 发送给渠道后台
@@ -289,16 +288,16 @@ function checkAndNotifyCrashUnlock(Player $player, float $previousAmount): void
             if ($wasCrashed) {
                 // 玩家端消息
                 $playerMessage = [
-                    'type' => 'machine_crash_unlock',
+                    'msg_type' => 'machine_crash_unlock',
                     'player_id' => $player->id,
                     'crash_amount' => $crashCheckBefore['crash_amount'],
                     'current_amount' => $crashCheckBefore['current_amount'],
-                    'message' => trans('machine_crash_unlocked', [], 'message'),
+                    'message' => '✓ 您的设备爆机状态已解除，可继续正常使用。',
                     'timestamp' => time(),
                 ];
 
                 // 1. 发送给玩家
-                $playerChannel = 'player_' . $player->id;
+                $playerChannel = 'player-' . $player->id;
                 sendSocketMessage([$playerChannel], $playerMessage, 'system');
 
                 Log::info('Machine crash unlock notification sent', [

@@ -2,6 +2,7 @@
 
 namespace app\api\controller\v1;
 
+use app\exception\PlayerCheckException;
 use app\model\Announcement;
 use app\model\Channel;
 use app\model\GameExtend;
@@ -19,7 +20,6 @@ use app\model\PlayerReverseWaterDetail;
 use app\model\PlayerWithdrawRecord;
 use app\model\PlayGameRecord;
 use app\model\SystemSetting;
-use app\exception\PlayerCheckException;
 use app\service\ActivityServices;
 use app\service\LineServices;
 use app\service\SmsServicesServices;
@@ -593,6 +593,7 @@ class IndexController
                 'announcement_id' => $item->id,
                 'title' => $item->title,
                 'valid_time' => $item->valid_time,
+                'content' => $item->content,
                 'priority' => $item->priority,
                 'push_time' => Carbon::parse($item->push_time)->format('Y/m/d'),
             ];

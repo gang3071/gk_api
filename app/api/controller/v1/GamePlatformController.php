@@ -2,6 +2,8 @@
 
 namespace app\api\controller\v1;
 
+use app\exception\GameException;
+use app\exception\PlayerCheckException;
 use app\model\AdminConfig;
 use app\model\ChannelPlatformReverseWater;
 use app\model\Game;
@@ -15,8 +17,6 @@ use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayerWalletTransfer;
 use app\model\StoreSetting;
-use app\exception\GameException;
-use app\exception\PlayerCheckException;
 use app\service\game\GameServiceFactory;
 use app\service\GameLotteryServices;
 use app\service\GamePlatformProxyService;
@@ -1025,10 +1025,6 @@ class GamePlatformController
      */
     public function lobbyLogin(Request $request): Response
     {
-        // 转发到外网主机（零信任隧道）
-        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'lobbyLogin')) {
-            return $proxyResponse;
-        }
 
         $player = checkPlayer();
 
@@ -1036,6 +1032,10 @@ class GamePlatformController
         $crashCheck = checkMachineCrash($player);
         if ($crashCheck['crashed']) {
             return jsonFailResponse(trans('machine_crashed_cannot_enter_game', [], 'message'));
+        }
+        // 转发到外网主机（零信任隧道）
+        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'lobbyLogin')) {
+            return $proxyResponse;
         }
 
         $data = $request->all();
@@ -1166,10 +1166,6 @@ class GamePlatformController
      */
     public function enterGame(Request $request): Response
     {
-        // 转发到外网主机（零信任隧道）
-        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'enterGame')) {
-            return $proxyResponse;
-        }
 
         $player = checkPlayer();
 
@@ -1179,6 +1175,10 @@ class GamePlatformController
             return jsonFailResponse(trans('machine_crashed_cannot_enter_game', [], 'message'));
         }
 
+        // 转发到外网主机（零信任隧道）
+        if ($proxyResponse = GamePlatformProxyService::proxyByMethod($request, 'enterGame')) {
+            return $proxyResponse;
+        }
         $data = $request->all();
         $validator = v::key('game_id',
             v::stringType()->notEmpty()->setName(trans('game_id', [], 'message')));
