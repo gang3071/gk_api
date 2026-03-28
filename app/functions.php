@@ -3,6 +3,7 @@
  * Here is your custom functions.
  */
 
+use app\exception\PlayerCheckException;
 use app\filesystem\Filesystem;
 use app\model\ApiErrorLog;
 use app\model\Channel;
@@ -11,12 +12,9 @@ use app\model\GameType;
 use app\model\LevelList;
 use app\model\Machine;
 use app\model\MachineCategoryGiveRule;
-use app\model\MachineGamingLog;
 use app\model\MachineKeepingLog;
-use app\model\MachineKickLog;
 use app\model\MachineMedia;
 use app\model\MachineMediaPush;
-use app\model\MachineOpenCard;
 use app\model\MachineTencentPlay;
 use app\model\NationalProfitRecord;
 use app\model\Notice;
@@ -37,13 +35,11 @@ use app\model\PlayerRegisterRecord;
 use app\model\PlayerWithdrawRecord;
 use app\model\StoreSetting;
 use app\model\SystemSetting;
+use app\service\ActivityServices;
 use app\service\FishServices;
 use app\service\LotteryServices;
-use app\exception\PlayerCheckException;
-use app\service\ActivityServices;
 use app\service\machine\MachineServices;
 use app\service\machine\Slot;
-use Carbon\Carbon;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Database\Eloquent\Builder;
@@ -134,10 +130,13 @@ function checkPlayer(bool $hasTransfer = true): Player
  */
 function checkMachineCrash(Player $player): array
 {
-    $currentAmount = $player->machine_wallet->money ?? 0;
+    // 直接通过玩家ID查询钱包的爆机状态
+    $wallet = PlayerPlatformCash::where('player_id', $player->id)
+        ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
+        ->first();
 
-    // 只检查钱包的 is_crashed 字段
-    $isCrashed = isset($player->machine_wallet->is_crashed) && $player->machine_wallet->is_crashed == 1;
+    $currentAmount = $wallet->money ?? 0;
+    $isCrashed = $wallet && $wallet->is_crashed == 1;
 
     // 获取爆机金额配置（用于返回信息）
     $crashAmount = null;

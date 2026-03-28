@@ -483,6 +483,7 @@ return [
     'machine_crashed_cannot_open_score' => 'マシンがクラッシュしました、スコアを開くことができません',
     'machine_crashed_cannot_wash_score' => 'マシンがクラッシュしました、スコアを洗うことができません',
     'machine_crashed_cannot_enter_game' => 'マシンがクラッシュしました、ゲームに入ることができません',
+    'machine_crashed_cannot_recharge' => 'マシンがクラッシュしました、コインを投入することができません',
     'machine_crash_unlocked' => 'マシンクラッシュがロック解除されました',
     'open_score_will_cause_crash' => 'スコアを開くとマシンがクラッシュします、スコアを開くことができません',
     'recharge' => 'チャージ',
