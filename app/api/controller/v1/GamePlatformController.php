@@ -2,6 +2,8 @@
 
 namespace app\api\controller\v1;
 
+use app\exception\GameException;
+use app\exception\PlayerCheckException;
 use app\model\AdminConfig;
 use app\model\ChannelPlatformReverseWater;
 use app\model\Game;
@@ -15,8 +17,6 @@ use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayerWalletTransfer;
 use app\model\StoreSetting;
-use app\exception\GameException;
-use app\exception\PlayerCheckException;
 use app\service\game\GameServiceFactory;
 use app\service\GameLotteryServices;
 use app\service\GamePlatformProxyService;
@@ -1175,6 +1175,7 @@ class GamePlatformController
 
         // 爆机检查：玩家不能进入游戏
         $crashCheck = checkMachineCrash($player);
+        Log::info('进入游戏', [$crashCheck, $player]);
         if ($crashCheck['crashed']) {
             return jsonFailResponse(trans('machine_crashed_cannot_enter_game', [], 'message'));
         }
