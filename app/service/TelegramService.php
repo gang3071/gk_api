@@ -18,10 +18,23 @@ class TelegramService extends AbstractProcessingHandler
 
     protected function write(array $record): void
     {
+        // 过滤掉强制下线相关的消息(不发送到 Telegram)
+        $message = $record['message'];
+        $ignoredMessages = [
+            '该账号已在其他设备登录，强制下线',
+            '身份验证会话已过期，请再次登录',
+            'Access Token无效',
+        ];
+
+        foreach ($ignoredMessages as $ignored) {
+            if (str_contains($message, $ignored)) {
+                return;
+            }
+        }
+
         // 组装消息内容
         $date = $record['datetime']->format('Y-m-d H:i:s');
         $level = $record['level_name'];
-        $message = $record['message'];
         $context = json_encode($record['context'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
         $text = "🚨 *Webman 错误告警*\n";
