@@ -2,10 +2,10 @@
 
 namespace support\bootstrap;
 
-use Webman\Bootstrap;
-use Workerman\Worker;
 use support\Db;
 use support\Redis;
+use Webman\Bootstrap;
+use Workerman\Worker;
 
 /**
  * 启动后健康检查
@@ -147,61 +147,8 @@ class HealthCheck implements Bootstrap
             $allPassed = false;
         }
 
-        // 3. 检查 MongoDB 连接
-        self::out("🍃 MongoDB 数据库\n");
-
-        if (!class_exists('MongoDB\Driver\Manager')) {
-            self::out("   状态: ⚠️  扩展未安装\n");
-            self::out("   提示: MongoDB 为可选服务\n\n");
-        } else {
-            try {
-                $mongoHost = env('MONGODB_HOST', '127.0.0.1');
-                $mongoPort = env('MONGODB_PORT', 27017);
-                $mongoDatabase = env('MONGODB_DATABASE', 'luck3');
-                $mongoUsername = env('MONGODB_USERNAME', '');
-                $mongoPassword = env('MONGODB_PASSWORD', '');
-
-                self::out("   配置: {$mongoHost}:{$mongoPort}/{$mongoDatabase}\n");
-                self::out("   认证: " . (!empty($mongoUsername) ? '是' : '否') . "\n");
-
-                // 构建连接字符串
-                if (!empty($mongoUsername) && !empty($mongoPassword)) {
-                    $mongoAuthDatabase = env('MONGODB_AUTH_DATABASE', 'admin');
-                    $uri = "mongodb://{$mongoUsername}:{$mongoPassword}@{$mongoHost}:{$mongoPort}/{$mongoAuthDatabase}";
-                } else {
-                    $uri = "mongodb://{$mongoHost}:{$mongoPort}";
-                }
-
-                // 使用原生 MongoDB 扩展测试连接
-                $manager = new \MongoDB\Driver\Manager($uri, [
-                    'connectTimeoutMS' => 3000,
-                    'serverSelectionTimeoutMS' => 3000,
-                ]);
-
-                // 执行 ping 命令获取版本信息
-                $command = new \MongoDB\Driver\Command(['buildInfo' => 1]);
-                $result = $manager->executeCommand($mongoDatabase, $command);
-                $buildInfo = current($result->toArray());
-
-                self::out("   版本: MongoDB {$buildInfo->version}\n");
-                self::out("   状态: ✅ 连接正常\n");
-
-                // 测试 ping
-                $pingCommand = new \MongoDB\Driver\Command(['ping' => 1]);
-                $pingResult = $manager->executeCommand($mongoDatabase, $pingCommand);
-                $response = current($pingResult->toArray());
-
-                if (isset($response->ok) && $response->ok == 1) {
-                    self::out("   测试: ✅ PING 正常\n");
-                }
-
-                self::out("\n");
-            } catch (\Throwable $e) {
-                self::out("   状态: ⚠️  连接失败\n");
-                self::out("   错误: {$e->getMessage()}\n");
-                self::out("   提示: MongoDB 为可选服务，不影响核心功能\n\n");
-            }
-        }
+        // 3. MongoDB 已移除
+        // MongoDB 日志功能已迁移或移除，不再检查
 
         // 4. 检查模块配置
         self::out("⚙️  模块配置\n");

@@ -156,10 +156,16 @@ class JackpotService
         }
         if (!isset($result['result']) || $result['result'] == 0) {
             Log::error('JackpotService---machine_connection_failed', [$result, $action, $param, $this->machine->code]);
-            saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($result), $action, 0, $isSystem);
+            // MongoDB 已移除，条件调用日志函数
+            if (function_exists('saveMachineOperationLog')) {
+                saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($result), $action, 0, $isSystem);
+            }
             throw new Exception(trans('exception_msg.machine_connection_failed', [], 'message'));
         }
-        saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($result), $action, 1, $isSystem);
+        // MongoDB 已移除，条件调用日志函数
+        if (function_exists('saveMachineOperationLog')) {
+            saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($result), $action, 1, $isSystem);
+        }
 
         return $result;
     }

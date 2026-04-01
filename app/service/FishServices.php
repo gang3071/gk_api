@@ -138,7 +138,10 @@ class FishServices
                             $success += 1;
                             $result[] = $openResult;
                         } else {
-                            saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($openResult), $action, 1, $isSystem);
+                            // MongoDB 已移除，条件调用日志函数
+                            if (function_exists('saveMachineOperationLog')) {
+                                saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($openResult), $action, 1, $isSystem);
+                            }
                         }
                         usleep(5);
                     }
@@ -173,10 +176,16 @@ class FishServices
                     throw new Exception(trans('exception_msg.action_not_fount', [], 'message'));
             }
         } catch (\Exception $e) {
-            saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($result), $action, 0, $isSystem);
+            // MongoDB 已移除，条件调用日志函数
+            if (function_exists('saveMachineOperationLog')) {
+                saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($result), $action, 0, $isSystem);
+            }
             throw new \Exception($e->getMessage());
         }
-        saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($result), $action);
+        // MongoDB 已移除，条件调用日志函数
+        if (function_exists('saveMachineOperationLog')) {
+            saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($result), $action);
+        }
 
         return $result;
     }

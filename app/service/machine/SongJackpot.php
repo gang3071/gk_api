@@ -848,8 +848,11 @@ class SongJackpot extends MachineServices implements BaseMachine
                 'description' => $this->getDescription($cmd),
             ]);
         }
-        saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($this->getAllData()), $cmd, 1,
-            $isSystem, $data);
+        // MongoDB 已移除，条件调用日志函数
+        if (function_exists('saveMachineOperationLog')) {
+            saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($this->getAllData()), $cmd, 1,
+                $isSystem, $data);
+        }
 
         return true;
     }

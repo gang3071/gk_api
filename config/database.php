@@ -45,16 +45,5 @@ return [
                 \PDO::ATTR_TIMEOUT => 3
             ],
         ],
-        'mongodb' => [
-            'driver' => 'mongodb',
-            'host' => env('MONGODB_HOST', '127.0.0.1'),
-            'port' => env('MONGODB_PORT', 27017),
-            'database' => env('MONGODB_DATABASE', 'luck3'),
-            'username' => env('MONGODB_USERNAME', null),
-            'password' => env('MONGODB_PASSWORD', null),
-            'options' => [
-                'database' => env('MONGODB_AUTH_DATABASE', 'admin'),
-            ],
-        ],
     ]
 ];
