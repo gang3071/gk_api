@@ -130,10 +130,28 @@ function checkPlayer(bool $hasTransfer = true): Player
  */
 function checkMachineCrash(Player $player): array
 {
-    // 直接通过玩家ID查询钱包的爆机状态
+    // 🚀 优化 #1: 使用 Redis 缓存爆机状态
+    $cacheKey = "machine_crash_status:{$player->id}";
+
+    try {
+        $cached = \support\Redis::get($cacheKey);
+
+        if ($cached !== null && $cached !== false) {
+            // 缓存命中，解析缓存数据
+            return json_decode($cached, true);
+        }
+    } catch (\Exception $e) {
+        // Redis 故障时降级到数据库查询
+        Log::error('checkMachineCrash: Redis get failed', [
+            'player_id' => $player->id,
+            'error' => $e->getMessage(),
+        ]);
+    }
+
+    // 缓存未命中或 Redis 故障，从数据库查询
     $wallet = PlayerPlatformCash::where('player_id', $player->id)
         ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
-        ->first();
+        ->first(['is_crashed', 'money']);
 
     $currentAmount = $wallet->money ?? 0;
     $isCrashed = $wallet && $wallet->is_crashed == 1;
@@ -152,11 +170,25 @@ function checkMachineCrash(Player $player): array
         $crashAmount = ($crashSetting && $crashSetting->status == 1) ? ($crashSetting->num ?? 0) : null;
     }
 
-    return [
+    $result = [
         'crashed' => $isCrashed,
         'crash_amount' => $crashAmount,
         'current_amount' => $currentAmount,
     ];
+
+    // 🚀 优化 #2: 根据爆机状态设置不同的缓存过期时间
+    try {
+        $ttl = $isCrashed ? 3600 : 600;  // 爆机1小时，未爆机10分钟
+        \support\Redis::setex($cacheKey, $ttl, json_encode($result));
+    } catch (\Exception $e) {
+        // 缓存写入失败不影响业务
+        Log::error('checkMachineCrash: Redis setex failed', [
+            'player_id' => $player->id,
+            'error' => $e->getMessage(),
+        ]);
+    }
+
+    return $result;
 }
 
 /**
@@ -2940,4 +2972,33 @@ function addPlayerGameLog(
     $playerGameLog->is_test = $player->is_test; //标记测试数据
 
     return $playerGameLog;
+}
+
+if (!function_exists('clearMachineCrashCache')) {
+    /**
+     * 清除玩家的爆机状态缓存
+     * 在玩家充值或管理员修改爆机状态后调用
+     *
+     * @param int $playerId 玩家ID
+     * @return bool
+     */
+    function clearMachineCrashCache(int $playerId): bool
+    {
+        try {
+            $cacheKey = "machine_crash_status:{$playerId}";
+            \support\Redis::del($cacheKey);
+            
+            Log::info('clearMachineCrashCache: 缓存已清除', [
+                'player_id' => $playerId,
+            ]);
+            
+            return true;
+        } catch (\Exception $e) {
+            Log::error('clearMachineCrashCache: 清除失败', [
+                'player_id' => $playerId,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
 }
