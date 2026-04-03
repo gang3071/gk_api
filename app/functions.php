@@ -616,8 +616,9 @@ function machineOpenAny(
     DB::beginTransaction();
     try {
         //先扣點
-        $player->machine_wallet->decrement('money', $money);
-        $beforeGameAmount = $player->machine_wallet->money + $money;
+        $beforeGameAmount = $player->machine_wallet->money;
+        $player->machine_wallet->money = bcsub($player->machine_wallet->money, $money, 2);
+        $player->machine_wallet->save(); // 触发 updated 事件,自动更新 Redis 缓存
         $afterGameAmount = $player->machine_wallet->money;
         $openScore = checkMachineOpenAny($machine, $money, $giftScore);
         if ($machine->min_point != 0 && $machine->min_point > $openScore) {
@@ -1602,7 +1603,8 @@ function fishMachineOpenAny(Player $player, Machine $machine, int $money, FishSe
         //原先餘額
         $beforeGameAmount = $player->machine_wallet->money;
         //先扣點
-        $player->machine_wallet->decrement('money', $money);
+        $player->machine_wallet->money = bcsub($player->machine_wallet->money, $money, 2);
+        $player->machine_wallet->save(); // 触发 updated 事件,自动更新 Redis 缓存
 
         if ($player->machine_wallet->money < 0) {
             throw new Exception(trans('game_amount_insufficient', [], 'message'));
