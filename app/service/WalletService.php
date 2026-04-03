@@ -17,9 +17,9 @@ use support\Redis;
 class WalletService
 {
     /**
-     * 缓存键前缀（包含项目标识避免跨项目冲突）
+     * 缓存键前缀（与 gk_work 项目共享钱包缓存）
      */
-    private const CACHE_PREFIX = 'gk_api:wallet:balance:';
+    private const CACHE_PREFIX = 'gk_work:wallet:balance:';
 
     /**
      * 缓存版本号（修改此值可批量失效所有缓存）
