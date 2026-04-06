@@ -486,7 +486,7 @@ return [
     'verification_success' => '核销成功',
     'verification_failed' => '核销失败',
     'please_relogin' => '请重新登录',
-    'insufficient_balance_100' => '余额不足，无法洗分',
+    'insufficient_balance_100' => '分数不足，无法洗分',
     'insufficient_balance_1000' => '余额不足1000，无法洗分',
     'player_not_bind_store' => '玩家未绑定店家',
     'open_point_config_not_found' => '开分配置未找到',
