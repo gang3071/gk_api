@@ -85,20 +85,20 @@ class WalletService
     }
 
     /**
-     * 从数据库获取余额
+     * 从数据库获取余额（单一钱包模式）
+     *
+     * 单一钱包模式：直接从 player.money 读取
+     * platform_id 参数保留仅为兼容性，实际不使用
      *
      * @param int $playerId
-     * @param int $platformId
+     * @param int $platformId（已废弃，保留为兼容性）
      * @return float
      */
     private static function getBalanceFromDB(int $playerId, int $platformId): float
     {
-        $wallet = PlayerPlatformCash::query()
-            ->where('player_id', $playerId)
-            ->where('platform_id', $platformId)
-            ->first();
-
-        return $wallet ? (float)$wallet->money : 0.0;
+        // 单一钱包模式：从 player 表读取
+        $player = \app\model\Player::find($playerId);
+        return $player ? (float)$player->money : 0.0;
     }
 
     /**
