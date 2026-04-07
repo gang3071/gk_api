@@ -338,7 +338,7 @@ class WalletService
         LUA;
 
         try {
-            $result = \support\Redis::eval($script, [$cacheKey, $amount, self::CACHE_TTL], 1);
+            $result = \support\Redis::eval($script, 1, $cacheKey, $amount, self::CACHE_TTL);
 
             if (is_array($result) && isset($result['err'])) {
                 if ($result['err'] === 'BALANCE_NOT_FOUND') {
@@ -412,7 +412,7 @@ class WalletService
         LUA;
 
         try {
-            $result = \support\Redis::eval($script, [$cacheKey, $amount, self::CACHE_TTL], 1);
+            $result = \support\Redis::eval($script, 1, $cacheKey, $amount, self::CACHE_TTL);
 
             // 解析返回的 JSON：{old: 旧余额, new: 新余额}
             $balanceData = json_decode($result, true);
@@ -691,8 +691,10 @@ LUA;
             // 执行 Lua 脚本，原子性增加余额
             $newBalance = Redis::eval(
                 self::LUA_ATOMIC_INCREMENT,
-                [$cacheKey, $amount, $ttl],
-                1  // KEYS 数量
+                1,  // KEYS 数量
+                $cacheKey,  // KEYS[1]
+                $amount,    // ARGV[1]
+                $ttl        // ARGV[2]
             );
 
             Log::info('WalletService: Atomic increment success', [
@@ -744,8 +746,10 @@ LUA;
             // 执行 Lua 脚本，原子性减少余额
             $resultJson = Redis::eval(
                 self::LUA_ATOMIC_DECREMENT,
-                [$cacheKey, $amount, $ttl],
-                1  // KEYS 数量
+                1,  // KEYS 数量
+                $cacheKey,  // KEYS[1]
+                $amount,    // ARGV[1]
+                $ttl        // ARGV[2]
             );
 
             $result = json_decode($resultJson, true);
