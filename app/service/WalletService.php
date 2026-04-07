@@ -322,7 +322,7 @@ class WalletService
     {
         $cacheKey = self::getCacheKey($playerId);
 
-        // Lua 脚本：原子扣款
+        // Lua 脚本：原子扣款，返回旧余额和新余额（用于爆机检测）
         $script = <<<'LUA'
             local balance = tonumber(redis.call('GET', KEYS[1]))
             if not balance then
@@ -334,7 +334,7 @@ class WalletService
             local newBalance = balance - tonumber(ARGV[1])
             redis.call('SET', KEYS[1], newBalance)
             redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
-            return newBalance
+            return cjson.encode({old = balance, new = newBalance})
         LUA;
 
         try {
@@ -349,10 +349,17 @@ class WalletService
                 }
             }
 
-            $newBalance = (float)$result;
+            // 解析返回的 JSON：{old: 旧余额, new: 新余额}
+            $balanceData = json_decode($result, true);
+            if (!$balanceData || !isset($balanceData['new'])) {
+                throw new \Exception('Invalid balance data returned from Redis');
+            }
 
-            // 异步更新数据库（不阻塞业务）
-            self::asyncUpdateDB($playerId, $newBalance);
+            $oldBalance = (float)($balanceData['old'] ?? 0);
+            $newBalance = (float)$balanceData['new'];
+
+            // 异步更新数据库并触发爆机检测
+            self::asyncUpdateDB($playerId, $newBalance, $oldBalance);
 
             return $newBalance;
         } catch (\Throwable $e) {
@@ -395,20 +402,29 @@ class WalletService
     {
         $cacheKey = self::getCacheKey($playerId);
 
-        // Lua 脚本：原子加款
+        // Lua 脚本：原子加款，返回旧余额和新余额（用于爆机检测）
         $script = <<<'LUA'
             local balance = tonumber(redis.call('GET', KEYS[1])) or 0
             local newBalance = balance + tonumber(ARGV[1])
             redis.call('SET', KEYS[1], newBalance)
             redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
-            return newBalance
+            return cjson.encode({old = balance, new = newBalance})
         LUA;
 
         try {
-            $newBalance = (float)\support\Redis::eval($script, [$cacheKey], [$amount, self::CACHE_TTL]);
+            $result = \support\Redis::eval($script, [$cacheKey], [$amount, self::CACHE_TTL]);
 
-            // 异步更新数据库（不阻塞业务）
-            self::asyncUpdateDB($playerId, $newBalance);
+            // 解析返回的 JSON：{old: 旧余额, new: 新余额}
+            $balanceData = json_decode($result, true);
+            if (!$balanceData || !isset($balanceData['new'])) {
+                throw new \Exception('Invalid balance data returned from Redis');
+            }
+
+            $oldBalance = (float)($balanceData['old'] ?? 0);
+            $newBalance = (float)$balanceData['new'];
+
+            // 异步更新数据库并触发爆机检测
+            self::asyncUpdateDB($playerId, $newBalance, $oldBalance);
 
             return $newBalance;
         } catch (\Throwable $e) {
@@ -426,20 +442,112 @@ class WalletService
      *
      * @param int $playerId
      * @param float $newBalance
+     * @param float|null $oldBalance 旧余额（用于爆机检测）
      * @return void
      */
-    private static function asyncUpdateDB(int $playerId, float $newBalance): void
+    private static function asyncUpdateDB(int $playerId, float $newBalance, ?float $oldBalance = null): void
     {
         try {
             // 只更新 player_platform_cash 表（player 表没有 money 字段）
             \support\Db::table('player_platform_cash')
                 ->where('player_id', $playerId)
                 ->update(['money' => $newBalance]);
+
+            // ✅ 触发爆机检测（不阻塞主流程）
+            self::checkMachineCrash($playerId, $newBalance, $oldBalance);
         } catch (\Throwable $e) {
             // 数据库同步失败不影响 Redis（Redis 是唯一实时标准）
             \support\Log::error('WalletService: asyncUpdateDB failed', [
                 'player_id' => $playerId,
                 'balance' => $newBalance,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * 检查爆机状态（从模型事件中提取，避免事务冲突）
+     *
+     * @param int $playerId 玩家ID
+     * @param float $currentBalance 当前余额（来自 Redis）
+     * @param float|null $previousBalance 之前的余额（用于判断状态变化）
+     * @return void
+     */
+    private static function checkMachineCrash(int $playerId, float $currentBalance, ?float $previousBalance = null): void
+    {
+        try {
+            // 获取玩家信息
+            $player = \app\model\Player::find($playerId);
+            if (!$player) {
+                return;
+            }
+
+            // 获取爆机配置
+            $adminUserId = $player->store_admin_id ?? null;
+            if (!$adminUserId) {
+                return;
+            }
+
+            $crashSetting = \app\model\StoreSetting::getSetting(
+                'machine_crash_amount',
+                $player->department_id,
+                null,
+                $adminUserId
+            );
+
+            // 如果没有配置或配置被禁用，不处理
+            if (!$crashSetting || $crashSetting->status != 1) {
+                return;
+            }
+
+            $crashAmount = $crashSetting->num ?? 0;
+            if ($crashAmount <= 0) {
+                return;
+            }
+
+            // 检查爆机状态变化
+            $wasCrashed = $previousBalance !== null ? $previousBalance >= $crashAmount : false;
+            $isCrashed = $currentBalance >= $crashAmount;
+
+            // 状态没有变化，不处理
+            if ($wasCrashed === $isCrashed) {
+                return;
+            }
+
+            // 更新爆机状态字段
+            \support\Db::table('player_platform_cash')
+                ->where('player_id', $playerId)
+                ->where('platform_id', 1) // 实体机平台
+                ->update(['is_crashed' => $isCrashed ? 1 : 0]);
+
+            // 清除爆机状态缓存
+            clearMachineCrashCache($playerId);
+
+            \support\Log::info('WalletService: 爆机状态变化', [
+                'player_id' => $playerId,
+                'old_status' => $wasCrashed ? '已爆机' : '未爆机',
+                'new_status' => $isCrashed ? '已爆机' : '未爆机',
+                'current_balance' => $currentBalance,
+                'crash_amount' => $crashAmount,
+            ]);
+
+            // 从未爆机变为爆机 -> 发送爆机通知
+            if (!$wasCrashed && $isCrashed) {
+                $crashInfo = [
+                    'crashed' => true,
+                    'crash_amount' => $crashAmount,
+                    'current_amount' => $currentBalance,
+                ];
+                notifyMachineCrash($player, $crashInfo);
+            }
+
+            // 从爆机变为未爆机 -> 发送解锁通知
+            if ($wasCrashed && !$isCrashed) {
+                checkAndNotifyCrashUnlock($player, $previousBalance);
+            }
+        } catch (\Throwable $e) {
+            \support\Log::error('WalletService: checkMachineCrash failed', [
+                'player_id' => $playerId,
                 'error' => $e->getMessage(),
             ]);
         }
