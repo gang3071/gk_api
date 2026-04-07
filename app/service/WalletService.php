@@ -95,10 +95,10 @@ class WalletService
      */
     private static function getBalanceFromDB(int $playerId, int $platformId): float
     {
-        // 单一钱包模式：使用原生查询直接读取 player.money，避免触发模型访问器
-        $result = \support\Db::table('player')
-            ->where('id', $playerId)
-            ->whereNull('deleted_at')
+        // 从 player_platform_cash 表读取余额
+        $result = \support\Db::table('player_platform_cash')
+            ->where('player_id', $playerId)
+            ->where('platform_id', $platformId)
             ->value('money');
 
         return $result !== null ? (float)$result : 0.0;
@@ -431,24 +431,13 @@ class WalletService
     private static function asyncUpdateDB(int $playerId, float $newBalance): void
     {
         try {
-            // 方式1: 使用队列异步更新（推荐）
-            // \Webman\RedisQueue\Client::send('wallet-sync', [
-            //     'player_id' => $playerId,
-            //     'balance' => $newBalance,
-            // ]);
-
-            // 方式2: 直接更新（同步但不阻塞，失败不影响业务）
-            \support\Db::table('player')
-                ->where('id', $playerId)
-                ->update(['money' => $newBalance, 'updated_at' => date('Y-m-d H:i:s')]);
-
+            // 只更新 player_platform_cash 表（player 表没有 money 字段）
             \support\Db::table('player_platform_cash')
                 ->where('player_id', $playerId)
-                ->where('platform_id', 1)
-                ->update(['money' => $newBalance, 'updated_at' => date('Y-m-d H:i:s')]);
+                ->update(['money' => $newBalance]);
         } catch (\Throwable $e) {
-            // 数据库更新失败不影响业务（Redis 已成功更新）
-            \support\Log::warning('WalletService::asyncUpdateDB failed (Redis already updated)', [
+            // 数据库同步失败不影响 Redis（Redis 是唯一实时标准）
+            \support\Log::error('WalletService: asyncUpdateDB failed', [
                 'player_id' => $playerId,
                 'balance' => $newBalance,
                 'error' => $e->getMessage(),
