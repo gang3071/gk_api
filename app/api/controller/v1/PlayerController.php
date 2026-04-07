@@ -2,6 +2,7 @@
 
 namespace app\api\controller\v1;
 
+use app\exception\PlayerCheckException;
 use app\filesystem\Filesystem;
 use app\model\BankContent;
 use app\model\Channel;
@@ -11,8 +12,6 @@ use app\model\Currency;
 use app\model\GameType;
 use app\model\Lottery;
 use app\model\Machine;
-use app\model\NationalInvite;
-use app\model\NationalProfitRecord;
 use app\model\Notice;
 use app\model\OpenScoreSetting;
 use app\model\PhoneSmsLog;
@@ -22,7 +21,6 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerFavoriteMachine;
 use app\model\PlayerGameRecord;
 use app\model\PlayerLotteryRecord;
-use app\model\PlayerMoneyEditLog;
 use app\model\PlayerPlatformCash;
 use app\model\PlayerPresentRecord;
 use app\model\PlayerRechargeRecord;
@@ -33,7 +31,6 @@ use app\model\PlayGameRecord;
 use app\model\Slider;
 use app\model\StoreSetting;
 use app\model\SystemSetting;
-use app\exception\PlayerCheckException;
 use app\service\GameLotteryServices;
 use app\service\LotteryServices;
 use app\service\machine\MachineServices;
@@ -132,7 +129,7 @@ class PlayerController
             'has_set_play_password' => !empty($player->play_password),
             'recommend_code' => $player->recommend_code,
             'recommend_player_uuid' => $player->recommend_player->uuid ?? '',
-            'money' => $player->machine_wallet->money,
+            'money' => \app\service\WalletService::getBalance($player->id), // ✅ Redis 实时余额
             'name' => $player->name,
             'is_promoter' => $player->is_promoter == 1 && $player->player_promoter->status == 1,
             'recommend_id' => $player->recommend_id ?? 0,
@@ -726,13 +723,25 @@ class PlayerController
             return jsonFailResponse(trans('you_cannot_present_own', [], 'message'));
         }
         $amount = (float)$data['amount'];
-        if ($amount > $player->machine_wallet->money) {
+        // ✅ 从 Redis 读取实时余额
+        $currentBalance = \app\service\WalletService::getBalance($player->id);
+        if ($amount > $currentBalance) {
             return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
         }
         //驗證通過
         DB::beginTransaction();
         try {
             $tradeno = date('YmdHis') . rand(10000, 99999);
+
+            //使用 Lua 原子操作（Redis 作为唯一实时标准）
+            // 1. 扣除转出玩家余额
+            $userOriginAmount = \app\service\WalletService::getBalance($player->id, 1);
+            $userAfterAmount = \app\service\WalletService::deduct($player->id, $amount, 1);
+
+            // 2. 增加接收玩家余额
+            $playerOriginAmount = \app\service\WalletService::getBalance($acceptPlayer->id, 1);
+            $playerAfterAmount = \app\service\WalletService::add($acceptPlayer->id, $amount, 1);
+
             // 添加玩家转点记录
             $playerPresentRecord = new PlayerPresentRecord();
             $playerPresentRecord->user_id = $player->id;
@@ -740,31 +749,53 @@ class PlayerController
             $playerPresentRecord->department_id = $player->department_id;
             $playerPresentRecord->amount = $data['amount'];
             $playerPresentRecord->tradeno = $tradeno;
-            $playerPresentRecord->user_origin_amount = $player->machine_wallet->money;
-            $playerPresentRecord->user_after_amount = bcsub($player->machine_wallet->money,
-                $playerPresentRecord->amount, 2);
-            $playerPresentRecord->player_origin_amount = $acceptPlayer->machine_wallet->money;
-            $playerPresentRecord->player_after_amount = bcadd($acceptPlayer->machine_wallet->money,
-                $playerPresentRecord->amount, 2);
+            $playerPresentRecord->user_origin_amount = $userOriginAmount;
+            $playerPresentRecord->user_after_amount = $userAfterAmount;
+            $playerPresentRecord->player_origin_amount = $playerOriginAmount;
+            $playerPresentRecord->player_after_amount = $playerAfterAmount;
             $playerPresentRecord->type = PlayerPresentRecord::TYPE_IN;
             if ($player->is_coin == 1) {
                 $playerPresentRecord->type = PlayerPresentRecord::TYPE_OUT;
             }
             $playerPresentRecord->save();
-            // 更新玩家钱包
-            playerUpdateMoney($player, $playerPresentRecord, PlayerMoneyEditLog::TYPE_DEDUCT, $amount,
-                $acceptPlayer->uuid, PlayerDeliveryRecord::TYPE_PRESENT_OUT);
-            
-            playerUpdateMoney($acceptPlayer, $playerPresentRecord, PlayerMoneyEditLog::TYPE_INCREASE, $amount,
-                $player->uuid, PlayerDeliveryRecord::TYPE_PRESENT_IN);
-            
+
+            // 写入金流明细 - 转出记录
+            $playerDeliveryRecordOut = new PlayerDeliveryRecord();
+            $playerDeliveryRecordOut->player_id = $player->id;
+            $playerDeliveryRecordOut->department_id = $player->department_id;
+            $playerDeliveryRecordOut->target = $playerPresentRecord->getTable();
+            $playerDeliveryRecordOut->target_id = $playerPresentRecord->id;
+            $playerDeliveryRecordOut->type = PlayerDeliveryRecord::TYPE_PRESENT_OUT;
+            $playerDeliveryRecordOut->source = 'present_out';
+            $playerDeliveryRecordOut->amount = $amount;
+            $playerDeliveryRecordOut->amount_before = $userOriginAmount;
+            $playerDeliveryRecordOut->amount_after = $userAfterAmount;
+            $playerDeliveryRecordOut->tradeno = $tradeno;
+            $playerDeliveryRecordOut->remark = $acceptPlayer->uuid;
+            $playerDeliveryRecordOut->save();
+
+            // 写入金流明细 - 转入记录
+            $playerDeliveryRecordIn = new PlayerDeliveryRecord();
+            $playerDeliveryRecordIn->player_id = $acceptPlayer->id;
+            $playerDeliveryRecordIn->department_id = $acceptPlayer->department_id;
+            $playerDeliveryRecordIn->target = $playerPresentRecord->getTable();
+            $playerDeliveryRecordIn->target_id = $playerPresentRecord->id;
+            $playerDeliveryRecordIn->type = PlayerDeliveryRecord::TYPE_PRESENT_IN;
+            $playerDeliveryRecordIn->source = 'present_in';
+            $playerDeliveryRecordIn->amount = $amount;
+            $playerDeliveryRecordIn->amount_before = $playerOriginAmount;
+            $playerDeliveryRecordIn->amount_after = $playerAfterAmount;
+            $playerDeliveryRecordIn->tradeno = $tradeno;
+            $playerDeliveryRecordIn->remark = $player->uuid;
+            $playerDeliveryRecordIn->save();
+
             DB::commit();
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('present', [$e->getTrace()]);
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
-        
+
         return jsonSuccessResponse('success');
     }
     
@@ -821,13 +852,25 @@ class PlayerController
             return jsonFailResponse(trans('you_cannot_present_own', [], 'message'));
         }
         $amount = (float)$data['amount'];
-        if ($amount > $player->machine_wallet->money) {
+        // ✅ 从 Redis 读取实时余额
+        $currentBalance = \app\service\WalletService::getBalance($player->id);
+        if ($amount > $currentBalance) {
             return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
         }
         //驗證通過
         DB::beginTransaction();
         try {
             $tradeno = date('YmdHis') . rand(10000, 99999);
+
+            //使用 Lua 原子操作（Redis 作为唯一实时标准）
+            // 1. 扣除转出玩家余额
+            $userOriginAmount = \app\service\WalletService::getBalance($player->id, 1);
+            $userAfterAmount = \app\service\WalletService::deduct($player->id, $amount, 1);
+
+            // 2. 增加接收玩家余额
+            $playerOriginAmount = \app\service\WalletService::getBalance($acceptPlayer->id, 1);
+            $playerAfterAmount = \app\service\WalletService::add($acceptPlayer->id, $amount, 1);
+
             // 添加玩家转点记录
             $playerPresentRecord = new PlayerPresentRecord();
             $playerPresentRecord->user_id = $player->id;
@@ -835,25 +878,46 @@ class PlayerController
             $playerPresentRecord->department_id = $player->department_id;
             $playerPresentRecord->amount = $data['amount'];
             $playerPresentRecord->tradeno = $tradeno;
-            $playerPresentRecord->user_origin_amount = $player->machine_wallet->money;
-            $playerPresentRecord->user_after_amount = bcsub($player->machine_wallet->money,
-                $playerPresentRecord->amount, 2);
-            $playerPresentRecord->player_origin_amount = $acceptPlayer->machine_wallet->money;
-            $playerPresentRecord->player_after_amount = bcadd($acceptPlayer->machine_wallet->money,
-                $playerPresentRecord->amount, 2);
+            $playerPresentRecord->user_origin_amount = $userOriginAmount;
+            $playerPresentRecord->user_after_amount = $userAfterAmount;
+            $playerPresentRecord->player_origin_amount = $playerOriginAmount;
+            $playerPresentRecord->player_after_amount = $playerAfterAmount;
             $playerPresentRecord->type = PlayerPresentRecord::TYPE_IN;
             if ($player->is_coin == 1) {
                 $playerPresentRecord->type = PlayerPresentRecord::TYPE_OUT;
             }
             $playerPresentRecord->save();
-            // 更新玩家钱包
-            playerUpdateMoney($player, $playerPresentRecord, PlayerMoneyEditLog::TYPE_DEDUCT, $amount,
-                $acceptPlayer->uuid, PlayerDeliveryRecord::TYPE_PRESENT_OUT);
-            
-            playerUpdateMoney($acceptPlayer, $playerPresentRecord, PlayerMoneyEditLog::TYPE_INCREASE, $amount,
-                $player->uuid, PlayerDeliveryRecord::TYPE_PRESENT_IN);
-            
-            
+
+            // 写入金流明细 - 转出记录
+            $playerDeliveryRecordOut = new PlayerDeliveryRecord();
+            $playerDeliveryRecordOut->player_id = $player->id;
+            $playerDeliveryRecordOut->department_id = $player->department_id;
+            $playerDeliveryRecordOut->target = $playerPresentRecord->getTable();
+            $playerDeliveryRecordOut->target_id = $playerPresentRecord->id;
+            $playerDeliveryRecordOut->type = PlayerDeliveryRecord::TYPE_PRESENT_OUT;
+            $playerDeliveryRecordOut->source = 'present_out';
+            $playerDeliveryRecordOut->amount = $amount;
+            $playerDeliveryRecordOut->amount_before = $userOriginAmount;
+            $playerDeliveryRecordOut->amount_after = $userAfterAmount;
+            $playerDeliveryRecordOut->tradeno = $tradeno;
+            $playerDeliveryRecordOut->remark = $acceptPlayer->uuid;
+            $playerDeliveryRecordOut->save();
+
+            // 写入金流明细 - 转入记录
+            $playerDeliveryRecordIn = new PlayerDeliveryRecord();
+            $playerDeliveryRecordIn->player_id = $acceptPlayer->id;
+            $playerDeliveryRecordIn->department_id = $acceptPlayer->department_id;
+            $playerDeliveryRecordIn->target = $playerPresentRecord->getTable();
+            $playerDeliveryRecordIn->target_id = $playerPresentRecord->id;
+            $playerDeliveryRecordIn->type = PlayerDeliveryRecord::TYPE_PRESENT_IN;
+            $playerDeliveryRecordIn->source = 'present_in';
+            $playerDeliveryRecordIn->amount = $amount;
+            $playerDeliveryRecordIn->amount_before = $playerOriginAmount;
+            $playerDeliveryRecordIn->amount_after = $playerAfterAmount;
+            $playerDeliveryRecordIn->tradeno = $tradeno;
+            $playerDeliveryRecordIn->remark = $player->uuid;
+            $playerDeliveryRecordIn->save();
+
             //统计线下总营收
             if (!empty($player->recommend_id) && $player->recommend_player->player_promoter->recommend_id != 0) {
                 //不是最上级
@@ -903,7 +967,9 @@ class PlayerController
         if ($player->is_coin == 1) {
             return jsonFailResponse(trans('coin_cannot_present', [], 'message'));
         }
-        if ($player->machine_wallet->money <= 0) {
+        // ✅ 从 Redis 读取实时余额
+        $currentBalance = \app\service\WalletService::getBalance($player->id);
+        if ($currentBalance <= 0) {
             return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
         }
 
@@ -914,7 +980,7 @@ class PlayerController
         }
 
         // 计算可洗分金额：保留十位，只洗到百位
-        $currentMoney = $player->machine_wallet->money;
+        $currentMoney = $currentBalance;
         $washAmount = floor($currentMoney / 100) * 100; // 向下取整到百位
 
         if ($washAmount < 100) {
@@ -967,14 +1033,18 @@ class PlayerController
             $playerWithdrawRecord->remark = '線下代理洗分';
             $playerWithdrawRecord->save();
 
-            $beforeGameAmount = $player->machine_wallet->money;
+            // ✅ 从 Redis 读取余额（唯一可信源）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
 
-            // 玩家钱包扣减
-            /** @var PlayerPlatformCash $machineWallet */
-            $machineWallet = PlayerPlatformCash::query()->where('platform_id',
-                PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
-            $machineWallet->money = bcsub($machineWallet->money, $playerWithdrawRecord->point, 2);
-            $machineWallet->save();
+            // ✅ Lua 原子性扣款（自动同步数据库）
+            $result = \app\service\WalletService::atomicDecrement(
+                $player->id,
+                $playerWithdrawRecord->point
+            );
+
+            if ($result['ok'] == 0) {
+                throw new \Exception('余额不足');
+            }
 
             // 更新玩家提现统计
             $player->player_extend->withdraw_amount = bcadd($player->player_extend->withdraw_amount,
@@ -1473,7 +1543,9 @@ class PlayerController
         if ($player->status_withdraw != 1) {
             return jsonFailResponse(trans('player_withdraw_closed', [], 'message'));
         }
-        if ($player->machine_wallet->money < $data['amount']) {
+        // ✅ 从 Redis 读取实时余额（重要：提现检查）
+        $currentBalance = \app\service\WalletService::getBalance($player->id);
+        if ($currentBalance < $data['amount']) {
             return jsonFailResponse(trans('insufficient_balance', [], 'message'));
         }
         if (!password_verify($data['play_password'], $player->play_password) || empty($player->play_password)) {
@@ -1523,10 +1595,16 @@ class PlayerController
                             $playerWithdrawRecord->status = PlayerWithdrawRecord::STATUS_SUCCESS;
                             $playerWithdrawRecord->finish_time = date('Y-m-d H:i:s');
                             $playerWithdrawRecord->talk_tradeno = $data['data']['oauthWithdrawCashId'];
-                            // 玩家钱包扣减
-                            $player->machine_wallet->money = bcsub($player->machine_wallet->money,
-                                $playerWithdrawRecord->point, 2);
-                            $player->machine_wallet->save(); // 必须显式保存钱包
+
+                            // ✅ Lua 原子性扣款（自动同步数据库）
+                            $result = \app\service\WalletService::atomicDecrement(
+                                $player->id,
+                                $playerWithdrawRecord->point
+                            );
+
+                            if ($result['ok'] == 0) {
+                                throw new \Exception('余额不足');
+                            }
                             // 更新玩家统计
                             $player->player_extend->withdraw_amount = bcadd($player->player_extend->withdraw_amount,
                                 $playerWithdrawRecord->point, 2);
@@ -1639,13 +1717,18 @@ class PlayerController
                     $playerWithdrawRecord->status = PlayerWithdrawRecord::STATUS_WAIT;
                     $playerWithdrawRecord->bank_type = $playerBank->type;
                     $playerWithdrawRecord->save();
-                    $beforeGameAmount = $player->machine_wallet->money;
-                    // 玩家钱包扣减
-                    /** @var PlayerPlatformCash $machineWallet */
-                    $machineWallet = PlayerPlatformCash::query()->where('platform_id',
-                        PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
-                    $machineWallet->money = bcsub($machineWallet->money, $playerWithdrawRecord->point, 2);
-                    $machineWallet->save();
+                    // ✅ 从 Redis 读取余额（唯一可信源）
+                    $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+                    // ✅ Lua 原子性扣款（自动同步数据库）
+                    $result = \app\service\WalletService::atomicDecrement(
+                        $player->id,
+                        $playerWithdrawRecord->point
+                    );
+
+                    if ($result['ok'] == 0) {
+                        throw new \Exception('余额不足');
+                    }
                     // 更新玩家统计
                     $player->player_extend->withdraw_amount = bcadd($player->player_extend->withdraw_amount,
                         $playerWithdrawRecord->point, 2);
@@ -1661,7 +1744,7 @@ class PlayerController
                     $playerDeliveryRecord->source = 'channel_withdrawal';
                     $playerDeliveryRecord->amount = $playerWithdrawRecord->point;
                     $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                    $playerDeliveryRecord->amount_after = $machineWallet->money;
+                    $playerDeliveryRecord->amount_after = $result['balance'];
                     $playerDeliveryRecord->tradeno = $playerWithdrawRecord->tradeno ?? '';
                     $playerDeliveryRecord->remark = $playerWithdrawRecord->remark ?? '';
                     $playerDeliveryRecord->save();
@@ -1738,11 +1821,19 @@ class PlayerController
                     $playerWithdrawRecord->status = PlayerWithdrawRecord::STATUS_WAIT;
                     $playerWithdrawRecord->bank_type = $playerBank->type;
                     $playerWithdrawRecord->save();
-                    $beforeGameAmount = $player->machine_wallet->money;
-                    // 玩家钱包扣减
-                    $player->machine_wallet->money = bcsub($player->machine_wallet->money, $playerWithdrawRecord->point,
-                        2);
-                    $player->machine_wallet->save(); // 必须显式保存钱包
+
+                    // ✅ 从 Redis 读取余额（唯一可信源）
+                    $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+                    // ✅ Lua 原子性扣款（自动同步数据库）
+                    $result = \app\service\WalletService::atomicDecrement(
+                        $player->id,
+                        $playerWithdrawRecord->point
+                    );
+
+                    if ($result['ok'] == 0) {
+                        throw new \Exception('余额不足');
+                    }
                     // 更新玩家统计
                     $player->player_extend->withdraw_amount = bcadd($player->player_extend->withdraw_amount,
                         $playerWithdrawRecord->point, 2);
@@ -1758,7 +1849,7 @@ class PlayerController
                     $playerDeliveryRecord->source = 'gb_withdrawal';
                     $playerDeliveryRecord->amount = $playerWithdrawRecord->point;
                     $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                    $playerDeliveryRecord->amount_after = $player->machine_wallet->money;
+                    $playerDeliveryRecord->amount_after = $result['balance'];
                     $playerDeliveryRecord->tradeno = $playerWithdrawRecord->tradeno ?? '';
                     $playerDeliveryRecord->remark = $playerWithdrawRecord->remark ?? '';
                     $playerDeliveryRecord->save();
@@ -2559,7 +2650,7 @@ class PlayerController
                 if ($channel->gb_payment_recharge_status == 0) {
                     throw new Exception(trans('gb_payment_recharge_close', [], 'message'));
                 }
-                $beforeGameAmount = $player->machine_wallet->money;
+                $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
                 (new GBpayService($player))->fastDeposit($playerRechargeRecord->tradeno, $playerRechargeRecord->money,
                     $data['trans_pwd']);
                 $playerRechargeRecord->rate = 1;
@@ -2569,9 +2660,12 @@ class PlayerController
                 $playerRechargeRecord->status = PlayerRechargeRecord::STATUS_RECHARGED_SUCCESS;
                 $playerRechargeRecord->finish_time = date('Y-m-d H:i:s');
                 $playerRechargeRecord->save();
-                $player->machine_wallet->money = bcadd($player->machine_wallet->money, $playerRechargeRecord->point, 2);
-                $afterGameAmount = $player->machine_wallet->money; // 保存更新后的余额
-                $player->machine_wallet->save(); // 必须显式保存钱包
+
+                // ✅ Lua 原子性加款（自动同步数据库）
+                $afterGameAmount = \app\service\WalletService::atomicIncrement(
+                    $player->id,
+                    $playerRechargeRecord->point
+                );
                 $player->player_extend->recharge_amount = bcadd($player->player_extend->recharge_amount,
                     $playerRechargeRecord->point, 2);
                 $player->push();
@@ -2959,7 +3053,7 @@ class PlayerController
                 'id' => $player->id,
                 'name' => $player->name,
                 'phone' => $player->phone,
-                'money' => $player->machine_wallet->money,
+                'money' => \app\service\WalletService::getBalance($player->id), // ✅ Redis 实时余额
                 'avatar' => $player->avatar,
                 'ranking' => Player::query()
                         ->leftJoin('player_platform_cash', 'player.id', '=', 'player_platform_cash.player_id')
@@ -3118,14 +3212,14 @@ class PlayerController
         
         DB::beginTransaction();
         try {
-            //玩家加點數
-            /** @var PlayerPlatformCash $machineWallet */
-            $machineWallet = PlayerPlatformCash::query()->where('platform_id',
-                PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
-            $beforeGameAmount = $machineWallet->money;
-            // 更新玩家钱包
-            $machineWallet->money = bcadd($machineWallet->money, $reverseWater, 2);
-            $machineWallet->save();
+            // ✅ 从 Redis 读取余额（唯一可信源）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+            // ✅ Lua 原子性加款（自动同步数据库）
+            $afterGameAmount = \app\service\WalletService::atomicIncrement(
+                $player->id,
+                $reverseWater
+            );
             // 寫入金流明細
             $playerDeliveryRecord = new PlayerDeliveryRecord;
             $playerDeliveryRecord->player_id = $player->id;
@@ -3136,7 +3230,7 @@ class PlayerController
             $playerDeliveryRecord->source = 'reverse_water';
             $playerDeliveryRecord->amount = $reverseWater;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $player->machine_wallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = '';
             $playerDeliveryRecord->remark = '';
             $playerDeliveryRecord->save();
@@ -3293,9 +3387,8 @@ class PlayerController
 
         DB::beginTransaction();
         try {
-            /** @var PlayerPlatformCash $playerWallet */
-            $playerWallet = PlayerPlatformCash::query()->where('player_id', $player->id)->lockForUpdate()->first();
-            $beforeGameAmount = $playerWallet->money;
+            // ✅ 从 Redis 读取余额（唯一可信源）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
 
             // 生成订单
             $playerRechargeRecord = new  PlayerRechargeRecord();
@@ -3317,9 +3410,11 @@ class PlayerController
             $playerRechargeRecord->user_name = '';
             $playerRechargeRecord->save();
 
-            $playerWallet->money = bcadd($playerWallet->money, $playerRechargeRecord->point, 2);
-            $afterGameAmount = $playerWallet->money; // 保存更新后的余额
-            $playerWallet->save();
+            // ✅ Lua 原子性加款（自动同步数据库）
+            $afterGameAmount = \app\service\WalletService::atomicIncrement(
+                $player->id,
+                $playerRechargeRecord->point
+            );
 
             // 更新玩家充值统计
             $player->player_extend->recharge_amount = bcadd($player->player_extend->recharge_amount,

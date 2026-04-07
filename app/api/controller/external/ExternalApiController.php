@@ -6,7 +6,9 @@ use app\model\Channel;
 use app\model\ChannelFinancialRecord;
 use app\model\ChannelRechargeMethod;
 use app\model\ExternalApp;
+use app\model\GameLottery;
 use app\model\GameType;
+use app\model\Lottery;
 use app\model\Machine;
 use app\model\NationalInvite;
 use app\model\NationalProfitRecord;
@@ -16,18 +18,15 @@ use app\model\Player;
 use app\model\PlayerBank;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerGameLog;
+use app\model\PlayerLotteryRecord;
 use app\model\PlayerRechargeRecord;
 use app\model\PlayerWithdrawRecord;
-use app\model\PlayerLotteryRecord;
 use app\model\SystemSetting;
-use app\model\Lottery;
-use app\model\LotteryPool;
-use app\model\GameLottery;
+use app\service\GameLotteryServices;
+use app\service\LotteryServices;
 use app\service\machine\MachineServices;
 use app\service\payment\EHpayService;
 use app\service\payment\GBpayService;
-use app\service\LotteryServices;
-use app\service\GameLotteryServices;
 use Exception;
 use Respect\Validation\Exceptions\AllOfException;
 use Respect\Validation\Validator as v;
@@ -189,7 +188,7 @@ class ExternalApiController
         return jsonSuccessResponse('success', [
             'talk_user_id' => $player->talk_user_id,
             'id' => $player->id,
-            'money' => $player->machine_wallet->money,
+            'money' => \app\service\WalletService::getBalance($player->id), // ✅ Redis 实时余额
             'name' => $player->name,
         ]);
     }
@@ -400,15 +399,14 @@ class ExternalApiController
                     ->where('player_id', $playerRechargeRecord->player_id)
                     ->where('type', '<>', PlayerRechargeRecord::TYPE_ARTIFICIAL)
                     ->first();
-                $beforeGameAmount = $playerRechargeRecord->player->machine_wallet->money;
                 // 生成订单
                 $playerRechargeRecord->status = PlayerRechargeRecord::STATUS_RECHARGED_SUCCESS;
                 $playerRechargeRecord->notify_result = json_encode($data);
                 $playerRechargeRecord->remark = $remark??'';
                 $playerRechargeRecord->finish_time = date('Y-m-d H:i:s');
-                $playerRechargeRecord->player->machine_wallet->money = bcadd($playerRechargeRecord->player->machine_wallet->money,$playerRechargeRecord->point, 2);
-                $afterGameAmount = $playerRechargeRecord->player->machine_wallet->money; // 保存更新后的余额
-                $playerRechargeRecord->player->machine_wallet->save(); // 必须显式保存钱包
+                //使用 Lua 原子操作加款（Redis 作为唯一实时标准）
+                $beforeGameAmount = \app\service\WalletService::getBalance($playerRechargeRecord->player_id, 1);
+                $afterGameAmount = \app\service\WalletService::add($playerRechargeRecord->player_id, $playerRechargeRecord->point, 1);
                 //全民代理首充返佣
                 if (!isset($firstRecharge) && !empty($playerRechargeRecord->player->recommend_id) && $playerRechargeRecord->player->channel->national_promoter_status == 1) {
                     //玩家上级推广员信息
@@ -424,9 +422,9 @@ class ExternalApiController
                     if(!empty($recommendPlayer->national_promoter) && $recommendPlayer->is_promoter < 1){
                         //首充返佣金额
                         $rechargeRebate = $recommendPlayer->national_promoter->level_list->recharge_ratio;
-                        $beforeRechargeAmount = $recommendPlayer->machine_wallet->money;
-                        $recommendPlayer->machine_wallet->money = bcadd($recommendPlayer->machine_wallet->money, $rechargeRebate, 2);
-                        $recommendPlayer->machine_wallet->save(); // 必须显式保存钱包
+                        //使用 Lua 原子操作加款（Redis 作为唯一实时标准）
+                        $beforeRechargeAmount = \app\service\WalletService::getBalance($recommendPlayer->id, 1);
+                        $afterRechargeAmount = \app\service\WalletService::add($recommendPlayer->id, $rechargeRebate, 1);
 
                         //寫入首充金流明細
                         $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -453,9 +451,10 @@ class ExternalApiController
 
                         if (!empty($national_invite) && $national_invite->interval > 0 && $recommendPlayer->national_promoter->invite_num % $national_invite->interval == 0) {
                             $money = $national_invite->money;
-                            $amount_before = $recommendPlayer->machine_wallet->money;
-                            $recommendPlayer->machine_wallet->money = $recommendPlayer->machine_wallet->money + $money;
-                            $recommendPlayer->machine_wallet->save(); // 必须显式保存钱包
+                            //使用 Lua 原子操作加款（Redis 作为唯一实时标准）
+                            $amount_before = \app\service\WalletService::getBalance($recommendPlayer->id, 1);
+                            $amount_after = \app\service\WalletService::add($recommendPlayer->id, $money, 1);
+
                             // 寫入金流明細
                             $playerDeliveryRecord = new PlayerDeliveryRecord;
                             $playerDeliveryRecord->player_id = $recommendPlayer->id;
@@ -466,7 +465,7 @@ class ExternalApiController
                             $playerDeliveryRecord->source = 'national_promoter';
                             $playerDeliveryRecord->amount = $money;
                             $playerDeliveryRecord->amount_before = $amount_before;
-                            $playerDeliveryRecord->amount_after = $recommendPlayer->machine_wallet->money;
+                            $playerDeliveryRecord->amount_after = $amount_after;
                             $playerDeliveryRecord->tradeno = '';
                             $playerDeliveryRecord->remark = '';
                             $playerDeliveryRecord->save();

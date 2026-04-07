@@ -2,13 +2,13 @@
 
 namespace app\service\game;
 
+use app\exception\GameException;
 use app\model\ChannelGameWeb;
 use app\model\GamePlatform;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerPlatformCash;
 use app\model\PlayGameRecord;
-use app\exception\GameException;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Str;
@@ -145,12 +145,13 @@ class GameServiceFactory
     }
 
     /**
-     * 查询余额
+     * 查询余额（✅ 优先从 Redis 读取）
      * @return mixed
      */
     public function balance(): mixed
     {
-        return $this->player->machine_wallet()->lockForUpdate()->value('money');
+        // ✅ 改为从 Redis 读取实时余额，避免返回延迟数据
+        return \app\service\WalletService::getBalance($this->player->id);
     }
 
     /**
@@ -239,12 +240,13 @@ class GameServiceFactory
     }
 
     /**
-     * 查詢玩家餘額
+     * 查詢玩家餘額（✅ 优先从 Redis 读取）
      * @return float
      * @throws GameException
      */
     public function getBalance(): float
     {
-        return $this->player->machine_wallet->money;
+        // ✅ 改为从 Redis 读取实时余额，确保返回给第三方游戏平台的余额准确
+        return \app\service\WalletService::getBalance($this->player->id);
     }
 }

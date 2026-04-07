@@ -1372,10 +1372,15 @@ class MachineController
             $playerRechargeRecord->status = PlayerRechargeRecord::STATUS_RECHARGED_SUCCESS;
             $playerRechargeRecord->finish_time = date('Y-m-d H:i:s');
             $playerRechargeRecord->save();
-            //寫入金流明細
-            $beforeGameAmount = $player->machine_wallet->money;
-            $player->machine_wallet->money = bcadd($player->machine_wallet->money, $money, 2);
-            $player->machine_wallet->save(); // 必须显式保存钱包
+
+            // ✅ 从 Redis 读取余额（唯一可信源）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+            // ✅ 玩家钱包加款 - Lua 原子操作（自动同步数据库）
+            $afterGameAmount = \app\service\WalletService::atomicIncrement(
+                $player->id,
+                $money
+            );
             $player->player_extend->machine_put_amount = bcadd($player->player_extend->machine_put_amount,
                 $playerRechargeRecord->money, 2);
             $player->player_extend->machine_put_point = bcadd($player->player_extend->machine_put_point,

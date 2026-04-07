@@ -240,14 +240,17 @@ class IndexController
             return jsonFailResponse($e->getMessage(), [], $e->getCode());
         }
 
-        if ($data['amount'] > $player->machine_wallet->money) {
+        // ✅ 从 Redis 读取实时余额
+        $currentBalance = \app\service\WalletService::getBalance($player->id);
+        if ($data['amount'] > $currentBalance) {
             return jsonFailResponse($this->failCode['2205'], [], 2205);
         }
         DB::beginTransaction();
         try {
-            $beforeGameAmount = $player->machine_wallet->money;
-            $player->machine_wallet->money = $player->machine_wallet->money - $data['amount'];
-            $player->push();
+            //使用 Lua 原子操作扣款（Redis 作为唯一实时标准）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
+            $afterGameAmount = \app\service\WalletService::deduct($player->id, $data['amount'], 1);
+
             $agentTransferOrder = new AgentTransferOrder();
             $agentTransferOrder->player_id = $player->id;
             $agentTransferOrder->department_id = $player->department_id;
@@ -272,7 +275,7 @@ class IndexController
             $playerDeliveryRecord->source = 'agent_out';
             $playerDeliveryRecord->amount = $agentTransferOrder->money;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $player->machine_wallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = $agentTransferOrder->tradeno ?? '';
             $playerDeliveryRecord->save();
             DB::commit();
@@ -320,9 +323,10 @@ class IndexController
         //操作钱包
         DB::beginTransaction();
         try {
-            $beforeGameAmount = $player->machine_wallet->money;
-            $player->machine_wallet->money = $player->machine_wallet->money + $data['amount'];
-            $player->push();
+            //使用 Lua 原子操作加款（Redis 作为唯一实时标准）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
+            $afterGameAmount = \app\service\WalletService::add($player->id, $data['amount'], 1);
+
             //保存账单
             $agentTransferOrder = new AgentTransferOrder();
             $agentTransferOrder->player_id = $player->id;
@@ -348,7 +352,7 @@ class IndexController
             $playerDeliveryRecord->source = 'agent_int';
             $playerDeliveryRecord->amount = $agentTransferOrder->money;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $player->machine_wallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = $agentTransferOrder->tradeno ?? '';
             $playerDeliveryRecord->save();
             DB::commit();
@@ -841,7 +845,7 @@ class IndexController
         }
 
         return jsonSuccessResponse('success', [
-            'balance' => $player->machine_wallet->money,
+            'balance' => \app\service\WalletService::getBalance($player->id), // ✅ Redis 实时余额
         ]);
     }
 

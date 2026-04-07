@@ -32,14 +32,44 @@ class PlayerPlatformCash extends Model
     protected $table = 'player_platform_cash';
 
     /**
-     * 点数
+     * 余额访问器 - 单一钱包模式（从缓存读取 player.money）
      *
-     * @param $value
-     * @return float
+     * 单一钱包模式：所有平台共享同一个余额（存储在 player.money）
+     * player_platform_cash 表仅用于兼容性，实际余额从 player.money 读取
+     *
+     * 优先级：
+     * 1. 如果 money 字段有脏数据（刚修改未保存），返回修改后的值
+     * 2. 否则从 Redis 缓存读取 player.money
+     * 3. 缓存未命中则从数据库 player.money 读取
+     *
+     * @param mixed $value 数据库原始值（已废弃，不使用）
+     * @return float 余额
      */
     public function getMoneyAttribute($value): float
     {
-        return floatval($value);
+        // 如果 money 字段有脏数据（刚修改还未保存），直接返回当前值
+        if ($this->isDirty('money')) {
+            return (float)$this->attributes['money'];
+        }
+
+        // 单一钱包模式：从缓存读取 player.money（不使用 platform_id）
+        try {
+            return \app\service\WalletService::getBalance($this->player_id, 1);
+        } catch (\Throwable $e) {
+            // 缓存异常时降级到数据库 player.money
+            \support\Log::warning('PlayerPlatformCash::getMoneyAttribute: 缓存读取失败，降级到数据库', [
+                'player_id' => $this->player_id,
+                'error' => $e->getMessage(),
+            ]);
+
+            // 降级：直接查询 player.money（使用原生查询避免访问器循环）
+            $playerMoney = \support\Db::table('player')
+                ->where('id', $this->player_id)
+                ->whereNull('deleted_at')
+                ->value('money');
+
+            return $playerMoney !== null ? (float)$playerMoney : 0.0;
+        }
     }
 
     /**
@@ -53,7 +83,7 @@ class PlayerPlatformCash extends Model
 
     /**
      * 模型的 "booted" 方法
-     * 监听余额变化，自动检查爆机状态并同步 Redis 缓存
+     * 单一钱包模式：监听余额变化，同步 player.money 和 Redis 缓存，检查爆机状态
      *
      * @return void
      */
@@ -66,21 +96,35 @@ class PlayerPlatformCash extends Model
                 return;
             }
 
-            // ✅ 自动同步 Redis 缓存（所有平台）
+            $newBalance = (float)$wallet->money;
+
+            // ✅ 单一钱包模式：同步更新 player.money（数据库）
+            try {
+                \support\Db::table('player')
+                    ->where('id', $wallet->player_id)
+                    ->update(['money' => $newBalance, 'updated_at' => date('Y-m-d H:i:s')]);
+            } catch (\Throwable $e) {
+                \support\Log::critical('PlayerPlatformCash: 同步 player.money 失败！', [
+                    'player_id' => $wallet->player_id,
+                    'new_balance' => $newBalance,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // ✅ 同步 Redis 缓存（单一钱包：wallet:balance:{player_id}）
             try {
                 $cacheUpdated = \app\service\WalletService::updateCache(
                     $wallet->player_id,
-                    $wallet->platform_id,
-                    (float)$wallet->money
+                    1, // platform_id 保留兼容性，实际不使用
+                    $newBalance
                 );
 
                 // 🚨 缓存同步失败告警
                 if (!$cacheUpdated) {
                     \support\Log::critical('PlayerPlatformCash: Redis cache sync failed!', [
                         'player_id' => $wallet->player_id,
-                        'platform_id' => $wallet->platform_id,
                         'old_balance' => $wallet->getOriginal('money'),
-                        'new_balance' => $wallet->money,
+                        'new_balance' => $newBalance,
                         'timestamp' => date('Y-m-d H:i:s'),
                     ]);
                 }
@@ -88,8 +132,7 @@ class PlayerPlatformCash extends Model
                 // Redis 缓存同步异常
                 \support\Log::critical('PlayerPlatformCash: Redis cache sync exception!', [
                     'player_id' => $wallet->player_id,
-                    'platform_id' => $wallet->platform_id,
-                    'new_balance' => $wallet->money,
+                    'new_balance' => $newBalance,
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
                 ]);
@@ -107,9 +150,20 @@ class PlayerPlatformCash extends Model
                     return;
                 }
 
-                // 获取变化前后的余额
-                $previousAmount = floatval($wallet->getOriginal('money'));
-                $currentAmount = floatval($wallet->money);
+                // ✅ 从 Redis 读取余额（唯一可信源）
+                $previousAmount = floatval($wallet->getOriginal('money'));  // 数据库旧值（参考）
+
+                try {
+                    // ✅ 使用 Redis 余额判断爆机
+                    $currentAmount = \app\service\WalletService::getBalance($wallet->player_id, 1);
+                } catch (\Throwable $e) {
+                    // Redis 异常时降级到数据库值
+                    \support\Log::warning('爆机检测: Redis读取失败，降级到数据库', [
+                        'player_id' => $wallet->player_id,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $currentAmount = floatval($wallet->money);
+                }
 
                 // 获取爆机配置
                 $adminUserId = $player->store_admin_id ?? null;
@@ -185,6 +239,19 @@ class PlayerPlatformCash extends Model
                     'error' => $e->getMessage(),
                 ]);
             }
+        });
+    }
+
+    /**
+     * 保存模型但不触发事件（用于从 Redis 同步到数据库时避免循环）
+     *
+     * @param array $options
+     * @return bool
+     */
+    public function saveWithoutEvents(array $options = []): bool
+    {
+        return static::withoutEvents(function () use ($options) {
+            return $this->save($options);
         });
     }
 }

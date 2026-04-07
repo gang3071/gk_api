@@ -271,7 +271,8 @@ function notifyMachineCrash(Player $player, array $crashInfo): void
 function calculateAllowedWithdrawAmount(Player $player, float $requestedAmount): array
 {
     $crashCheck = checkMachineCrash($player);
-    $currentAmount = $player->machine_wallet->money ?? 0;
+    // ✅ 优先从 Redis 读取当前余额
+    $currentAmount = \app\service\WalletService::getBalance($player->id);
     $allowedAmount = $requestedAmount;
     $isLimited = false;
 
@@ -597,7 +598,9 @@ function machineOpenAny(
         }
     }
 
-    if ($player->machine_wallet->money < $money) {
+    // ✅ 优先从 Redis 读取余额进行检查
+    $currentBalance = \app\service\WalletService::getBalance($player->id);
+    if ($currentBalance < $money) {
         throw new Exception(trans('game_amount_insufficient', [], 'message'));
     }
     if ($services->last_point_at + 5 >= time() && Cache::has('machine_open_point' . $machine->id . '_' . $player->id)) {
@@ -615,11 +618,9 @@ function machineOpenAny(
 
     DB::beginTransaction();
     try {
-        //先扣點
-        $beforeGameAmount = $player->machine_wallet->money;
-        $player->machine_wallet->money = bcsub($player->machine_wallet->money, $money, 2);
-        $player->machine_wallet->save(); // 触发 updated 事件,自动更新 Redis 缓存
-        $afterGameAmount = $player->machine_wallet->money;
+        //先扣點（使用 Lua 原子操作，Redis 作为唯一实时标准）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
+        $afterGameAmount = \app\service\WalletService::deduct($player->id, $money, 1);
         $openScore = checkMachineOpenAny($machine, $money, $giftScore);
         if ($machine->min_point != 0 && $machine->min_point > $openScore) {
             throw new Exception(trans('machine_min_open', [], 'message') . $machine->min_point);
@@ -1069,11 +1070,12 @@ function talkPaySuccess(PlayerRechargeRecord $recharge): bool
 {
     DB::beginTransaction();
     try {
-        $beforeGameAmount = $recharge->player->machine_wallet->money;
+        //获取充值前余额
+        $beforeGameAmount = \app\service\WalletService::getBalance($recharge->player_id, 1);
         $recharge->status = PlayerRechargeRecord::STATUS_RECHARGED_SUCCESS;
         $recharge->finish_time = date('Y-m-d H:i:s');
-        $recharge->player->machine_wallet->money = bcadd($recharge->player->machine_wallet->money,
-            $recharge->point);
+        //使用 Lua 原子操作加款（Redis 作为唯一实时标准）
+        $afterGameAmount = \app\service\WalletService::add($recharge->player_id, $recharge->point, 1);
         $recharge->player->player_extend->recharge_amount = bcadd($recharge->player->player_extend->withdraw_amount,
             $recharge->point);
         $recharge->player->player_extend->third_recharge_amount = bcadd($recharge->player->player_extend->third_withdraw_amount,
@@ -1089,7 +1091,7 @@ function talkPaySuccess(PlayerRechargeRecord $recharge): bool
         $playerDeliveryRecord->source = 'talk_recharge';
         $playerDeliveryRecord->amount = $recharge->point;
         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-        $playerDeliveryRecord->amount_after = $recharge->player->machine_wallet->money;
+        $playerDeliveryRecord->amount_after = $afterGameAmount;
         $playerDeliveryRecord->tradeno = $recharge->tradeno ?? '';
         $playerDeliveryRecord->remark = $recharge->remark ?? '';
         $playerDeliveryRecord->save();
@@ -1181,10 +1183,9 @@ function withdrawBack(
         $playerWithdrawRecord->finish_time = date('Y-m-d H:i:s');
         $playerWithdrawRecord->user_id = 0;
         $playerWithdrawRecord->user_name = 'system';
-        // 更新玩家钱包
-        $beforeGameAmount = $playerWithdrawRecord->player->machine_wallet->money;
-        $playerWithdrawRecord->player->machine_wallet->money = bcadd($playerWithdrawRecord->player->machine_wallet->money,
-            $playerWithdrawRecord->point, 2);
+        // 更新玩家钱包（使用 Lua 原子操作加款）
+        $beforeGameAmount = \app\service\WalletService::getBalance($playerWithdrawRecord->player_id, 1);
+        $afterGameAmount = \app\service\WalletService::add($playerWithdrawRecord->player_id, $playerWithdrawRecord->point, 1);
         // 跟新玩家统计
         $playerWithdrawRecord->player->player_extend->withdraw_amount = bcsub($playerWithdrawRecord->player->player_extend->withdraw_amount,
             $playerWithdrawRecord->point, 2);
@@ -1199,7 +1200,7 @@ function withdrawBack(
         $playerDeliveryRecord->source = 'withdraw_back';
         $playerDeliveryRecord->amount = $playerWithdrawRecord->point;
         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-        $playerDeliveryRecord->amount_after = $playerWithdrawRecord->player->machine_wallet->money;
+        $playerDeliveryRecord->amount_after = $afterGameAmount;
         $playerDeliveryRecord->tradeno = $playerWithdrawRecord->tradeno ?? '';
         $playerDeliveryRecord->remark = $playerWithdrawRecord->remark ?? '';
         $playerDeliveryRecord->save();
@@ -1601,16 +1602,9 @@ function fishMachineOpenAny(Player $player, Machine $machine, int $money, FishSe
     DB::beginTransaction();
     try {
         //原先餘額
-        $beforeGameAmount = $player->machine_wallet->money;
-        //先扣點
-        $player->machine_wallet->money = bcsub($player->machine_wallet->money, $money, 2);
-        $player->machine_wallet->save(); // 触发 updated 事件,自动更新 Redis 缓存
-
-        if ($player->machine_wallet->money < 0) {
-            throw new Exception(trans('game_amount_insufficient', [], 'message'));
-        }
-        //扣點後餘額
-        $afterGameAmount = $player->machine_wallet->money;
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
+        //先扣點（使用 Lua 原子操作，Redis 作为唯一实时标准）
+        $afterGameAmount = \app\service\WalletService::deduct($player->id, $money, 1);
         $openScore = checkMachineOpenAny($machine, $money, 0);
         //记录游戏局记录
         /** @var PlayerGameRecord $gameRecord */
@@ -1762,8 +1756,9 @@ function createPlayerDeliveryRecord(
  */
 function openAnyCheck(Machine $machine, Player $player, int $money): void
 {
-    //檢查餘額
-    if ($player->machine_wallet->money < $money) {
+    //檢查餘額（✅ 优先从 Redis 读取）
+    $currentBalance = \app\service\WalletService::getBalance($player->id);
+    if ($currentBalance < $money) {
         throw new Exception(trans('game_amount_insufficient', [], 'message'));
     }
     //最小上分金額
@@ -2808,21 +2803,19 @@ function machineWashZero(
             ->where('status', PlayerGameRecord::STATUS_START)
             ->orderBy('created_at', 'desc')
             ->first();
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = PlayerPlatformCash::query()->where('platform_id',
-            PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
-        $beforeGameAmount = $machineWallet->money;
+        //获取当前余额
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
         if ($money > 0) {
             //api洗分
             $wash_point = $money;
             //依照比值轉成錢包幣值 無條件捨去
             $game_amount = floor($money * ($machine->odds_x ?? 1) / ($machine->odds_y ?? 1));
-            $machineWallet->money = bcadd($machineWallet->money, $game_amount, 2);
-            $machineWallet->save();
+            //使用 Lua 原子操作加款（Redis 作为唯一实时标准）
+            $afterGameAmount = \app\service\WalletService::add($player->id, $game_amount, 1);
             if (!empty($gameRecord)) {
                 $gameRecord->wash_point = bcadd($gameRecord->wash_point, $wash_point, 2);
                 $gameRecord->wash_amount = bcadd($gameRecord->wash_amount, $game_amount, 2);
-                $gameRecord->after_game_amount = $machineWallet->money;
+                $gameRecord->after_game_amount = $afterGameAmount;
                 if ($action == 'leave') {
                     $gameRecord->status = PlayerGameRecord::STATUS_END;
                     /** TODO 计算客损 */
@@ -2843,7 +2836,7 @@ function machineWashZero(
             $playerGameLog->wash_point = $wash_point;
             $playerGameLog->game_amount = $game_amount;
             $playerGameLog->before_game_amount = $beforeGameAmount;
-            $playerGameLog->after_game_amount = $machineWallet->money;
+            $playerGameLog->after_game_amount = $afterGameAmount;
             $playerGameLog->action = ($action == 'leave' ? PlayerGameLog::ACTION_LEAVE : PlayerGameLog::ACTION_DOWN);
             $playerGameLog->chip_amount = 0;
             if ($machine->type == GameType::TYPE_SLOT) {
@@ -2868,7 +2861,7 @@ function machineWashZero(
             $playerDeliveryRecord->source = 'game_machine';
             $playerDeliveryRecord->amount = $game_amount;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
             $playerDeliveryRecord->remark = $target->remark ?? '';
             $playerDeliveryRecord->user_id = 0;
@@ -2884,8 +2877,8 @@ function machineWashZero(
             $playerGameLog = addPlayerGameLog($player, $machine, $gameRecord, $control_open_point);
             $playerGameLog->wash_point = 0;
             $playerGameLog->game_amount = 0;
-            $playerGameLog->before_game_amount = $machineWallet->money;
-            $playerGameLog->after_game_amount = $machineWallet->money;
+            $playerGameLog->before_game_amount = $beforeGameAmount;
+            $playerGameLog->after_game_amount = $beforeGameAmount;
             $playerGameLog->action = ($action == 'leave' ? PlayerGameLog::ACTION_LEAVE : PlayerGameLog::ACTION_DOWN);
             extracted($is_system, $playerGameLog, $gamingPressure, $gamingScore, $gamingTurnPoint);
 

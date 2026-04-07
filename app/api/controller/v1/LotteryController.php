@@ -2,6 +2,7 @@
 
 namespace app\api\controller\v1;
 
+use app\exception\PlayerCheckException;
 use app\model\ActivityContent;
 use app\model\GameLottery;
 use app\model\GameType;
@@ -12,7 +13,6 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerLotteryRecord;
 use app\model\PlayerPlatformCash;
 use app\model\PlayerReverseWaterDetail;
-use app\exception\PlayerCheckException;
 use app\service\GameLotteryServices;
 use app\service\LotteryServices;
 use Carbon\Carbon;
@@ -250,13 +250,10 @@ class LotteryController
             if (empty($lottery)) {
                 throw new Exception(trans('player_lottery_record_not_found', [], 'message'));
             }
-            // 玩家钱包扣减
-            /** @var PlayerPlatformCash $machineWallet */
-            $machineWallet = PlayerPlatformCash::query()->where('platform_id',
-                PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
-            $beforeGameAmount = $machineWallet->money;
-            $machineWallet->money = bcadd($machineWallet->money, $playerLotteryRecord->amount, 2);
-            $machineWallet->save();
+            // 玩家钱包加款（使用 Lua 原子操作，Redis 作为唯一实时标准）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
+            $afterGameAmount = \app\service\WalletService::add($player->id, $playerLotteryRecord->amount, 1);
+
             // 寫入金流明細
             $playerDeliveryRecord = new PlayerDeliveryRecord;
             $playerDeliveryRecord->player_id = $player->id;
@@ -267,7 +264,7 @@ class LotteryController
             $playerDeliveryRecord->source = 'lottery';
             $playerDeliveryRecord->amount = $playerLotteryRecord->amount;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = '';
             $playerDeliveryRecord->remark = '';
             $playerDeliveryRecord->save();
@@ -337,9 +334,10 @@ class LotteryController
                 if (empty($lottery)) {
                     continue;
                 }
-                $beforeGameAmount = $machineWallet->money;
-                // 更新玩家钱包
-                $machineWallet->money = bcadd($machineWallet->money, $playerLotteryRecord->amount, 2);
+                // 更新玩家钱包（使用 Lua 原子操作，Redis 作为唯一实时标准）
+                $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
+                $afterGameAmount = \app\service\WalletService::add($player->id, $playerLotteryRecord->amount, 1);
+
                 // 寫入金流明細
                 $playerDeliveryRecord = new PlayerDeliveryRecord;
                 $playerDeliveryRecord->player_id = $player->id;
@@ -350,7 +348,7 @@ class LotteryController
                 $playerDeliveryRecord->source = 'lottery';
                 $playerDeliveryRecord->amount = $playerLotteryRecord->amount;
                 $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                $playerDeliveryRecord->amount_after = $machineWallet->money;
+                $playerDeliveryRecord->amount_after = $afterGameAmount;
                 $playerDeliveryRecord->tradeno = '';
                 $playerDeliveryRecord->remark = '';
                 $playerDeliveryRecord->save();
@@ -404,9 +402,10 @@ class LotteryController
 
             /** @var PlayerReverseWaterDetail $detail */
             foreach($playerReverseWater as $detail){
-                $beforeGameAmount = $machineWallet->money;
-                // 更新玩家钱包
-                $machineWallet->money = bcadd($machineWallet->money, $detail->reverse_water, 2);
+                // 更新玩家钱包（使用 Lua 原子操作，Redis 作为唯一实时标准）
+                $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
+                $afterGameAmount = \app\service\WalletService::add($player->id, $detail->reverse_water, 1);
+
                 // 寫入金流明細
                 $playerDeliveryRecord = new PlayerDeliveryRecord;
                 $playerDeliveryRecord->player_id = $player->id;
@@ -417,7 +416,7 @@ class LotteryController
                 $playerDeliveryRecord->source = 'reverse_water';
                 $playerDeliveryRecord->amount = $detail->reverse_water;
                 $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                $playerDeliveryRecord->amount_after = $machineWallet->money;
+                $playerDeliveryRecord->amount_after = $afterGameAmount;
                 $playerDeliveryRecord->tradeno = '';
                 $playerDeliveryRecord->remark = '';
                 $playerDeliveryRecord->save();

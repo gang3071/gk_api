@@ -655,7 +655,9 @@ class GamePlatformController
             return jsonFailResponse(trans('game_platform_disable', [], 'message'));
         }
         $amount = (float)$data['amount'];
-        if ($amount > $player->machine_wallet->money) {
+        // ✅ 从 Redis 读取实时余额
+        $currentBalance = \app\service\WalletService::getBalance($player->id);
+        if ($amount > $currentBalance) {
             return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
         }
         $lang = locale();
@@ -665,11 +667,10 @@ class GamePlatformController
         //驗證通過
         DB::beginTransaction();
         try {
+            // 1. 从 Redis 读取余额（唯一可信源）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
             //玩家加點數
-            /** @var PlayerPlatformCash $machineWallet */
-            $machineWallet = PlayerPlatformCash::query()->where('platform_id',
-                PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
-            $beforeGameAmount = $machineWallet->money;
             $playerWalletTransfer = new PlayerWalletTransfer();
             $playerWalletTransfer->player_id = $player->id;
             $playerWalletTransfer->parent_player_id = $player->recommend_id ?? 0;
@@ -679,7 +680,7 @@ class GamePlatformController
             $playerWalletTransfer->type = PlayerWalletTransfer::TYPE_OUT;
             $playerWalletTransfer->amount = abs($amount);
             $playerWalletTransfer->game_amount = $balance;
-            $playerWalletTransfer->player_amount = $machineWallet->money;
+            $playerWalletTransfer->player_amount = $beforeGameAmount;
             $playerWalletTransfer->tradeno = createOrderNo();
             $playerWalletTransfer->platform_no = $gameService->depositAmount([
                 'amount' => $amount,
@@ -687,10 +688,15 @@ class GamePlatformController
                 'lang' => $lang,
             ]);
             $playerWalletTransfer->save();
-            // 更新玩家统计
-            $machineWallet->money = bcsub($machineWallet->money, $playerWalletTransfer->amount, 2);
-            $machineWallet->save();
-            
+
+            // 2. Lua 原子性扣款（自动同步数据库）
+            $result = \app\service\WalletService::atomicDecrement($player->id, $playerWalletTransfer->amount);
+            if ($result['ok'] == 0) {
+                throw new \Exception(trans('your_point_insufficient', [], 'message'));
+            }
+            $newBalance = $result['balance'];
+
+            // 3. 记录流水
             $playerDeliveryRecord = new PlayerDeliveryRecord;
             $playerDeliveryRecord->player_id = $player->id;
             $playerDeliveryRecord->department_id = $player->department_id;
@@ -701,13 +707,13 @@ class GamePlatformController
             $playerDeliveryRecord->source = 'wallet_transfer_out';
             $playerDeliveryRecord->amount = $playerWalletTransfer->amount;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $newBalance;
             $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
             $playerDeliveryRecord->remark = $target->remark ?? '';
             $playerDeliveryRecord->user_id = 0;
             $playerDeliveryRecord->user_name = '';
             $playerDeliveryRecord->save();
-            
+
             DB::commit();
         } catch (Exception $e) {
             DB::rollBack();
@@ -854,10 +860,10 @@ class GamePlatformController
             if ($amount > 0) {
                 DB::beginTransaction();
                 try {
+                    // 1. 从 Redis 读取余额（唯一可信源）
+                    $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
                     //玩家加點數
-                    /** @var PlayerPlatformCash $machineWallet */
-                    $machineWallet = PlayerPlatformCash::query()->where('platform_id',
-                        PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
                     $gamePlatform = $playerGamePlatform->gamePlatform;
                     $playerWalletTransfer = new PlayerWalletTransfer();
                     $playerWalletTransfer->player_id = $player->id;
@@ -867,7 +873,7 @@ class GamePlatformController
                     $playerWalletTransfer->department_id = $player->department_id;
                     $playerWalletTransfer->type = PlayerWalletTransfer::TYPE_IN;
                     $playerWalletTransfer->game_amount = $amount;
-                    $playerWalletTransfer->player_amount = $machineWallet->money;
+                    $playerWalletTransfer->player_amount = $beforeGameAmount;
                     $playerWalletTransfer->tradeno = createOrderNo();
                     $result = $gameService->withdrawAmount([
                         'amount' => $amount,
@@ -877,12 +883,12 @@ class GamePlatformController
                     ]);
                     $playerWalletTransfer->platform_no = $result['order_id'];
                     $playerWalletTransfer->amount = $result['amount'];
-                    $beforeGameAmount = $player->machine_wallet->money;
-                    // 更新玩家统计
-                    $machineWallet->money = bcadd($machineWallet->money, $playerWalletTransfer->amount, 2);
-                    $machineWallet->save();
                     $playerWalletTransfer->save();
-                    
+
+                    // 2. Lua 原子性加款（自动同步数据库）
+                    $newBalance = \app\service\WalletService::atomicIncrement($player->id, $playerWalletTransfer->amount);
+
+                    // 3. 记录流水
                     $playerDeliveryRecord = new PlayerDeliveryRecord;
                     $playerDeliveryRecord->player_id = $player->id;
                     $playerDeliveryRecord->department_id = $player->department_id;
@@ -893,13 +899,13 @@ class GamePlatformController
                     $playerDeliveryRecord->source = 'wallet_transfer_in';
                     $playerDeliveryRecord->amount = $playerWalletTransfer->amount;
                     $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                    $playerDeliveryRecord->amount_after = $machineWallet->money;
+                    $playerDeliveryRecord->amount_after = $newBalance;
                     $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
                     $playerDeliveryRecord->remark = $target->remark ?? '';
                     $playerDeliveryRecord->user_id = $player->id;
                     $playerDeliveryRecord->user_name = $player->name;
                     $playerDeliveryRecord->save();
-                    
+
                     DB::commit();
                 } catch (\Exception $e) {
                     DB::rollBack();
@@ -962,10 +968,10 @@ class GamePlatformController
         }
         DB::beginTransaction();
         try {
+            // 1. 从 Redis 读取余额（唯一可信源）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
             //玩家加點數
-            /** @var PlayerPlatformCash $machineWallet */
-            $machineWallet = PlayerPlatformCash::query()->where('platform_id',
-                PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
             $playerWalletTransfer = new PlayerWalletTransfer();
             $playerWalletTransfer->player_id = $player->id;
             $playerWalletTransfer->parent_player_id = $player->recommend_id ?? 0;
@@ -974,7 +980,7 @@ class GamePlatformController
             $playerWalletTransfer->department_id = $player->department_id;
             $playerWalletTransfer->type = PlayerWalletTransfer::TYPE_IN;
             $playerWalletTransfer->game_amount = $balance;
-            $playerWalletTransfer->player_amount = $machineWallet->money;
+            $playerWalletTransfer->player_amount = $beforeGameAmount;
             $playerWalletTransfer->tradeno = createOrderNo();
             $result = $gameService->withdrawAmount([
                 'amount' => $amount,
@@ -984,12 +990,12 @@ class GamePlatformController
             ]);
             $playerWalletTransfer->platform_no = $result['order_id'];
             $playerWalletTransfer->amount = $result['amount'];
-            $beforeGameAmount = $player->machine_wallet->money;
-            // 更新玩家统计
-            $machineWallet->money = bcadd($machineWallet->money, $playerWalletTransfer->amount, 2);
-            $machineWallet->save();
             $playerWalletTransfer->save();
-            
+
+            // 2. Lua 原子性加款（自动同步数据库）
+            $newBalance = \app\service\WalletService::atomicIncrement($player->id, $playerWalletTransfer->amount);
+
+            // 3. 记录流水
             $playerDeliveryRecord = new PlayerDeliveryRecord;
             $playerDeliveryRecord->player_id = $player->id;
             $playerDeliveryRecord->department_id = $player->department_id;
@@ -1000,13 +1006,13 @@ class GamePlatformController
             $playerDeliveryRecord->source = 'wallet_transfer_in';
             $playerDeliveryRecord->amount = $playerWalletTransfer->amount;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $newBalance;
             $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
             $playerDeliveryRecord->remark = $target->remark ?? '';
             $playerDeliveryRecord->user_id = 0;
             $playerDeliveryRecord->user_name = '';
             $playerDeliveryRecord->save();
-            
+
             DB::commit();
         } catch (Exception|GameException $e) {
             DB::rollBack();
@@ -1126,10 +1132,11 @@ class GamePlatformController
                     $playerWalletTransfer->platform_no = $result['order_id'];
                     $playerWalletTransfer->amount = $result['amount'];
                     $playerWalletTransfer->save();
-                    $beforeGameAmount = $machineWallet->money;
-                    // 更新玩家统计
-                    $machineWallet->money = bcadd($machineWallet->money, $playerWalletTransfer->amount, 2);
-                    $machineWallet->save();
+
+                    // 更新玩家余额（使用 Lua 原子操作，Redis 作为唯一实时标准）
+                    $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
+                    $afterGameAmount = \app\service\WalletService::add($player->id, $playerWalletTransfer->amount, 1);
+
                     $playerDeliveryRecord = new PlayerDeliveryRecord;
                     $playerDeliveryRecord->player_id = $player->id;
                     $playerDeliveryRecord->department_id = $player->department_id;
@@ -1140,7 +1147,7 @@ class GamePlatformController
                     $playerDeliveryRecord->source = 'wallet_transfer_in';
                     $playerDeliveryRecord->amount = $playerWalletTransfer->amount;
                     $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                    $playerDeliveryRecord->amount_after = $machineWallet->money;
+                    $playerDeliveryRecord->amount_after = $afterGameAmount;
                     $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
                     $playerDeliveryRecord->remark = $target->remark ?? '';
                     $playerDeliveryRecord->user_id = 0;

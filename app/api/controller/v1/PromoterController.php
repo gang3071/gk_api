@@ -2,6 +2,8 @@
 
 namespace app\api\controller\v1;
 
+use app\exception\PlayerCheckException;
+use app\exception\PromoterCheckException;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerPlatformCash;
@@ -10,8 +12,6 @@ use app\model\PlayerRechargeRecord;
 use app\model\PromoterProfitRecord;
 use app\model\PromoterProfitSettlementRecord;
 use app\model\SystemSetting;
-use app\exception\PlayerCheckException;
-use app\exception\PromoterCheckException;
 use Carbon\Carbon;
 use Respect\Validation\Exceptions\AllOfException;
 use Respect\Validation\Validator as v;
@@ -202,7 +202,7 @@ class PromoterController
                 $presentInAmount = bcadd(0, $totalData['total_in'] ?? 0, 2);
                 $machinePutPoint = bcadd(0, $totalData['total_point'] ?? 0, 2);
                 $presentOutAmount = bcadd(0, $totalData['total_out'] ?? 0, 2);
-                $money = $player->machine_wallet->money;
+                $money = \app\service\WalletService::getBalance($player->id); // ✅ Redis 实时余额
             }
             $totalPoint = round($machinePutPoint + $presentInAmount - $presentOutAmount, 2);
             $profitAmount = bcmul($totalPoint, $ratio / 100, 2);
@@ -329,7 +329,7 @@ class PromoterController
                 'name' => $player->name,
                 'recharge_amount' => $player->player_extend->recharge_amount,
                 'withdraw_amount' => $player->player_extend->withdraw_amount,
-                'money' => $player->machine_wallet->money,
+                'money' => \app\service\WalletService::getBalance($player->id), // ✅ Redis 实时余额
                 'promoter_id' => $player->player_promoter->id ?? 0,
                 'profit_amount' => $profitAmount,
                 'is_promoter' => $player->is_promoter,
@@ -433,7 +433,7 @@ class PromoterController
                 $presentInAmount = bcadd(0, $totalData['total_in'] ?? 0, 2);
                 $machinePutPoint = bcadd(0, $totalData['total_point'] ?? 0, 2);
                 $presentOutAmount = bcadd(0, $totalData['total_out'] ?? 0, 2);
-                $money = $player->machine_wallet->money;
+                $money = \app\service\WalletService::getBalance($player->id); // ✅ Redis 实时余额
             }
             $totalPoint = round($machinePutPoint + $presentInAmount - $presentOutAmount, 2);
             
@@ -1445,7 +1445,7 @@ class PromoterController
                 'present_out_amount' => $player->player_extend->present_out_amount,
                 'machine_put_amount' => $player->player_extend->machine_put_amount,
                 'machine_put_point' => $player->player_extend->machine_put_point,
-                'money' => $player->machine_wallet->money,
+                'money' => \app\service\WalletService::getBalance($player->id), // ✅ Redis 实时余额
                 'promoter_id' => $player->player_promoter->id ?? 0,
                 'is_promoter' => $player->is_promoter,
                 'promoter_status' => $player->player_promoter->status ?? null,
@@ -1514,7 +1514,7 @@ class PromoterController
                 'present_out_amount' => $presentOutAmount,
                 'machine_put_amount' => $machinePutPoint * 4,
                 'machine_put_point' => $machinePutPoint,
-                'money' => $player->machine_wallet->money,
+                'money' => \app\service\WalletService::getBalance($player->id), // ✅ Redis 实时余额
                 'promoter_id' => $player->player_promoter->id ?? 0,
                 'is_promoter' => $player->is_promoter,
                 'promoter_status' => $player->player_promoter->status ?? null,
