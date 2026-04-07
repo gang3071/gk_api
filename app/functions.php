@@ -148,12 +148,15 @@ function checkMachineCrash(Player $player): array
         ]);
     }
 
-    // 缓存未命中或 Redis 故障，从数据库查询
+    // 缓存未命中或 Redis 故障，从 Redis 读取实时余额 + 数据库读取爆机状态
+    // ✅ Redis 作为余额的"唯一实时标准"
+    $currentAmount = \app\service\WalletService::getBalance($player->id);
+
+    // 仅从数据库读取爆机状态标记
     $wallet = PlayerPlatformCash::where('player_id', $player->id)
         ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
-        ->first(['is_crashed', 'money']);
+        ->first(['is_crashed']);
 
-    $currentAmount = $wallet->money ?? 0;
     $isCrashed = $wallet && $wallet->is_crashed == 1;
 
     // 获取爆机金额配置（用于返回信息）
@@ -2862,8 +2865,8 @@ function machineWashZero(
             $playerDeliveryRecord->amount = $game_amount;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
             $playerDeliveryRecord->amount_after = $afterGameAmount;
-            $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
-            $playerDeliveryRecord->remark = $target->remark ?? '';
+            $playerDeliveryRecord->tradeno = '';
+            $playerDeliveryRecord->remark = '';
             $playerDeliveryRecord->user_id = 0;
             $playerDeliveryRecord->user_name = '';
             $playerDeliveryRecord->save();
@@ -2872,6 +2875,9 @@ function machineWashZero(
             $services->last_point_at = time();
             //累計該玩家洗分
             $services->player_wash_point = bcadd($services->player_wash_point, $wash_point);
+
+            // ✅ 余额变化后更新爆机状态
+            \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
         } else {
             //添加机台点数转换记录
             $playerGameLog = addPlayerGameLog($player, $machine, $gameRecord, $control_open_point);
@@ -2883,7 +2889,7 @@ function machineWashZero(
             extracted($is_system, $playerGameLog, $gamingPressure, $gamingScore, $gamingTurnPoint);
 
             if (!empty($gameRecord)) {
-                $gameRecord->after_game_amount = $machineWallet->money;
+                $gameRecord->after_game_amount = \app\service\WalletService::getBalance($player->id, 1);
                 if ($action == 'leave') {
                     $gameRecord->status = PlayerGameRecord::STATUS_END;
                     /** TODO 计算客损 */

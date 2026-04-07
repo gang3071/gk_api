@@ -1046,6 +1046,8 @@ class PlayerController
                 throw new \Exception('余额不足');
             }
 
+            $afterGameAmount = (float)$result['balance'];
+
             // 更新玩家提现统计
             $player->player_extend->withdraw_amount = bcadd($player->player_extend->withdraw_amount,
                 $playerWithdrawRecord->point, 2);
@@ -1062,7 +1064,7 @@ class PlayerController
             $playerDeliveryRecord->source = 'channel_withdrawal';
             $playerDeliveryRecord->amount = $playerWithdrawRecord->point;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = $playerWithdrawRecord->tradeno ?? '';
             $playerDeliveryRecord->remark = '線下代理洗分';
             $playerDeliveryRecord->save();
@@ -1073,6 +1075,9 @@ class PlayerController
             Log::error('presentAuto', [$e->getTrace()]);
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
+
+        // ✅ 事务提交后更新爆机状态
+        \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
 
         return jsonSuccessResponse('success', [
             'amount' => $playerDeliveryRecord->amount,
@@ -3443,7 +3448,7 @@ class PlayerController
             return jsonFailResponse(trans('system_error', [], 'message'));
         }
 
-        // ✅ 事务提交后检查爆机状态（避免嵌套事务冲突）
+        // ✅ 事务提交后更新爆机状态
         \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
 
         return jsonSuccessResponse('success');
