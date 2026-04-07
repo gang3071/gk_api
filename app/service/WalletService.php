@@ -338,7 +338,7 @@ class WalletService
         LUA;
 
         try {
-            $result = \support\Redis::eval($script, [$cacheKey], [$amount, self::CACHE_TTL]);
+            $result = \support\Redis::eval($script, [$cacheKey, $amount, self::CACHE_TTL], 1);
 
             if (is_array($result) && isset($result['err'])) {
                 if ($result['err'] === 'BALANCE_NOT_FOUND') {
@@ -412,7 +412,7 @@ class WalletService
         LUA;
 
         try {
-            $result = \support\Redis::eval($script, [$cacheKey], [$amount, self::CACHE_TTL]);
+            $result = \support\Redis::eval($script, [$cacheKey, $amount, self::CACHE_TTL], 1);
 
             // 解析返回的 JSON：{old: 旧余额, new: 新余额}
             $balanceData = json_decode($result, true);
