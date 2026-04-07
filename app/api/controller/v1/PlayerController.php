@@ -3385,11 +3385,11 @@ class PlayerController
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
 
+        // ✅ 从 Redis 读取余额（唯一可信源）- 在事务外读取
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
         DB::beginTransaction();
         try {
-            // ✅ 从 Redis 读取余额（唯一可信源）
-            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
-
             // 生成订单
             $playerRechargeRecord = new  PlayerRechargeRecord();
             $playerRechargeRecord->player_id = $player->id;
@@ -3437,12 +3437,14 @@ class PlayerController
             $playerDeliveryRecord->save();
 
             DB::commit();
-            // 爆机检查已由 PlayerPlatformCash 模型的 updated 事件自动处理
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error($e->getMessage());
             return jsonFailResponse(trans('system_error', [], 'message'));
         }
+
+        // ✅ 事务提交后检查爆机状态（避免嵌套事务冲突）
+        \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
 
         return jsonSuccessResponse('success');
     }

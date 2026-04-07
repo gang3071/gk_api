@@ -453,8 +453,8 @@ class WalletService
                 ->where('player_id', $playerId)
                 ->update(['money' => $newBalance]);
 
-            // ✅ 触发爆机检测（不阻塞主流程）
-            self::checkMachineCrash($playerId, $newBalance, $oldBalance);
+            // ⚠️ 不在这里触发爆机检测，避免嵌套事务冲突
+            // 爆机检测需要在业务层事务提交后手动调用 WalletService::checkMachineCrashAfterTransaction()
         } catch (\Throwable $e) {
             // 数据库同步失败不影响 Redis（Redis 是唯一实时标准）
             \support\Log::error('WalletService: asyncUpdateDB failed', [
@@ -466,14 +466,16 @@ class WalletService
     }
 
     /**
-     * 检查爆机状态（从模型事件中提取，避免事务冲突）
+     * 在事务提交后检查爆机状态
+     *
+     * ⚠️ 必须在数据库事务提交后调用，避免嵌套事务冲突
      *
      * @param int $playerId 玩家ID
      * @param float $currentBalance 当前余额（来自 Redis）
      * @param float|null $previousBalance 之前的余额（用于判断状态变化）
      * @return void
      */
-    private static function checkMachineCrash(int $playerId, float $currentBalance, ?float $previousBalance = null): void
+    public static function checkMachineCrashAfterTransaction(int $playerId, float $currentBalance, ?float $previousBalance = null): void
     {
         try {
             // 获取玩家信息
