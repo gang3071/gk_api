@@ -173,7 +173,7 @@ class PlayerDeliveryRecord extends Model
     {
         static::created(function (PlayerDeliveryRecord $deliveryRecord) {
             // 发送玩家信息消息(更新用户钱包)
-            sendSocketMessage('player-' . $deliveryRecord->player_id, [
+            $message = [
                 'msg_type' => 'player_info',
                 'player_id' => $deliveryRecord->player_id,
                 'type' => $deliveryRecord->type,
@@ -182,7 +182,33 @@ class PlayerDeliveryRecord extends Model
                 'amount_after' => $deliveryRecord->amount_after,
                 'machine_name' => $deliveryRecord->machine_name,
                 'machine_type' => $deliveryRecord->machine_type,
+            ];
+
+            \support\Log::info('PlayerDeliveryRecord: Sending socket message', [
+                'channel' => 'player-' . $deliveryRecord->player_id,
+                'message' => $message,
             ]);
+
+            try {
+                $result = sendSocketMessage('player-' . $deliveryRecord->player_id, $message);
+
+                if ($result === false) {
+                    \support\Log::error('PlayerDeliveryRecord: Socket message send failed', [
+                        'channel' => 'player-' . $deliveryRecord->player_id,
+                    ]);
+                } else {
+                    \support\Log::info('PlayerDeliveryRecord: Socket message sent successfully', [
+                        'channel' => 'player-' . $deliveryRecord->player_id,
+                        'result' => $result,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                \support\Log::error('PlayerDeliveryRecord: Socket message exception', [
+                    'channel' => 'player-' . $deliveryRecord->player_id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            }
             if (config('app.profit', 'task') == 'event') {
                 // 发布分润事件
                 switch ($deliveryRecord->type) {
