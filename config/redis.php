@@ -13,20 +13,6 @@
  */
 
 return [
-    // ========== gk_api 业务连接池 ==========
-    // 用于：API请求、余额查询、缓存、Lua原子操作等
-    'api' => [
-        'host' => env('REDIS_HOST', '127.0.0.1'),
-        'password' => env('REDIS_PASSWORD', null),
-        'port' => env('REDIS_PORT', 6379),
-        'database' => env('REDIS_DB', 0),
-
-        // 连接管理配置
-        'timeout' => 2.5,              // 连接超时
-        'read_timeout' => 2.5,         // ✅ 读取超时（业务需要快速响应）
-        'persistent' => true,          // 持久连接
-    ],
-
     // ========== 向后兼容：default 指向 api ==========
     'default' => [
         'host' => env('REDIS_HOST', '127.0.0.1'),
@@ -36,5 +22,13 @@ return [
         'timeout' => 2.5,
         'read_timeout' => 2.5,
         'persistent' => true,
+        'retry_interval' => 100,
+
+        'options' => [
+            'prefix' => env('REDIS_PREFIX', ''),
+            'parameters' => [
+                'tcp_nodelay' => true,
+            ],
+        ],
     ],
 ];
