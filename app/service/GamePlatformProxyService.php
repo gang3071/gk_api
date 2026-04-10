@@ -88,7 +88,7 @@ class GamePlatformProxyService
                 'timestamp: ' . $request->header('timestamp', ''),
                 'nonceStr: ' . $request->header('nonceStr', ''),
                 'signature: ' . $request->header('signature', ''),
-                'Accept-Language: ' . $request->header('Accept-Language', 'zh-CN'),
+                'Accept-Language: ' . $request->header('Accept-Language', 'zh-TW'),
             ];
 
             $ch = curl_init();
