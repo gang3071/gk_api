@@ -32,4 +32,6 @@ return [
     'base64' => '{{name}}必ずBase64形式',
     'arrayVal' => '{{name}} は配列形式である必要があります',
     'is_channel' => '{{name}} は配列 bool 形式でなければなりません',
+    'min' => '{{name}}は{{interval}}以上である必要があります',
+    'max' => '{{name}}は{{interval}}以下である必要があります',
 ];

@@ -492,4 +492,6 @@ return [
     'recharge' => 'Recharge',
     'machine_coin_deposit' => 'Coin Deposit',
     'other' => 'Other',
+    'score_option' => 'Score Option',
+    'custom_amount' => 'Custom Amount',
 ];

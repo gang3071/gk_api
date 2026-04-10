@@ -503,4 +503,6 @@ return [
     'recharge' => '充值',
     'machine_coin_deposit' => '投钞',
     'other' => '其他',
+    'score_option' => '开分选项',
+    'custom_amount' => '自定义金额',
 ];
