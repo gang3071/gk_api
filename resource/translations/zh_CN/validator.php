@@ -32,6 +32,6 @@ return [
     'base64' => '{{name}}必须是base64格式',
     'arrayVal' => '{{name}}必须是数组格式格式',
     'is_channel' => '{{name}}必须是数组bool格式',
-    'min' => '{{name}}必须大于或等于{{interval}}',
-    'max' => '{{name}}必须小于或等于{{interval}}',
+    'min' => '{{name}}必须大于或等于{{compareTo}}',
+    'max' => '{{name}}必须小于或等于{{compareTo}}',
 ];
