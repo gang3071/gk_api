@@ -32,4 +32,6 @@ return [
     'base64' => '{{name}}必須是base64格式',
     'arrayVal' => '{{name}}必須是陣列格式格式',
     'is_channel' => '{{name}}必須是陣列bool格式',
+    'min' => '{{name}}必須大於或等於{{compareTo}}',
+    'max' => '{{name}}必須小於或等於{{compareTo}}',
 ];

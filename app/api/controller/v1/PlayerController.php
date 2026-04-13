@@ -3319,7 +3319,7 @@ class PlayerController
         $player = checkPlayer();
         $data = $request->post();
         // 验证必需参数：score_option (score_1, score_2, score_3, score_4, score_5, score_6, default_scores, custom)
-        $validator = v::key('score_option', v::in(['score_1', 'score_2', 'score_3', 'score_4', 'score_5', 'score_6', 'default_scores', 'custom'])->notEmpty()->setName('开分选项'));
+        $validator = v::key('score_option', v::in(['score_1', 'score_2', 'score_3', 'score_4', 'score_5', 'score_6', 'default_scores', 'custom'])->notEmpty()->setName(trans('score_option', [], 'message')));
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -3328,7 +3328,7 @@ class PlayerController
 
         // 如果选择custom选项，验证custom_amount参数
         if ($data['score_option'] === 'custom') {
-            $customValidator = v::key('custom_amount', v::numericVal()->min(1)->max(200000)->notEmpty()->setName('自定义金额'));
+            $customValidator = v::key('custom_amount', v::numericVal()->min(1)->max(200000)->notEmpty()->setName(trans('custom_amount', [], 'message')));
             try {
                 $customValidator->assert($data);
             } catch (AllOfException $e) {

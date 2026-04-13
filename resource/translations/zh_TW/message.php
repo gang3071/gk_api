@@ -493,4 +493,6 @@ return [
     'recharge' => '充值',
     'machine_coin_deposit' => '投钞',
     'other' => '其他',
+    'score_option' => '開分選項',
+    'custom_amount' => '自訂金額',
 ];

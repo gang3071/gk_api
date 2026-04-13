@@ -489,4 +489,6 @@ return [
     'recharge' => 'チャージ',
     'machine_coin_deposit' => 'コイン投入',
     'other' => 'その他',
+    'score_option' => 'スコアオプション',
+    'custom_amount' => 'カスタム金額',
 ];

@@ -407,6 +407,8 @@ function getValidationMessages(AllOfException $e): mixed
         'digit' => trans('digit', [], 'validator'),
         'base64' => trans('base64', [], 'validator'),
         'arrayVal' => trans('arrayVal', [], 'validator'),
+        'min' => trans('min', [], 'validator'),
+        'max' => trans('max', [], 'validator'),
     ])['key'];
     $message = is_array($message) ? Arr::first($message) : $message;
 

@@ -32,4 +32,6 @@ return [
     'base64' => '{{name}}The format must be base64',
     'arrayVal' => '{{name}} must be in array format',
     'is_channel' => '{{name}} must be in array bool format',
+    'min' => '{{name}} must be greater than or equal to {{compareTo}}',
+    'max' => '{{name}} must be less than or equal to {{compareTo}}',
 ];
