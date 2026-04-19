@@ -51,7 +51,7 @@ class WalletService
             if (!$forceRefresh) {
                 $cached = Redis::get($cacheKey);
                 if ($cached !== null && $cached !== false) {
-                    return (float)$cached;
+                    return round((float)$cached, 2);
                 }
             }
 
@@ -61,7 +61,7 @@ class WalletService
             // 更新缓存
             Redis::setex($cacheKey, self::CACHE_TTL, $balance);
 
-            return $balance;
+            return round($balance, 2);
         } catch (\Throwable $e) {
             // Redis 异常时自动降级到数据库
             Log::warning('WalletService: Redis failed, fallback to DB', [
@@ -70,7 +70,7 @@ class WalletService
                 'error' => $e->getMessage(),
             ]);
 
-            return self::getBalanceFromDB($playerId, $platformId);
+            return round(self::getBalanceFromDB($playerId, $platformId), 2);
         }
     }
 
@@ -101,7 +101,7 @@ class WalletService
             ->where('platform_id', $platformId)
             ->value('money');
 
-        return $result !== null ? (float)$result : 0.0;
+        return round($result !== null ? (float)$result : 0.0, 2);
     }
 
     /**
@@ -241,7 +241,7 @@ class WalletService
 
             foreach ($playerIds as $index => $playerId) {
                 if (isset($cached[$index]) && $cached[$index] !== false && $cached[$index] !== null) {
-                    $result[$playerId] = (float)$cached[$index];
+                    $result[$playerId] = round((float)$cached[$index], 2);
                 } else {
                     $missedIds[] = $playerId;
                 }
@@ -262,7 +262,7 @@ class WalletService
                 ->get();
 
             foreach ($wallets as $wallet) {
-                $balance = (float)$wallet->money;
+                $balance = round((float)$wallet->money, 2);
                 $result[$wallet->player_id] = $balance;
 
                 // 回填缓存
@@ -277,7 +277,7 @@ class WalletService
             // 补充不存在的玩家（余额为0）
             foreach ($missedIds as $playerId) {
                 if (!isset($result[$playerId])) {
-                    $result[$playerId] = 0.0;
+                    $result[$playerId] = 0.00;
                     // 缓存不存在的玩家（避免缓存穿透）
                     try {
                         $cacheKey = self::getCacheKey($playerId);
@@ -420,8 +420,8 @@ class WalletService
                 throw new \Exception('Invalid balance data returned from Redis');
             }
 
-            $oldBalance = (float)($balanceData['old'] ?? 0);
-            $newBalance = (float)$balanceData['new'];
+            $oldBalance = round((float)($balanceData['old'] ?? 0), 2);
+            $newBalance = round((float)$balanceData['new'], 2);
 
             // 异步更新数据库并触发爆机检测
             self::asyncUpdateDB($playerId, $newBalance, $oldBalance);
@@ -697,13 +697,15 @@ LUA;
                 $ttl        // ARGV[2]
             );
 
+            $newBalance = round((float)$newBalance, 2);
+
             Log::info('WalletService: Atomic increment success', [
                 'player_id' => $playerId,
                 'amount' => $amount,
                 'new_balance' => $newBalance,
             ]);
 
-            return (float)$newBalance;
+            return $newBalance;
 
         } catch (\Throwable $e) {
             Log::error('WalletService: Atomic increment failed', [
@@ -753,6 +755,11 @@ LUA;
             );
 
             $result = json_decode($resultJson, true);
+
+            // 格式化余额精度
+            if (isset($result['balance'])) {
+                $result['balance'] = round((float)$result['balance'], 2);
+            }
 
             if ($result['ok'] == 1) {
                 Log::info('WalletService: Atomic decrement success', [
