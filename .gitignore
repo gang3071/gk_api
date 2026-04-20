@@ -11,6 +11,9 @@ composer.lock
 .env.local
 .env.*.local
 
+# Firebase/Google Cloud credentials
+comechat-d5578-b1ad675314bd.json
+
 # IDE
 .idea/
 .vscode/
