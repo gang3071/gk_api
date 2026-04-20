@@ -37,6 +37,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int user_name 管理员名称
  * @property string reject_reason 拒绝原因
  * @property int status 状态
+ * @property string remark 备注
  * @property int is_promoter 是否推广员
  * @property int is_test 是否测试账户
  * @property int is_coin 是否币商
