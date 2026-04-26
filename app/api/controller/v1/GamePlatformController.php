@@ -108,7 +108,7 @@ class GamePlatformController
         }
 
         $list = GamePlatform::query()
-            ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture'])
+            ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture', 'maintenance_week', 'maintenance_start_time', 'maintenance_end_time', 'maintenance_status'])
             ->where('status', 1)
             ->whereIn('id', $allowedPlatformIds)
 
@@ -239,6 +239,7 @@ class GamePlatformController
                     'picture' => '',
                     'display_mode' => GamePlatform::DISPLAY_MODE_ALL, // 实体机台支持全部展示模式
                     'has_lobby' => 0, // 实体机台不进入大厅
+                    'is_maintenance' => 0, // 实体机台不维护
                 ];
 
                 // 添加到列表开头
@@ -297,7 +298,7 @@ class GamePlatformController
 
         // 获取所有允许的平台
         $allPlatforms = GamePlatform::query()
-            ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture', 'display_mode', 'has_lobby'])
+            ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture', 'display_mode', 'has_lobby', 'maintenance_week', 'maintenance_start_time', 'maintenance_end_time', 'maintenance_status'])
             ->where('status', 1)
             ->whereIn('id', $allowedPlatformIds)
             ->orderBy('sort', 'desc')
@@ -311,6 +312,9 @@ class GamePlatformController
 
         foreach ($allPlatforms as $platform) {
             $cateIds = json_decode($platform->cate_id, true);
+
+            // 添加维护状态字段
+            $platform->is_maintenance = $platform->is_maintenance;
 
             // 检查是否包含电子游戏分类
             if (in_array(GameType::CATE_COMPUTER_GAME, $cateIds)) {
@@ -350,6 +354,7 @@ class GamePlatformController
                     'picture' => '',
                     'display_mode' => GamePlatform::DISPLAY_MODE_PORTRAIT, // 实体机台支持全部展示模式
                     'has_lobby' => 1, // 实体机台不进入大厅
+                    'is_maintenance' => 0, // 实体机台不维护
                 ];
 
                 // 添加到电子游戏平台列表开头
