@@ -17,6 +17,7 @@ use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayerWalletTransfer;
 use app\model\StoreSetting;
+use app\service\ClientMaintainService;
 use app\service\game\GameServiceFactory;
 use app\service\GameLotteryServices;
 use app\service\GamePlatformProxyService;
@@ -250,11 +251,15 @@ class GamePlatformController
             }
         }
 
+        // 获取客户端维护状态
+        $clientMaintenanceStatus = ClientMaintainService::getMaintenanceStatus($player->department_id);
+
         return jsonSuccessResponse('success', [
             'list' => $list,
             'game_list' => $gameData,
             'recent_games' => $enterGameData,
             'game_lottery_list' => $this->getLotteryPoolData(),
+            'client_maintenance' => $clientMaintenanceStatus,
         ]);
     }
 
