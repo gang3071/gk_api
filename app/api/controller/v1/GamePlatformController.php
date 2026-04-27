@@ -252,7 +252,7 @@ class GamePlatformController
         }
 
         // 获取客户端维护状态
-        $clientMaintenanceStatus = ClientMaintainService::getMaintenanceStatus($player->department_id);
+        $clientMaintenanceStatus = ClientMaintainService::getMaintenanceStatus();
 
         return jsonSuccessResponse('success', [
             'list' => $list,
