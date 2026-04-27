@@ -120,6 +120,7 @@ class GamePlatformController
             })
             ->orderBy('sort', 'desc')
             ->get();
+
         $gameData = [];
         $enterGameData = [];
         if (!empty($list) && $data['type'] == 2) {
@@ -184,6 +185,7 @@ class GamePlatformController
                     'is_new' => $game->is_new,
                     'is_hot' => $game->is_hot,
                     'platform_id' => $game->platform_id,
+                    'is_maintenance' => $game->gamePlatform->is_maintenance ?? 0,
                     'game_content' => $content
                 ];
             }
@@ -206,6 +208,7 @@ class GamePlatformController
                         'is_new' => $playerEnterGameRecord->game->is_new,
                         'is_hot' => $playerEnterGameRecord->game->is_hot,
                         'platform_id' => $playerEnterGameRecord->game->platform_id,
+                        'is_maintenance' => $playerEnterGameRecord->game->gamePlatform->is_maintenance ?? 0,
                         'game_content' => $gameContent
                     ];
                 }
@@ -310,11 +313,9 @@ class GamePlatformController
         $lang = locale();
         $lang = Str::replace('_', '-', $lang);
 
+        /** @var GamePlatform $platform */
         foreach ($allPlatforms as $platform) {
             $cateIds = json_decode($platform->cate_id, true);
-
-            // 添加维护状态字段
-            $platform->is_maintenance = $platform->is_maintenance;
 
             // 检查是否包含电子游戏分类
             if (in_array(GameType::CATE_COMPUTER_GAME, $cateIds)) {
@@ -499,6 +500,7 @@ class GamePlatformController
                 'is_hot' => $game->is_hot,
                 'platform_id' => $game->platform_id,
                 'display_mode' => $game->display_mode,
+                'is_maintenance' => $game->gamePlatform->is_maintenance ?? 0,
                 'game_content' => $content
             ];
         }
@@ -530,6 +532,7 @@ class GamePlatformController
                             'is_hot' => $playerEnterGameRecord->game->is_hot,
                             'platform_id' => $playerEnterGameRecord->game->platform_id,
                             'display_mode' => $playerEnterGameRecord->game->display_mode,
+                            'is_maintenance' => $gamePlatform->is_maintenance ?? 0,
                             'game_content' => $gameContent
                         ];
                     }

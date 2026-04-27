@@ -39,6 +39,9 @@ class GamePlatform extends Model
     const DISPLAY_MODE_ALL = 3;       // 全部支持
     protected $table = 'game_platform';
 
+    // 自动追加访问器到数组/JSON
+    protected $appends = ['is_maintenance'];
+
     /**
      * 判断平台当前是否处于维护中
      * @return int 0-未维护，1-维护中
