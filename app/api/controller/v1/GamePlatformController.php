@@ -17,6 +17,7 @@ use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayerWalletTransfer;
 use app\model\StoreSetting;
+use app\service\ClientMaintainService;
 use app\service\game\GameServiceFactory;
 use app\service\GameLotteryServices;
 use app\service\GamePlatformProxyService;
@@ -108,7 +109,7 @@ class GamePlatformController
         }
 
         $list = GamePlatform::query()
-            ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture'])
+            ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture', 'maintenance_week', 'maintenance_start_time', 'maintenance_end_time', 'maintenance_status'])
             ->where('status', 1)
             ->whereIn('id', $allowedPlatformIds)
 
@@ -120,6 +121,7 @@ class GamePlatformController
             })
             ->orderBy('sort', 'desc')
             ->get();
+
         $gameData = [];
         $enterGameData = [];
         if (!empty($list) && $data['type'] == 2) {
@@ -184,6 +186,7 @@ class GamePlatformController
                     'is_new' => $game->is_new,
                     'is_hot' => $game->is_hot,
                     'platform_id' => $game->platform_id,
+                    'is_maintenance' => $game->gamePlatform->is_maintenance ?? 0,
                     'game_content' => $content
                 ];
             }
@@ -206,6 +209,7 @@ class GamePlatformController
                         'is_new' => $playerEnterGameRecord->game->is_new,
                         'is_hot' => $playerEnterGameRecord->game->is_hot,
                         'platform_id' => $playerEnterGameRecord->game->platform_id,
+                        'is_maintenance' => $playerEnterGameRecord->game->gamePlatform->is_maintenance ?? 0,
                         'game_content' => $gameContent
                     ];
                 }
@@ -239,6 +243,7 @@ class GamePlatformController
                     'picture' => '',
                     'display_mode' => GamePlatform::DISPLAY_MODE_ALL, // 实体机台支持全部展示模式
                     'has_lobby' => 0, // 实体机台不进入大厅
+                    'is_maintenance' => 0, // 实体机台不维护
                 ];
 
                 // 添加到列表开头
@@ -246,11 +251,15 @@ class GamePlatformController
             }
         }
 
+        // 获取客户端维护状态
+        $clientMaintenanceStatus = ClientMaintainService::getMaintenanceStatus();
+
         return jsonSuccessResponse('success', [
             'list' => $list,
             'game_list' => $gameData,
             'recent_games' => $enterGameData,
             'game_lottery_list' => $this->getLotteryPoolData(),
+            'client_maintenance' => $clientMaintenanceStatus,
         ]);
     }
 
@@ -297,7 +306,7 @@ class GamePlatformController
 
         // 获取所有允许的平台
         $allPlatforms = GamePlatform::query()
-            ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture', 'display_mode', 'has_lobby'])
+            ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture', 'display_mode', 'has_lobby', 'maintenance_week', 'maintenance_start_time', 'maintenance_end_time', 'maintenance_status'])
             ->where('status', 1)
             ->whereIn('id', $allowedPlatformIds)
             ->orderBy('sort', 'desc')
@@ -309,6 +318,7 @@ class GamePlatformController
         $lang = locale();
         $lang = Str::replace('_', '-', $lang);
 
+        /** @var GamePlatform $platform */
         foreach ($allPlatforms as $platform) {
             $cateIds = json_decode($platform->cate_id, true);
 
@@ -350,6 +360,7 @@ class GamePlatformController
                     'picture' => '',
                     'display_mode' => GamePlatform::DISPLAY_MODE_PORTRAIT, // 实体机台支持全部展示模式
                     'has_lobby' => 1, // 实体机台不进入大厅
+                    'is_maintenance' => 0, // 实体机台不维护
                 ];
 
                 // 添加到电子游戏平台列表开头
@@ -494,6 +505,7 @@ class GamePlatformController
                 'is_hot' => $game->is_hot,
                 'platform_id' => $game->platform_id,
                 'display_mode' => $game->display_mode,
+                'is_maintenance' => $game->gamePlatform->is_maintenance ?? 0,
                 'game_content' => $content
             ];
         }
@@ -525,6 +537,7 @@ class GamePlatformController
                             'is_hot' => $playerEnterGameRecord->game->is_hot,
                             'platform_id' => $playerEnterGameRecord->game->platform_id,
                             'display_mode' => $playerEnterGameRecord->game->display_mode,
+                            'is_maintenance' => $gamePlatform->is_maintenance ?? 0,
                             'game_content' => $gameContent
                         ];
                     }
