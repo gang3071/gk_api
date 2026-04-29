@@ -278,7 +278,7 @@ class GamePlatformController
         $clientMaintenanceStatus = ClientMaintainService::getMaintenanceStatus();
 
         return jsonSuccessResponse('success', [
-            'list' => $list,
+            'list' => array_values($list->toArray()),
             'game_list' => $gameData,
             'recent_games' => $enterGameData,
             'game_lottery_list' => $this->getLotteryPoolData(),
