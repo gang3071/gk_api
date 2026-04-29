@@ -122,6 +122,34 @@ class GamePlatformController
             ->orderBy('sort', 'desc')
             ->get();
 
+        // 根据玩家权限过滤平台列表
+        // 如果平台包含的所有游戏分类玩家都没有权限访问,则过滤掉该平台
+        $list = $list->filter(function ($platform) use ($player) {
+            $cateIds = json_decode($platform->cate_id, true);
+            $hasAccessibleCate = false;
+
+            // 检查平台的每个分类,玩家是否至少有一个分类的访问权限
+            foreach ($cateIds as $cateId) {
+                if ($cateId == GameType::CATE_LIVE_VIDEO && $player->status_baccarat == 1) {
+                    // 玩家有真人视讯权限
+                    $hasAccessibleCate = true;
+                    break;
+                }
+                if ($cateId == GameType::CATE_COMPUTER_GAME && $player->status_game_platform == 1) {
+                    // 玩家有电子游戏权限
+                    $hasAccessibleCate = true;
+                    break;
+                }
+                // 其他分类(如实体机台、牌桌等)暂不做权限限制
+                if (!in_array($cateId, [GameType::CATE_LIVE_VIDEO, GameType::CATE_COMPUTER_GAME])) {
+                    $hasAccessibleCate = true;
+                    break;
+                }
+            }
+
+            return $hasAccessibleCate;
+        });
+
         $gameData = [];
         $enterGameData = [];
         if (!empty($list) && $data['type'] == 2) {
