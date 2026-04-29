@@ -58,8 +58,7 @@ class PlayerController
 {
     /** 排除验签 */
     protected $noNeedSign = ['addBankCard', 'uploadAvatar', 'completeRecharge', 'editBankCard'];
-    
-    #[RateLimiter(limit: 5)]
+
     /**
      * 获取用户信息
      * @return Response
