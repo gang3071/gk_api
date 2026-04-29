@@ -108,6 +108,14 @@ class GamePlatformController
             ]);
         }
 
+        // 获取玩家被禁用的真人平台ID列表（game_id=0表示禁用整个平台）
+        $disabledBaccaratPlatformIds = PlayerDisabledGame::query()
+            ->where('player_id', $player->id)
+            ->where('game_id', 0)
+            ->where('status', 1)
+            ->pluck('platform_id')
+            ->toArray();
+
         $list = GamePlatform::query()
             ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture', 'maintenance_week', 'maintenance_start_time', 'maintenance_end_time', 'maintenance_status'])
             ->where('status', 1)
@@ -121,6 +129,21 @@ class GamePlatformController
             })
             ->orderBy('sort', 'desc')
             ->get();
+
+        // 过滤被禁用的真人平台
+        if (!empty($disabledBaccaratPlatformIds)) {
+            $list = $list->filter(function ($platform) use ($disabledBaccaratPlatformIds) {
+                // 如果平台在禁用列表中，检查是否包含真人视讯分类
+                if (in_array($platform->id, $disabledBaccaratPlatformIds)) {
+                    $cateIds = json_decode($platform->cate_id, true);
+                    // 如果包含真人视讯分类，则过滤掉
+                    if (in_array(GameType::CATE_LIVE_VIDEO, $cateIds)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
 
         $gameData = [];
         $enterGameData = [];
