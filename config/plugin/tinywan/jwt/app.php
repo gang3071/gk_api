@@ -7,12 +7,12 @@ return [
         'algorithms' => 'HS256',
         // access令牌秘钥
         'access_secret_key' => '2022d3d3LmJq',
-        // access令牌过期时间，单位：秒。默认 15天
+        // access令牌过期时间，单位：秒。30 天
         'access_exp' => 2592000,
         // refresh令牌秘钥
         'refresh_secret_key' => '2022KTxigxc9o50c',
-        // refresh令牌过期时间，单位：秒。默认 30 天
-        'refresh_exp' => 2592000,
+        // refresh令牌过期时间，单位：秒。90 天（必须大于 access_exp）
+        'refresh_exp' => 7776000,
         // refresh 令牌是否禁用，默认不禁用 false
         'refresh_disable' => false,
         // 令牌签发者
@@ -23,8 +23,8 @@ return [
         'leeway' => 60,
         // 单设备登录
         'is_single_device' => true,
-        // 缓存令牌时间，单位：秒。默认 15 天
-        'cache_token_ttl' => 2592000,
+        // 缓存令牌时间，单位：秒。90 天（应与 refresh_exp 保持一致）
+        'cache_token_ttl' => 7776000,
         // 缓存令牌前缀
         'cache_token_pre' => 'JWT:TOKEN:',
         // 缓存令牌前缀

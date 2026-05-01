@@ -934,7 +934,53 @@ class IndexController
      */
     public function refreshToken(): Response
     {
-        return jsonFailResponse(trans('please_relogin', [], 'message'), [], 401021);
+        try {
+            // 刷新 Token（从请求头的 Authorization 中获取 refresh_token）
+            $extend = [];
+            $newToken = JwtToken::refreshToken($extend);
+
+            // 验证用户信息
+            if (empty($extend['id'])) {
+                return jsonFailResponse(trans('please_relogin', [], 'message'), [], 401021);
+            }
+
+            // 查询用户最新状态
+            /** @var Player $player */
+            $player = Player::where('id', $extend['id'])
+                ->where('department_id', request()->department_id)
+                ->first();
+
+            if (empty($player)) {
+                return jsonFailResponse(trans('player_not_fount', [], 'message'), [], 401022);
+            }
+
+            if ($player->status == Player::STATUS_STOP) {
+                return jsonFailResponse(trans('player_stop', [], 'message'), [], 401023);
+            }
+
+            // 返回新的 Token（包含最新的用户信息）
+            return jsonSuccessResponse('success', [
+                'token' => $newToken,
+                'player_info' => [
+                    'id' => $player->id,
+                    'avatar' => $player->avatar,
+                    'phone' => $player->phone,
+                    'type' => $player->type,
+                    'currency' => $player->currency,
+                    'recommended_code' => $player->recommended_code,
+                ]
+            ]);
+
+        } catch (\Tinywan\Jwt\Exception\JwtRefreshTokenExpiredException $e) {
+            // Refresh Token 过期或无效
+            return jsonFailResponse($e->getMessage(), [], $e->getCode());
+        } catch (\Tinywan\Jwt\Exception\JwtTokenException $e) {
+            // 其他 JWT 异常
+            return jsonFailResponse($e->getMessage(), [], $e->getCode());
+        } catch (\Exception $e) {
+            // 系统异常
+            return jsonFailResponse(trans('please_relogin', [], 'message'), [], 401021);
+        }
     }
     
     #[RateLimiter(limit: 5)]
