@@ -966,11 +966,6 @@ class PlayerController
         if ($player->is_coin == 1) {
             return jsonFailResponse(trans('coin_cannot_present', [], 'message'));
         }
-        // ✅ 从 Redis 读取实时余额
-        $currentBalance = \app\service\WalletService::getBalance($player->id);
-        if ($currentBalance <= 0) {
-            return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
-        }
 
         // 爆机检查：玩家不能洗分
         $crashCheck = checkMachineCrash($player);
@@ -978,15 +973,7 @@ class PlayerController
             return jsonFailResponse(trans('machine_crashed_cannot_wash_score', [], 'message'));
         }
 
-        // 计算可洗分金额：保留十位，只洗到百位
-        $currentMoney = $currentBalance;
-        $washAmount = floor($currentMoney / 100) * 100; // 向下取整到百位
-
-        if ($washAmount < 100) {
-            return jsonFailResponse(trans('insufficient_balance_100', [], 'message'));
-        }
-
-        // 渠道和货币验证
+        // 渠道和货币验证（先验证，避免扣款后回退）
         /** @var Channel $channel */
         $channel = Channel::query()->where('department_id', \request()->department_id)->first();
         if ($player->status_withdraw != 1) {
@@ -1001,6 +988,26 @@ class PlayerController
         if (empty($currency)) {
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
+
+        // 🔥 原子性洗分操作（完全避免 TOCTOU 问题）
+        // 在 Redis 中原子性完成：读取余额 → 计算洗分金额 → 扣款
+        $washResult = \app\service\WalletService::atomicWash($player->id, 100);
+
+        if ($washResult['ok'] == 0) {
+            // 洗分失败
+            if ($washResult['error'] == 'insufficient_wash_amount') {
+                return jsonFailResponse(trans('insufficient_balance_100', [], 'message'));
+            } else {
+                return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
+            }
+        }
+
+        // 洗分成功，获取实际洗分金额
+        $washAmount = $washResult['wash_amount'];      // 实际洗分金额
+        $beforeGameAmount = $washResult['old_balance']; // 扣款前余额
+        $afterGameAmount = $washResult['balance'];      // 扣款后余额
+
+        // 计算货币金额
         $money = bcdiv($washAmount, $currency->ratio, 2);
 
         // 开始事务处理
@@ -1032,20 +1039,7 @@ class PlayerController
             $playerWithdrawRecord->remark = '線下代理洗分';
             $playerWithdrawRecord->save();
 
-            // ✅ 从 Redis 读取余额（唯一可信源）
-            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
-
-            // ✅ Lua 原子性扣款（自动同步数据库）
-            $result = \app\service\WalletService::atomicDecrement(
-                $player->id,
-                $playerWithdrawRecord->point
-            );
-
-            if ($result['ok'] == 0) {
-                throw new \Exception('余额不足');
-            }
-
-            $afterGameAmount = (float)$result['balance'];
+            // 余额已在事务外通过 atomicWash 原子性扣除
 
             // 更新玩家提现统计
             $player->player_extend->withdraw_amount = bcadd($player->player_extend->withdraw_amount,
@@ -1071,7 +1065,17 @@ class PlayerController
             DB::commit();
         } catch (Exception $e) {
             DB::rollBack();
-            Log::error('presentAuto', [$e->getTrace()]);
+
+            // 事务失败，回退已扣除的余额
+            \app\service\WalletService::atomicIncrement($player->id, $washAmount);
+
+            Log::error('presentAuto failed, balance refunded', [
+                'player_id' => $player->id,
+                'wash_amount' => $washAmount,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTrace()
+            ]);
+
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
 

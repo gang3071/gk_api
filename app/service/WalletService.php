@@ -637,11 +637,16 @@ local currentBalance = tonumber(redis.call('GET', key)) or 0
 local newBalance = currentBalance + amount
 
 redis.call('SETEX', key, ttl, newBalance)
-return newBalance
+return cjson.encode({ok = 1, balance = newBalance, old = currentBalance, new = newBalance})
 LUA;
 
     /**
      * Lua 脚本：原子性减少余额（带余额检查）
+     *
+     * 修复说明（2026-05-01）：
+     * - 添加 0.01 元精度容差，解决浮点数精度丢失问题
+     * - 添加负数余额防护，确保余额不会为负数
+     * - 解决余额等于扣款金额时因精度问题导致的扣款失败
      */
     private const LUA_ATOMIC_DECREMENT = <<<'LUA'
 local key = KEYS[1]
@@ -650,14 +655,85 @@ local ttl = tonumber(ARGV[2]) or 3600
 
 local currentBalance = tonumber(redis.call('GET', key)) or 0
 
--- 余额不足检查
-if currentBalance < amount then
+-- 余额不足检查（添加 0.01 元容差，解决浮点数精度问题）
+local tolerance = 0.01
+if currentBalance + tolerance < amount then
     return cjson.encode({ok = 0, error = "insufficient_balance", balance = currentBalance})
 end
 
 local newBalance = currentBalance - amount
+
+-- 防止负数余额（双重保险）
+if newBalance < 0 then
+    newBalance = 0
+end
+
 redis.call('SETEX', key, ttl, newBalance)
-return cjson.encode({ok = 1, balance = newBalance})
+return cjson.encode({ok = 1, balance = newBalance, old = currentBalance, new = newBalance})
+LUA;
+
+    /**
+     * Lua 脚本：原子性洗分操作
+     *
+     * 功能：在 Redis 中原子性完成"读取-计算-扣款"
+     * - 读取当前余额
+     * - 计算可洗分金额（向下取整到百位）
+     * - 检查余额是否足够
+     * - 原子性扣款
+     *
+     * 优势：
+     * - 完全避免 TOCTOU 问题
+     * - 保证并发安全
+     * - 自动处理浮点数精度问题
+     */
+    private const LUA_ATOMIC_WASH = <<<'LUA'
+local key = KEYS[1]
+local minWashAmount = tonumber(ARGV[1]) or 100  -- 最小洗分金额（默认100）
+local ttl = tonumber(ARGV[2]) or 3600
+
+local currentBalance = tonumber(redis.call('GET', key)) or 0
+
+-- 计算可洗分金额：向下取整到百位
+local washAmount = math.floor(currentBalance / 100) * 100
+
+-- 检查最小洗分金额
+if washAmount < minWashAmount then
+    return cjson.encode({
+        ok = 0,
+        error = "insufficient_wash_amount",
+        balance = currentBalance,
+        wash_amount = 0,
+        min_required = minWashAmount
+    })
+end
+
+-- 检查余额是否足够（带容差）
+local tolerance = 0.01
+if currentBalance + tolerance < washAmount then
+    return cjson.encode({
+        ok = 0,
+        error = "insufficient_balance",
+        balance = currentBalance,
+        wash_amount = washAmount
+    })
+end
+
+-- 扣除洗分金额
+local newBalance = currentBalance - washAmount
+
+-- 防止负数余额
+if newBalance < 0 then
+    newBalance = 0
+end
+
+redis.call('SETEX', key, ttl, newBalance)
+
+return cjson.encode({
+    ok = 1,
+    balance = newBalance,           -- 扣款后余额
+    old_balance = currentBalance,   -- 扣款前余额
+    wash_amount = washAmount        -- 实际洗分金额
+})
 LUA;
 
     /**
@@ -677,9 +753,9 @@ LUA;
      * @param int $playerId 玩家ID
      * @param float $amount 增加金额（必须 > 0）
      * @param int $ttl Redis 缓存过期时间（秒），默认 3600
-     * @return float 新余额
+     * @return array ['ok' => 1, 'balance' => 新余额, 'old' => 旧余额, 'new' => 新余额]
      */
-    public static function atomicIncrement(int $playerId, float $amount, int $ttl = 3600): float
+    public static function atomicIncrement(int $playerId, float $amount, int $ttl = 3600): array
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be greater than 0');
@@ -689,7 +765,7 @@ LUA;
             $cacheKey = self::getCacheKey($playerId);
 
             // 执行 Lua 脚本，原子性增加余额
-            $newBalance = Redis::eval(
+            $resultJson = Redis::eval(
                 self::LUA_ATOMIC_INCREMENT,
                 1,  // KEYS 数量
                 $cacheKey,  // KEYS[1]
@@ -697,15 +773,27 @@ LUA;
                 $ttl        // ARGV[2]
             );
 
-            $newBalance = round((float)$newBalance, 2);
+            $result = json_decode($resultJson, true);
+
+            // 格式化余额精度
+            if (isset($result['balance'])) {
+                $result['balance'] = round((float)$result['balance'], 2);
+            }
+            if (isset($result['old'])) {
+                $result['old'] = round((float)$result['old'], 2);
+            }
+            if (isset($result['new'])) {
+                $result['new'] = round((float)$result['new'], 2);
+            }
 
             Log::info('WalletService: Atomic increment success', [
                 'player_id' => $playerId,
                 'amount' => $amount,
-                'new_balance' => $newBalance,
+                'old_balance' => $result['old'] ?? 0,
+                'new_balance' => $result['balance'],
             ]);
 
-            return $newBalance;
+            return $result;
 
         } catch (\Throwable $e) {
             Log::error('WalletService: Atomic increment failed', [
@@ -745,6 +833,16 @@ LUA;
         try {
             $cacheKey = self::getCacheKey($playerId);
 
+            // 🔍 调试日志：记录扣款前 Redis 原始值（用于排查精度问题）
+            $rawRedisValue = Redis::get($cacheKey);
+            if ($rawRedisValue !== null && $rawRedisValue !== false) {
+                Log::debug('WalletService: Atomic decrement - Redis raw value', [
+                    'player_id' => $playerId,
+                    'raw_value' => $rawRedisValue,
+                    'amount_to_deduct' => $amount,
+                ]);
+            }
+
             // 执行 Lua 脚本，原子性减少余额
             $resultJson = Redis::eval(
                 self::LUA_ATOMIC_DECREMENT,
@@ -760,11 +858,18 @@ LUA;
             if (isset($result['balance'])) {
                 $result['balance'] = round((float)$result['balance'], 2);
             }
+            if (isset($result['old'])) {
+                $result['old'] = round((float)$result['old'], 2);
+            }
+            if (isset($result['new'])) {
+                $result['new'] = round((float)$result['new'], 2);
+            }
 
             if ($result['ok'] == 1) {
                 Log::info('WalletService: Atomic decrement success', [
                     'player_id' => $playerId,
                     'amount' => $amount,
+                    'old_balance' => $result['old'] ?? 0,
                     'new_balance' => $result['balance'],
                 ]);
             } else {
@@ -781,6 +886,90 @@ LUA;
             Log::error('WalletService: Atomic decrement exception', [
                 'player_id' => $playerId,
                 'amount' => $amount,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * 原子性洗分操作（完全避免 TOCTOU 问题）
+     *
+     * 在 Redis 中原子性完成：
+     * 1. 读取当前余额
+     * 2. 计算可洗分金额（向下取整到百位）
+     * 3. 检查余额是否足够
+     * 4. 原子性扣款
+     *
+     * 优势：
+     * - 完全避免 Time-of-Check to Time-of-Use (TOCTOU) 竞态条件
+     * - 保证并发安全
+     * - 自动处理浮点数精度问题
+     * - 消除两次读取余额之间的时间窗口
+     *
+     * @param int $playerId 玩家ID
+     * @param int $minWashAmount 最小洗分金额（默认100）
+     * @param int $ttl Redis 缓存过期时间（秒），默认 3600
+     * @return array [
+     *   'ok' => 1,                 // 成功标志
+     *   'balance' => 新余额,
+     *   'old_balance' => 扣款前余额,
+     *   'wash_amount' => 实际洗分金额
+     * ] 或 [
+     *   'ok' => 0,
+     *   'error' => 错误类型,
+     *   'balance' => 当前余额
+     * ]
+     */
+    public static function atomicWash(int $playerId, int $minWashAmount = 100, int $ttl = 3600): array
+    {
+        try {
+            $cacheKey = self::getCacheKey($playerId);
+
+            // 执行 Lua 脚本，原子性完成洗分操作
+            $resultJson = Redis::eval(
+                self::LUA_ATOMIC_WASH,
+                1,  // KEYS 数量
+                $cacheKey,      // KEYS[1]
+                $minWashAmount, // ARGV[1]
+                $ttl            // ARGV[2]
+            );
+
+            $result = json_decode($resultJson, true);
+
+            // 格式化余额精度
+            if (isset($result['balance'])) {
+                $result['balance'] = round((float)$result['balance'], 2);
+            }
+            if (isset($result['old_balance'])) {
+                $result['old_balance'] = round((float)$result['old_balance'], 2);
+            }
+            if (isset($result['wash_amount'])) {
+                $result['wash_amount'] = round((float)$result['wash_amount'], 2);
+            }
+
+            if ($result['ok'] == 1) {
+                Log::info('WalletService: Atomic wash success', [
+                    'player_id' => $playerId,
+                    'old_balance' => $result['old_balance'],
+                    'wash_amount' => $result['wash_amount'],
+                    'new_balance' => $result['balance'],
+                ]);
+            } else {
+                Log::warning('WalletService: Atomic wash failed', [
+                    'player_id' => $playerId,
+                    'error' => $result['error'] ?? 'unknown',
+                    'current_balance' => $result['balance'] ?? 0,
+                    'wash_amount' => $result['wash_amount'] ?? 0,
+                    'min_required' => $result['min_required'] ?? $minWashAmount,
+                ]);
+            }
+
+            return $result;
+
+        } catch (\Throwable $e) {
+            Log::error('WalletService: Atomic wash exception', [
+                'player_id' => $playerId,
                 'error' => $e->getMessage(),
             ]);
             throw $e;
