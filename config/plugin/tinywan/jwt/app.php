@@ -8,7 +8,7 @@ return [
         // access令牌秘钥
         'access_secret_key' => '2022d3d3LmJq',
         // access令牌过期时间，单位：秒。默认 15天
-        'access_exp' => 1296000,
+        'access_exp' => 2592000,
         // refresh令牌秘钥
         'refresh_secret_key' => '2022KTxigxc9o50c',
         // refresh令牌过期时间，单位：秒。默认 30 天
@@ -24,7 +24,7 @@ return [
         // 单设备登录
         'is_single_device' => true,
         // 缓存令牌时间，单位：秒。默认 15 天
-        'cache_token_ttl' => 1296000,
+        'cache_token_ttl' => 2592000,
         // 缓存令牌前缀
         'cache_token_pre' => 'JWT:TOKEN:',
         // 缓存令牌前缀
