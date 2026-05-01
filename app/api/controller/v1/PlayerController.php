@@ -2670,10 +2670,12 @@ class PlayerController
                 $playerRechargeRecord->save();
 
                 // ✅ Lua 原子性加款（自动同步数据库）
-                $afterGameAmount = \app\service\WalletService::atomicIncrement(
+                $incrementResult = \app\service\WalletService::atomicIncrement(
                     $player->id,
                     $playerRechargeRecord->point
                 );
+                $afterGameAmount = $incrementResult['balance'];
+
                 $player->player_extend->recharge_amount = bcadd($player->player_extend->recharge_amount,
                     $playerRechargeRecord->point, 2);
                 $player->push();
@@ -2686,7 +2688,7 @@ class PlayerController
                 $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_RECHARGE;
                 $playerDeliveryRecord->source = 'gb_recharge';
                 $playerDeliveryRecord->amount = $playerRechargeRecord->point;
-                $playerDeliveryRecord->amount_before = $beforeGameAmount;
+                $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
                 $playerDeliveryRecord->amount_after = $afterGameAmount;
                 $playerDeliveryRecord->tradeno = $playerRechargeRecord->tradeno ?? '';
                 $playerDeliveryRecord->remark = $playerRechargeRecord->remark ?? '';
@@ -3224,10 +3226,12 @@ class PlayerController
             $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
 
             // ✅ Lua 原子性加款（自动同步数据库）
-            $afterGameAmount = \app\service\WalletService::atomicIncrement(
+            $incrementResult = \app\service\WalletService::atomicIncrement(
                 $player->id,
                 $reverseWater
             );
+            $afterGameAmount = $incrementResult['balance'];
+
             // 寫入金流明細
             $playerDeliveryRecord = new PlayerDeliveryRecord;
             $playerDeliveryRecord->player_id = $player->id;
@@ -3237,7 +3241,7 @@ class PlayerController
             $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_REVERSE_WATER;
             $playerDeliveryRecord->source = 'reverse_water';
             $playerDeliveryRecord->amount = $reverseWater;
-            $playerDeliveryRecord->amount_before = $beforeGameAmount;
+            $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
             $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = '';
             $playerDeliveryRecord->remark = '';
@@ -3419,10 +3423,11 @@ class PlayerController
             $playerRechargeRecord->save();
 
             // ✅ Lua 原子性加款（自动同步数据库）
-            $afterGameAmount = \app\service\WalletService::atomicIncrement(
+            $incrementResult = \app\service\WalletService::atomicIncrement(
                 $player->id,
                 $playerRechargeRecord->point
             );
+            $afterGameAmount = $incrementResult['balance'];
 
             // 更新玩家充值统计
             $player->player_extend->recharge_amount = bcadd($player->player_extend->recharge_amount,
@@ -3438,7 +3443,7 @@ class PlayerController
             $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_RECHARGE;
             $playerDeliveryRecord->source = 'artificial_recharge';
             $playerDeliveryRecord->amount = $playerRechargeRecord->point;
-            $playerDeliveryRecord->amount_before = $beforeGameAmount;
+            $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
             $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = $playerRechargeRecord->tradeno ?? '';
             $playerDeliveryRecord->remark = '線下代理開分';

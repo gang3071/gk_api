@@ -1377,10 +1377,12 @@ class MachineController
             $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
 
             // ✅ 玩家钱包加款 - Lua 原子操作（自动同步数据库）
-            $afterGameAmount = \app\service\WalletService::atomicIncrement(
+            $incrementResult = \app\service\WalletService::atomicIncrement(
                 $player->id,
                 $money
             );
+            $afterGameAmount = $incrementResult['balance'];
+
             $player->player_extend->machine_put_amount = bcadd($player->player_extend->machine_put_amount,
                 $playerRechargeRecord->money, 2);
             $player->player_extend->machine_put_point = bcadd($player->player_extend->machine_put_point,
@@ -1397,8 +1399,8 @@ class MachineController
             $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_MACHINE;
             $playerDeliveryRecord->source = 'machine_put_coins';
             $playerDeliveryRecord->amount = $playerRechargeRecord->point;
-            $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $player->machine_wallet->money;
+            $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = $playerRechargeRecord->tradeno ?? '';
             $playerDeliveryRecord->remark = $playerRechargeRecord->remark ?? '';
             $playerDeliveryRecord->save();

@@ -742,10 +742,10 @@ class GamePlatformController
             $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_GAME_PLATFORM_OUT;
             $playerDeliveryRecord->source = 'wallet_transfer_out';
             $playerDeliveryRecord->amount = $playerWalletTransfer->amount;
-            $playerDeliveryRecord->amount_before = $beforeGameAmount;
+            $playerDeliveryRecord->amount_before = $result['old'] ?? $beforeGameAmount;  // 使用 Lua 返回的扣款前余额
             $playerDeliveryRecord->amount_after = $newBalance;
-            $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
-            $playerDeliveryRecord->remark = $target->remark ?? '';
+            $playerDeliveryRecord->tradeno = $playerWalletTransfer->tradeno ?? '';
+            $playerDeliveryRecord->remark = '';
             $playerDeliveryRecord->user_id = 0;
             $playerDeliveryRecord->user_name = '';
             $playerDeliveryRecord->save();
@@ -922,7 +922,8 @@ class GamePlatformController
                     $playerWalletTransfer->save();
 
                     // 2. Lua 原子性加款（自动同步数据库）
-                    $newBalance = \app\service\WalletService::atomicIncrement($player->id, $playerWalletTransfer->amount);
+                    $incrementResult = \app\service\WalletService::atomicIncrement($player->id, $playerWalletTransfer->amount);
+                    $newBalance = $incrementResult['balance'];
 
                     // 3. 记录流水
                     $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -934,10 +935,10 @@ class GamePlatformController
                     $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_GAME_PLATFORM_IN;
                     $playerDeliveryRecord->source = 'wallet_transfer_in';
                     $playerDeliveryRecord->amount = $playerWalletTransfer->amount;
-                    $playerDeliveryRecord->amount_before = $beforeGameAmount;
+                    $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
                     $playerDeliveryRecord->amount_after = $newBalance;
-                    $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
-                    $playerDeliveryRecord->remark = $target->remark ?? '';
+                    $playerDeliveryRecord->tradeno = $playerWalletTransfer->tradeno ?? '';
+                    $playerDeliveryRecord->remark = '';
                     $playerDeliveryRecord->user_id = $player->id;
                     $playerDeliveryRecord->user_name = $player->name;
                     $playerDeliveryRecord->save();
@@ -1029,7 +1030,8 @@ class GamePlatformController
             $playerWalletTransfer->save();
 
             // 2. Lua 原子性加款（自动同步数据库）
-            $newBalance = \app\service\WalletService::atomicIncrement($player->id, $playerWalletTransfer->amount);
+            $incrementResult = \app\service\WalletService::atomicIncrement($player->id, $playerWalletTransfer->amount);
+            $newBalance = $incrementResult['balance'];
 
             // 3. 记录流水
             $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -1041,10 +1043,10 @@ class GamePlatformController
             $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_GAME_PLATFORM_IN;
             $playerDeliveryRecord->source = 'wallet_transfer_in';
             $playerDeliveryRecord->amount = $playerWalletTransfer->amount;
-            $playerDeliveryRecord->amount_before = $beforeGameAmount;
+            $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
             $playerDeliveryRecord->amount_after = $newBalance;
-            $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
-            $playerDeliveryRecord->remark = $target->remark ?? '';
+            $playerDeliveryRecord->tradeno = $playerWalletTransfer->tradeno ?? '';
+            $playerDeliveryRecord->remark = '';
             $playerDeliveryRecord->user_id = 0;
             $playerDeliveryRecord->user_name = '';
             $playerDeliveryRecord->save();
@@ -1184,8 +1186,8 @@ class GamePlatformController
                     $playerDeliveryRecord->amount = $playerWalletTransfer->amount;
                     $playerDeliveryRecord->amount_before = $beforeGameAmount;
                     $playerDeliveryRecord->amount_after = $afterGameAmount;
-                    $playerDeliveryRecord->tradeno = $target->tradeno ?? '';
-                    $playerDeliveryRecord->remark = $target->remark ?? '';
+                    $playerDeliveryRecord->tradeno = $playerWalletTransfer->tradeno ?? '';
+                    $playerDeliveryRecord->remark = '';
                     $playerDeliveryRecord->user_id = 0;
                     $playerDeliveryRecord->user_name = '';
                     $playerDeliveryRecord->save();
