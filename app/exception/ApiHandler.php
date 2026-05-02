@@ -42,105 +42,37 @@ class ApiHandler extends ExceptionHandler
 
     public function render(Request $request, Throwable $exception): Response
     {
-        // JWT 异常处理 - 区分 Access Token 过期和其他情况
+        // JWT 异常处理 - 只区分 Access Token 过期（刷新）和其他情况（重新登录）
         if ($exception instanceof JwtTokenExpiredException
             || $exception instanceof JwtRefreshTokenExpiredException
             || $exception instanceof JwtTokenException
             || $exception instanceof JwtCacheTokenException) {
 
-            // 获取异常自带的错误码
-            $code = $exception->getCode();
             $message = $exception->getMessage();
 
             // 🔍 测试日志：JWT异常详情
             \support\Log::info('[JWT Exception] JWT异常捕获', [
                 'exception_class' => get_class($exception),
-                'original_code' => $code,
                 'message' => $message,
                 'path' => $request->path(),
                 'method' => $request->method(),
             ]);
 
-            // 🎯 优先处理：JwtRefreshTokenExpiredException → 401023（刷新token过期，必须重新登录）
-            if ($exception instanceof JwtRefreshTokenExpiredException) {
-                $code = 401023;
-                \support\Log::info('[JWT Exception] Refresh Token过期，返回401023提示重新登录', [
-                    'message' => $message,
-                ]);
-
+            // ⚡ Access Token 过期 → 401013（客户端应刷新 token）
+            if ($exception instanceof JwtTokenExpiredException) {
+                \support\Log::info('[JWT Exception] Access Token过期，返回401013提示刷新');
                 return json([
-                    'code' => $code,
+                    'code' => 401013,
                     'msg' => $message
                 ]);
             }
 
-            // 特殊处理：如果异常没有设置错误码或错误码为0，根据异常类型设置默认码
-            if (empty($code) || $code == 0) {
-                if ($exception instanceof JwtTokenExpiredException) {
-                    // Access Token 过期 → 返回 401013，客户端应刷新 token
-                    $code = 401;
-                    \support\Log::info('[JWT Exception] Access Token过期，返回401013提示刷新', [
-                        'message' => $message,
-                    ]);
-                } elseif ($exception instanceof JwtCacheTokenException) {
-                    // 缓存Token异常（可能是其他设备登录）→ 返回 401015，重新登录
-                    $code = 401;
-                    \support\Log::info('[JWT Exception] 缓存Token异常，返回401015提示重新登录', [
-                        'message' => $message,
-                    ]);
-                } else {
-                    // 其他JWT异常 → 返回 401，通用错误
-                    $code = 401;
-                    \support\Log::info('[JWT Exception] 其他JWT异常，返回401', [
-                        'message' => $message,
-                    ]);
-                }
-            }
-
-            // 特殊处理：根据错误消息判断具体场景
-            if (str_contains($message, 'refresh') || str_contains($message, 'Refresh')) {
-                // Refresh Token相关错误
-                if (str_contains($message, 'expired') || str_contains($message, '过期')) {
-                    // Refresh Token 过期 → 401023
-                    $code = 401023;
-                    \support\Log::info('[JWT Exception] Refresh Token过期，返回401023', [
-                        'message' => $message,
-                    ]);
-                } else {
-                    // Refresh Token 无效 → 401021
-                    $code = 401021;
-                    \support\Log::info('[JWT Exception] Refresh Token无效，返回401021', [
-                        'message' => $message,
-                    ]);
-                }
-            } elseif (str_contains($message, 'Access') && (str_contains($message, 'expired') || str_contains($message, '过期'))) {
-                // Access Token 过期 → 401013（刷新token）
-                $code = 401013;
-                \support\Log::info('[JWT Exception] Access Token过期，返回401013提示刷新', [
-                    'message' => $message,
-                ]);
-            } elseif (str_contains($message, 'Authorization') || str_contains($message, '缺少')) {
-                // 缺少 Authorization → 401000
-                $code = 401000;
-                \support\Log::info('[JWT Exception] 缺少Authorization，返回401000', [
-                    'message' => $message,
-                ]);
-            } elseif (str_contains($message, 'format') || str_contains($message, '格式')) {
-                // Token 格式错误 → 401001
-                $code = 401001;
-                \support\Log::info('[JWT Exception] Token格式错误，返回401001', [
-                    'message' => $message,
-                ]);
-            } elseif (str_contains($message, 'signature') || str_contains($message, '签名')) {
-                // Token 签名无效 → 401011
-                $code = 401011;
-                \support\Log::info('[JWT Exception] Token签名无效，返回401011', [
-                    'message' => $message,
-                ]);
-            }
-
+            // 🔴 其他所有 JWT 异常 → 401（客户端应重新登录）
+            \support\Log::info('[JWT Exception] JWT异常，返回401提示重新登录', [
+                'exception_type' => get_class($exception),
+            ]);
             return json([
-                'code' => $code,
+                'code' => 401,
                 'msg' => $message
             ]);
         }
