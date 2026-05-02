@@ -12,7 +12,7 @@ return [
         // refresh令牌秘钥
         'refresh_secret_key' => '2022KTxigxc9o50c',
         // refresh令牌过期时间，单位：秒。90 天（必须大于 access_exp）
-        'refresh_exp' => 120,
+        'refresh_exp' => 3600,
         // refresh 令牌是否禁用，默认不禁用 false
         'refresh_disable' => false,
         // 令牌签发者
