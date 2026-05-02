@@ -127,7 +127,8 @@ class IndexController
 
         \support\Log::info('[Login] Token生成完成', [
             'player_id' => $player->id,
-            'token_length' => strlen($token),
+            'token_type' => gettype($token),
+            'token_is_array' => is_array($token),
         ]);
 
         return jsonSuccessResponse('success', [
@@ -194,7 +195,8 @@ class IndexController
 
         \support\Log::info('[Login] Token生成完成', [
             'player_id' => $player->id,
-            'token_length' => strlen($token),
+            'token_type' => gettype($token),
+            'token_is_array' => is_array($token),
         ]);
 
         return jsonSuccessResponse('success', [
@@ -1035,7 +1037,8 @@ class IndexController
             // 🔍 测试日志：刷新token成功
             \support\Log::info('[RefreshToken] Token刷新完成', [
                 'player_id' => $player->id,
-                'new_token_length' => strlen($newToken),
+                'new_token_type' => gettype($newToken),
+                'new_token_is_array' => is_array($newToken),
             ]);
 
             // 返回新的 Token（包含最新的用户信息）
