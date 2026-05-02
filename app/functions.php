@@ -99,22 +99,68 @@ function jsonFailResponse(string $message = '', array $data = [], int $code = 10
 function checkPlayer(bool $hasTransfer = true): Player
 {
     $departmentId = request()->department_id;
-    $id = JwtToken::getCurrentId();
+
+    // 🔍 测试日志：开始验证玩家token
+    $authHeader = request()->header('Authorization', '');
+    \support\Log::info('[CheckPlayer] 开始验证token', [
+        'has_auth_header' => !empty($authHeader),
+        'auth_header_length' => strlen($authHeader),
+        'department_id' => $departmentId,
+        'path' => request()->path(),
+        'method' => request()->method(),
+        'ip' => request()->getRealIp(),
+    ]);
+
+    try {
+        $id = JwtToken::getCurrentId();
+
+        // 🔍 测试日志：JWT解析成功
+        \support\Log::info('[CheckPlayer] JWT解析成功', [
+            'player_id' => $id,
+            'department_id' => $departmentId,
+        ]);
+
+    } catch (\Throwable $e) {
+        // 🔍 测试日志：JWT解析失败
+        \support\Log::error('[CheckPlayer] JWT解析失败', [
+            'error' => $e->getMessage(),
+            'exception_class' => get_class($e),
+            'auth_header_length' => strlen($authHeader),
+        ]);
+        throw $e;
+    }
+
     /** @var Player $player */
     $player = Player::query()->where('id', $id)->where('department_id', $departmentId)->first();
     if (empty($player)) {
+        \support\Log::warning('[CheckPlayer] 玩家不存在', [
+            'player_id' => $id,
+            'department_id' => $departmentId,
+        ]);
         throw new PlayerCheckException(trans('player_not_fount', [], 'message'), 100);
     }
 
+    // 🔍 测试日志：玩家验证成功
+    \support\Log::info('[CheckPlayer] 玩家验证成功', [
+        'player_id' => $player->id,
+        'player_name' => $player->name,
+        'player_status' => $player->status,
+        'department_id' => $player->department_id,
+    ]);
+
     if ($player->status == Player::STATUS_STOP) {
+        \support\Log::warning('[CheckPlayer] 玩家已停用', [
+            'player_id' => $player->id,
+            'status' => $player->status,
+        ]);
         throw new PlayerCheckException(trans('player_stop', [], 'message'), 100);
     }
+
     if ($hasTransfer) {
         queueClient::send('game-transfer', [
             'player_id' => $player->id,
         ]);
     }
-
 
     return $player;
 }

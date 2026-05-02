@@ -8,11 +8,11 @@ return [
         // access令牌秘钥
         'access_secret_key' => '2022d3d3LmJq',
         // access令牌过期时间，单位：秒。30 天
-        'access_exp' => 2592000,
+        'access_exp' => 60,
         // refresh令牌秘钥
         'refresh_secret_key' => '2022KTxigxc9o50c',
         // refresh令牌过期时间，单位：秒。90 天（必须大于 access_exp）
-        'refresh_exp' => 7776000,
+        'refresh_exp' => 120,
         // refresh 令牌是否禁用，默认不禁用 false
         'refresh_disable' => false,
         // 令牌签发者
@@ -20,11 +20,11 @@ return [
         // 某个时间点后才能访问，单位秒。（如：30 表示当前时间30秒后才能使用）
         'nbf' => 0,
         // 时钟偏差冗余时间，单位秒。建议这个余地应该不大于几分钟。
-        'leeway' => 60,
+        'leeway' => 10,
         // 单设备登录
         'is_single_device' => true,
         // 缓存令牌时间，单位：秒。90 天（应与 refresh_exp 保持一致）
-        'cache_token_ttl' => 7776000,
+        'cache_token_ttl' => 60,
         // 缓存令牌前缀
         'cache_token_pre' => 'JWT:TOKEN:',
         // 缓存令牌前缀

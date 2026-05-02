@@ -105,16 +105,33 @@ class IndexController
             return jsonFailResponse(trans('player_stop', [], 'message'));
         }
         addLoginRecord($player->id);
-        
+
+        // 🔍 测试日志：生成登录token
+        $tokenPayload = [
+            'id' => $player->id,
+            'avatar' => $player->avatar,
+            'phone' => $player->phone,
+            'type' => $player->type,
+            'currency' => $player->currency,
+            'recommended_code' => $player->recommended_code,
+        ];
+
+        \support\Log::info('[Login] 验证码登录成功，生成token', [
+            'player_id' => $player->id,
+            'phone' => $player->phone,
+            'department_id' => request()->department_id,
+            'ip' => request()->getRealIp(),
+        ]);
+
+        $token = JwtToken::generateToken($tokenPayload);
+
+        \support\Log::info('[Login] Token生成完成', [
+            'player_id' => $player->id,
+            'token_length' => strlen($token),
+        ]);
+
         return jsonSuccessResponse('success', [
-            'token' => JwtToken::generateToken([
-                'id' => $player->id,
-                'avatar' => $player->avatar,
-                'phone' => $player->phone,
-                'type' => $player->type,
-                'currency' => $player->currency,
-                'recommended_code' => $player->recommended_code,
-            ]),
+            'token' => $token,
             'player_activity_phase' => (new ActivityServices(null, $player))->playerUnreceivedActivity()
         ]);
     }
@@ -147,19 +164,41 @@ class IndexController
             return jsonFailResponse(trans('must_set_password', [], 'message'));
         }
         if (!password_verify($data['password'], $player->password)) {
+            \support\Log::warning('[Login] 密码登录失败 - 密码错误', [
+                'player_id' => $player->id,
+                'phone' => $player->phone,
+                'ip' => request()->getRealIp(),
+            ]);
             return jsonFailResponse(trans('password_error', [], 'message'));
         }
         addLoginRecord($player->id);
-        
+
+        // 🔍 测试日志：生成登录token
+        $tokenPayload = [
+            'id' => $player->id,
+            'avatar' => $player->avatar,
+            'phone' => $player->phone,
+            'type' => $player->type,
+            'currency' => $player->currency,
+            'recommended_code' => $player->recommended_code,
+        ];
+
+        \support\Log::info('[Login] 密码登录成功，生成token', [
+            'player_id' => $player->id,
+            'phone' => $player->phone,
+            'department_id' => request()->department_id,
+            'ip' => request()->getRealIp(),
+        ]);
+
+        $token = JwtToken::generateToken($tokenPayload);
+
+        \support\Log::info('[Login] Token生成完成', [
+            'player_id' => $player->id,
+            'token_length' => strlen($token),
+        ]);
+
         return jsonSuccessResponse('success', [
-            'token' => JwtToken::generateToken([
-                'id' => $player->id,
-                'avatar' => $player->avatar,
-                'phone' => $player->phone,
-                'type' => $player->type,
-                'currency' => $player->currency,
-                'recommended_code' => $player->recommended_code,
-            ]),
+            'token' => $token,
             'player_activity_phase' => (new ActivityServices(null, $player))->playerUnreceivedActivity(),
         ]);
     }
@@ -935,12 +974,31 @@ class IndexController
     public function refreshToken(): Response
     {
         try {
+            // 🔍 测试日志：开始刷新token流程
+            $authHeader = request()->header('Authorization', '');
+            \support\Log::info('[RefreshToken] 开始刷新token', [
+                'auth_header_length' => strlen($authHeader),
+                'has_bearer' => str_starts_with($authHeader, 'Bearer '),
+                'department_id' => request()->department_id,
+                'ip' => request()->getRealIp(),
+            ]);
+
             // 刷新 Token（从请求头的 Authorization 中获取 refresh_token）
             $extend = [];
             $newToken = JwtToken::refreshToken($extend);
 
+            // 🔍 测试日志：token刷新成功，解析extend信息
+            \support\Log::info('[RefreshToken] JWT刷新成功', [
+                'extend_keys' => array_keys($extend),
+                'player_id' => $extend['id'] ?? null,
+                'has_id' => !empty($extend['id']),
+            ]);
+
             // 验证用户信息
             if (empty($extend['id'])) {
+                \support\Log::warning('[RefreshToken] extend中缺少player_id', [
+                    'extend' => $extend,
+                ]);
                 return jsonFailResponse(trans('please_relogin', [], 'message'), [], 401021);
             }
 
@@ -951,12 +1009,34 @@ class IndexController
                 ->first();
 
             if (empty($player)) {
+                \support\Log::warning('[RefreshToken] 玩家不存在', [
+                    'player_id' => $extend['id'],
+                    'department_id' => request()->department_id,
+                ]);
                 return jsonFailResponse(trans('player_not_fount', [], 'message'), [], 401022);
             }
 
+            // 🔍 测试日志：玩家信息查询成功
+            \support\Log::info('[RefreshToken] 玩家信息查询成功', [
+                'player_id' => $player->id,
+                'player_name' => $player->name,
+                'player_status' => $player->status,
+                'department_id' => $player->department_id,
+            ]);
+
             if ($player->status == Player::STATUS_STOP) {
+                \support\Log::warning('[RefreshToken] 玩家已被停用', [
+                    'player_id' => $player->id,
+                    'status' => $player->status,
+                ]);
                 return jsonFailResponse(trans('player_stop', [], 'message'), [], 401023);
             }
+
+            // 🔍 测试日志：刷新token成功
+            \support\Log::info('[RefreshToken] Token刷新完成', [
+                'player_id' => $player->id,
+                'new_token_length' => strlen($newToken),
+            ]);
 
             // 返回新的 Token（包含最新的用户信息）
             return jsonSuccessResponse('success', [
@@ -973,12 +1053,28 @@ class IndexController
 
         } catch (\Tinywan\Jwt\Exception\JwtRefreshTokenExpiredException $e) {
             // Refresh Token 过期或无效
+            \support\Log::error('[RefreshToken] RefreshToken已过期', [
+                'error' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'auth_header_length' => strlen(request()->header('Authorization', '')),
+            ]);
             return jsonFailResponse($e->getMessage(), [], $e->getCode());
         } catch (\Tinywan\Jwt\Exception\JwtTokenException $e) {
             // 其他 JWT 异常
+            \support\Log::error('[RefreshToken] JWT异常', [
+                'error' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'exception_class' => get_class($e),
+            ]);
             return jsonFailResponse($e->getMessage(), [], $e->getCode());
         } catch (\Exception $e) {
             // 系统异常
+            \support\Log::error('[RefreshToken] 系统异常', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return jsonFailResponse(trans('please_relogin', [], 'message'), [], 401021);
         }
     }
