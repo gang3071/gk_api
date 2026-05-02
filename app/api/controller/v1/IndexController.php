@@ -1055,21 +1055,29 @@ class IndexController
             ]);
 
         } catch (\Tinywan\Jwt\Exception\JwtRefreshTokenExpiredException $e) {
-            // Refresh Token 过期或无效
+            // Refresh Token 过期 → 必须重新登录
             \support\Log::error('[RefreshToken] RefreshToken已过期', [
                 'error' => $e->getMessage(),
-                'code' => $e->getCode(),
+                'original_code' => $e->getCode(),
+                'return_code' => 401023,
                 'auth_header_length' => strlen(request()->header('Authorization', '')),
             ]);
-            return jsonFailResponse($e->getMessage(), [], $e->getCode());
+            // 固定返回 401023，客户端应重新登录
+            return jsonFailResponse($e->getMessage(), [], 401023);
         } catch (\Tinywan\Jwt\Exception\JwtTokenException $e) {
-            // 其他 JWT 异常
+            // 其他 JWT 异常（如格式错误、签名无效等）
+            $code = $e->getCode();
+            // 如果异常没有错误码，默认返回 401021（Refresh Token 无效）
+            if (empty($code)) {
+                $code = 401021;
+            }
             \support\Log::error('[RefreshToken] JWT异常', [
                 'error' => $e->getMessage(),
-                'code' => $e->getCode(),
+                'original_code' => $e->getCode(),
+                'return_code' => $code,
                 'exception_class' => get_class($e),
             ]);
-            return jsonFailResponse($e->getMessage(), [], $e->getCode());
+            return jsonFailResponse($e->getMessage(), [], $code);
         } catch (\Exception $e) {
             // 系统异常
             \support\Log::error('[RefreshToken] 系统异常', [
