@@ -691,6 +691,11 @@ local key = KEYS[1]
 local washPointConfig = tonumber(ARGV[1]) or 100  -- 洗分配置（从后台获取的单次洗分基数）
 local ttl = tonumber(ARGV[2]) or 3600
 
+-- 防御性检查：确保配置值大于0
+if washPointConfig <= 0 then
+    washPointConfig = 100
+end
+
 local currentBalance = tonumber(redis.call('GET', key)) or 0
 
 -- 🎯 根据配置计算可洗分金额：取配置的整倍数
@@ -931,6 +936,21 @@ LUA;
      */
     public static function atomicWash(int $playerId, float $washPointConfig = 100, int $ttl = 3600): array
     {
+        // 🔍 参数验证：洗分配置必须大于0
+        if ($washPointConfig <= 0) {
+            Log::error('WalletService: Invalid wash point config - must be greater than 0', [
+                'player_id' => $playerId,
+                'wash_point_config' => $washPointConfig,
+                'wash_point_config_type' => gettype($washPointConfig),
+            ]);
+            // 使用默认值而不是抛出异常，保证业务可用性
+            $washPointConfig = 100;
+            Log::warning('WalletService: Using default wash point config', [
+                'player_id' => $playerId,
+                'default_config' => $washPointConfig,
+            ]);
+        }
+
         try {
             $cacheKey = self::getCacheKey($playerId);
 
@@ -943,7 +963,27 @@ LUA;
                 $ttl               // ARGV[2]
             );
 
+            // 🔍 检查 Lua 脚本执行结果
+            if ($resultJson === false || $resultJson === null) {
+                Log::error('WalletService: Lua script execution failed', [
+                    'player_id' => $playerId,
+                    'wash_point_config' => $washPointConfig,
+                    'cache_key' => $cacheKey,
+                ]);
+                throw new \RuntimeException('Lua script execution failed');
+            }
+
             $result = json_decode($resultJson, true);
+
+            // 🔍 检查 JSON 解析结果
+            if ($result === null) {
+                Log::error('WalletService: Failed to decode Lua result', [
+                    'player_id' => $playerId,
+                    'raw_result' => $resultJson,
+                    'json_error' => json_last_error_msg(),
+                ]);
+                throw new \RuntimeException('Failed to decode Lua result: ' . json_last_error_msg());
+            }
 
             // 格式化余额精度
             if (isset($result['balance'])) {
@@ -956,7 +996,7 @@ LUA;
                 $result['wash_amount'] = round((float)$result['wash_amount'], 2);
             }
 
-            if ($result['ok'] == 1) {
+            if (isset($result['ok']) && $result['ok'] == 1) {
                 Log::info('WalletService: Atomic wash success', [
                     'player_id' => $playerId,
                     'old_balance' => $result['old_balance'],

@@ -153,7 +153,7 @@ class PlayerController
             'status_baccarat' => $player->status_baccarat,
             'status_offline_open' => $player->status_offline_open,
             'status_game_platform' => $player->status_game_platform,
-            'wash_point_config' => AdminUser::query()->where('id',$player->store_admin_id)->value('wash_point_config')??1000,
+            'wash_point_config' => self::getWashPointConfig($player->store_admin_id),
             'store_settings' => $storeSettings, // 店家配置
         ]);
     }
@@ -992,20 +992,31 @@ class PlayerController
         }
 
         // 🔥 获取后台配置的洗分数值
-        // 从店家后台账号获取 wash_point_config 配置，默认1000
-        $washPointConfig = \app\model\AdminUser::query()
-            ->where('id', $player->store_admin_id)
-            ->value('wash_point_config') ?? 1000;
+        // 从店家后台账号获取 wash_point_config 配置
+        // 如果未配置或配置为0，则使用默认值100
+        $washPointConfig = self::getWashPointConfig($player->store_admin_id);
 
         // 🔥 原子性洗分操作（完全避免 TOCTOU 问题）
         // 在 Redis 中原子性完成：读取余额 → 根据配置计算洗分金额 → 扣款
-        $washResult = \app\service\WalletService::atomicWash($player->id, $washPointConfig);
+        try {
+            $washResult = \app\service\WalletService::atomicWash($player->id, $washPointConfig);
+        } catch (\Throwable $e) {
+            // Lua 脚本执行失败或其他异常
+            \support\Log::error('PlayerController: Wash operation failed', [
+                'player_id' => $player->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return jsonFailResponse(trans('system_error', [], 'message'));
+        }
 
         if ($washResult['ok'] == 0) {
             // 洗分失败
             if ($washResult['error'] == 'insufficient_wash_amount') {
                 // 余额不足：当前余额小于配置的洗分基数
-                return jsonFailResponse(trans('insufficient_balance_wash',[], 'message'));
+                return jsonFailResponse(trans('insufficient_balance_wash', [
+                    'min_amount' => number_format($washPointConfig, 2)
+                ], 'message'));
             } else {
                 return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
             }
@@ -3716,5 +3727,30 @@ class PlayerController
         return jsonSuccessResponse('success', [
             'list' => $list,
         ]);
+    }
+
+    /**
+     * 获取店家的洗分配置
+     *
+     * @param int $storeAdminId 店家管理员ID
+     * @return float 洗分配置值，如果未配置或配置为0则返回默认值100
+     */
+    private static function getWashPointConfig(int $storeAdminId): float
+    {
+        $config = AdminUser::query()
+            ->where('id', $storeAdminId)
+            ->value('wash_point_config');
+
+        // 配置为 null、0 或 0.00 时使用默认值100
+        if (empty($config) || $config <= 0) {
+            Log::debug('PlayerController: Using default wash point config', [
+                'store_admin_id' => $storeAdminId,
+                'original_config' => $config,
+                'default_value' => 100.00,
+            ]);
+            return 100.00;
+        }
+
+        return floatval($config);
     }
 }
