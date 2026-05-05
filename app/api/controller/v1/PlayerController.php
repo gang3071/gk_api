@@ -1005,9 +1005,7 @@ class PlayerController
             // 洗分失败
             if ($washResult['error'] == 'insufficient_wash_amount') {
                 // 余额不足：当前余额小于配置的洗分基数
-                return jsonFailResponse(trans('insufficient_balance_wash', [
-                    'min_amount' => number_format($washPointConfig, 2)
-                ], 'message'));
+                return jsonFailResponse(trans('insufficient_balance_wash',[], 'message'));
             } else {
                 return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
             }
