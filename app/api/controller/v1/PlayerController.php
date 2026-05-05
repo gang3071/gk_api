@@ -4,6 +4,7 @@ namespace app\api\controller\v1;
 
 use app\exception\PlayerCheckException;
 use app\filesystem\Filesystem;
+use app\model\AdminUser;
 use app\model\BankContent;
 use app\model\Channel;
 use app\model\ChannelRechargeMethod;
@@ -152,7 +153,7 @@ class PlayerController
             'status_baccarat' => $player->status_baccarat,
             'status_offline_open' => $player->status_offline_open,
             'status_game_platform' => $player->status_game_platform,
-            'wash_point_config' => $player->wash_point_config,
+            'wash_point_config' => AdminUser::query()->where('id',$player->store_admin_id)->value('wash_point_config')??1000,
             'store_settings' => $storeSettings, // 店家配置
         ]);
     }
