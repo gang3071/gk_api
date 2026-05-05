@@ -488,6 +488,7 @@ return [
     'please_relogin' => '请重新登录',
     'insufficient_balance_100' => '分数不足，无法洗分',
     'insufficient_balance_1000' => '余额不足1000，无法洗分',
+    'insufficient_balance_wash' => '余额不足:min_amount，无法洗分',
     'player_not_bind_store' => '玩家未绑定店家',
     'open_point_config_not_found' => '开分配置未找到',
     'open_point_amount_invalid' => '开分金额无效',

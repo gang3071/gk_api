@@ -991,14 +991,23 @@ class PlayerController
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
 
+        // 🔥 获取后台配置的洗分数值
+        // 从店家后台账号获取 wash_point_config 配置，默认1000
+        $washPointConfig = \app\model\AdminUser::query()
+            ->where('id', $player->store_admin_id)
+            ->value('wash_point_config') ?? 1000;
+
         // 🔥 原子性洗分操作（完全避免 TOCTOU 问题）
-        // 在 Redis 中原子性完成：读取余额 → 计算洗分金额 → 扣款
-        $washResult = \app\service\WalletService::atomicWash($player->id, 100);
+        // 在 Redis 中原子性完成：读取余额 → 根据配置计算洗分金额 → 扣款
+        $washResult = \app\service\WalletService::atomicWash($player->id, $washPointConfig);
 
         if ($washResult['ok'] == 0) {
             // 洗分失败
             if ($washResult['error'] == 'insufficient_wash_amount') {
-                return jsonFailResponse(trans('insufficient_balance_100', [], 'message'));
+                // 余额不足：当前余额小于配置的洗分基数
+                return jsonFailResponse(trans('insufficient_balance_wash', [
+                    'min_amount' => number_format($washPointConfig, 2)
+                ], 'message'));
             } else {
                 return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
             }
