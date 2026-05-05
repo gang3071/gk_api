@@ -53,6 +53,7 @@ use support\Cache;
  * @property string status_machine 实体机台开关 0关闭1-开启
  * @property string status_offline_open 线下开分
  * @property string status_baccarat 真人百家
+ * @property string wash_point_config 洗分配置
  * @property string account 账户
  * @property int player_type 玩家类型
  *

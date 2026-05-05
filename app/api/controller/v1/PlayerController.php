@@ -152,6 +152,7 @@ class PlayerController
             'status_baccarat' => $player->status_baccarat,
             'status_offline_open' => $player->status_offline_open,
             'status_game_platform' => $player->status_game_platform,
+            'wash_point_config' => $player->wash_point_config,
             'store_settings' => $storeSettings, // 店家配置
         ]);
     }
