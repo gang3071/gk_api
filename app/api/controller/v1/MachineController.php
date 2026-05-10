@@ -692,12 +692,10 @@ class MachineController
                     if ($gamingTurnPoint <= 0 || $machine->gaming_user_id == 0) {
                         $gamingTurnPoint = 0;
                     }
-                    /** @var PlayerPlatformCash $platform */
-                    $platform = PlayerPlatformCash::query()
-                        ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
-                        ->where('player_id', $gaming_player->id)
-                        ->first();
-                    $gameAmount = floorToPointSecondNumber($platform->money ?? 0);
+                    // ✅ 从 Redis 读取实时余额
+                    $gameAmount = floorToPointSecondNumber(
+                        \app\service\WalletService::getBalance($gaming_player->id)
+                    );
                     
                     $machinePoint = $services->point ?? 0;
                     $givePoint = getGivePoints($player->id, $machine->id);

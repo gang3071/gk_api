@@ -2,7 +2,7 @@
 
 namespace app\service\game;
 
-use app\model\ChannelGameWeb;
+use app\exception\GameException;
 use app\model\Game;
 use app\model\GamePlatform;
 use app\model\Player;
@@ -10,9 +10,7 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayGameRecord;
-use app\exception\GameException;
 use app\wallet\controller\game\MtGameController;
-use Carbon\Carbon;
 use Exception;
 use support\Cache;
 use support\Log;
@@ -490,21 +488,21 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         if($record->settlement_status == PlayGameRecord::SETTLEMENT_STATUS_SETTLED){
             return $this->error = MtGameController::API_CODE_ORDER_SETTLED;
         }
-        //处理用户中奖金额
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
 
+        $player = $this->player;
+
+        // ✅ 从 Redis 读取余额（结算前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+        $afterGameAmount = $beforeGameAmount;  // 默认没有派彩
 
         //中奖金额包含本金 除了未中奖 其他都是直接相加处理
         if($data['status'] != self::BET_STATUS_NOT){
             $money = $data['win_money'];
-            $beforeGameAmount = $machineWallet->money;
-            //处理用户金额记录
-            // 更新玩家统计
-            $machineWallet->money = bcadd($machineWallet->money, $money, 2);
-            $machineWallet->save();
 
-            $player = $this->player;
+            // ✅ 使用 WalletService 原子加款
+            $result = \app\service\WalletService::add($player->id, $money);
+            $afterGameAmount = $result['balance'];
+
             //todo 语言文件后续处理
             //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
             $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -517,7 +515,7 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
             $playerDeliveryRecord->source = 'player_bet_settlement';
             $playerDeliveryRecord->amount = $money;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
             $playerDeliveryRecord->tradeno = $record->order_no ?? '';
             $playerDeliveryRecord->remark = $target->remark ?? '';
             $playerDeliveryRecord->user_id = 0;
@@ -536,7 +534,7 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         //彩金记录
 //        Client::send('game-lottery', ['player_id' => $this->player->id, 'bet' => $record->bet, 'play_game_record_id' => $record->id]);
 
-        return $this->player->machine_wallet->money;
+        return $afterGameAmount;
     }
 
     /**
@@ -555,14 +553,21 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         //如會員重新結算前輸贏結果為【中獎】，但因重新結算後為【未中獎】，需扣回已派發的彩金與下注金額，若這中間會員將餘額轉出或下注其他桌號，可能會發生餘額不足的情況
         $actionData = json_decode($record->action_data, true);
         if($actionData['status'] == self::BET_STATUS_YES && $data['status'] != self::BET_STATUS_NOT){
-            /** @var PlayerPlatformCash $machineWallet */
-            $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
-            $money = $data['win_money'];
-            $beforeGameAmount = $machineWallet->money;
-            $machineWallet->money = bcsub($machineWallet->money, $money, 2);
-            $machineWallet->save();
-
             $player = $this->player;
+            $money = $data['win_money'];
+
+            // ✅ 从 Redis 读取余额（重新结算前）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+            // ✅ 使用 WalletService 原子扣款
+            $result = \app\service\WalletService::deduct($player->id, $money);
+            if (!$result['success']) {
+                //重结算异常订单(结算错误 赢钱需要扣除 提现时处理)
+                $record->is_rebet = 1;
+                return $this->error = MtGameController::API_CODE_INSUFFICIENT_BALANCE;
+            }
+            $afterGameAmount = $result['balance'];
+
             //todo 语言文件后续处理
             //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
             $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -575,18 +580,12 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
             $playerDeliveryRecord->source = 'player_re_bet_settlement';
             $playerDeliveryRecord->amount = $money;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
             $playerDeliveryRecord->tradeno = $record->order_no ?? '';
             $playerDeliveryRecord->remark = $target->remark ?? '';
             $playerDeliveryRecord->user_id = 0;
             $playerDeliveryRecord->user_name = '';
             $playerDeliveryRecord->save();
-
-            if($machineWallet->money < $money){
-                //重结算异常订单(结算错误 赢钱需要扣除 提现时处理)
-                $record->is_rebet = 1;
-                return $this->error = MtGameController::API_CODE_INSUFFICIENT_BALANCE;
-            }
         }
 
         $record->platform_action_at = $data['settle_time'];
@@ -611,12 +610,6 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
 
         $bet = $data['money'];
 
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
-        if($machineWallet->money < $bet) {
-            return $this->error = MtGameController::API_CODE_INSUFFICIENT_BALANCE;
-        }
-
         //下注记录  todo 暂时使用原表结构 待后续优化
         $insert = [
             'player_id' => $this->player->id,
@@ -639,9 +632,15 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         /** @var PlayGameRecord $record */
         $record = PlayGameRecord::query()->create($insert);
 
-        $beforeGameAmount = $machineWallet->money;
-        $machineWallet->money = bcsub($machineWallet->money, $bet, 2);
-        $machineWallet->save();
+        // ✅ 从 Redis 读取余额（送礼前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+        // ✅ 使用 WalletService 原子扣款
+        $result = \app\service\WalletService::deduct($player->id, $bet);
+        if (!$result['success']) {
+            return $this->error = MtGameController::API_CODE_INSUFFICIENT_BALANCE;
+        }
+        $afterGameAmount = $result['balance'];
 
         //todo 语言文件后续处理
         //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
@@ -655,14 +654,14 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         $playerDeliveryRecord->source = 'player_gift';
         $playerDeliveryRecord->amount = $bet;
         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-        $playerDeliveryRecord->amount_after = $machineWallet->money;
+        $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
         $playerDeliveryRecord->tradeno = $record->order_no;
         $playerDeliveryRecord->remark = '';
         $playerDeliveryRecord->user_id = 0;
         $playerDeliveryRecord->user_name = '';
         $playerDeliveryRecord->save();
 
-        return $machineWallet->money;
+        return $afterGameAmount;
     }
 
     /**

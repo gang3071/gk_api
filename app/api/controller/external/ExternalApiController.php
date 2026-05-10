@@ -436,7 +436,8 @@ class ExternalApiController
                         $playerDeliveryRecord->source = 'national_promoter';
                         $playerDeliveryRecord->amount = $rechargeRebate;
                         $playerDeliveryRecord->amount_before = $beforeRechargeAmount;
-                        $playerDeliveryRecord->amount_after = $recommendPlayer->machine_wallet->money;
+                        // ✅ 使用加款后的返回值（来自 Redis）
+                        $playerDeliveryRecord->amount_after = $afterRechargeAmount;
                         $playerDeliveryRecord->tradeno = $playerRechargeRecord->tradeno ?? '';
                         $playerDeliveryRecord->remark = $playerRechargeRecord->remark ?? '';
                         $playerDeliveryRecord->save();

@@ -2,7 +2,7 @@
 
 namespace app\service\game;
 
-use app\model\ChannelGameWeb;
+use app\exception\GameException;
 use app\model\Game;
 use app\model\GameExtend;
 use app\model\GamePlatform;
@@ -11,7 +11,6 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayGameRecord;
-use app\exception\GameException;
 use app\wallet\controller\game\ATGGameController;
 use app\wallet\controller\game\MtGameController;
 use app\wallet\controller\game\RsgGameController;
@@ -500,15 +499,16 @@ class ATGServiceInterface extends GameServiceFactory implements GameServiceInter
             return $this->error = RsgGameController::API_CODE_DUPLICATE_TRANSACTION;
         }
 
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
         //退款金额
         $amount = $data['amount'];
-        $beforeGameAmount = $machineWallet->money;
-        $machineWallet->money = bcadd($machineWallet->money, $amount, 2);
-        $machineWallet->save();
-
         $player = $this->player;
+
+        // ✅ 从 Redis 读取余额（退款前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+        // ✅ 使用 WalletService 原子加款
+        $result = \app\service\WalletService::add($player->id, $amount);
+        $afterGameAmount = $result['balance'];
 
         //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
         $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -521,14 +521,14 @@ class ATGServiceInterface extends GameServiceFactory implements GameServiceInter
         $playerDeliveryRecord->source = 'player_refund';
         $playerDeliveryRecord->amount = $amount;
         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-        $playerDeliveryRecord->amount_after = $machineWallet->money;
+        $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
         $playerDeliveryRecord->tradeno = $record->order_no ?? '';
         $playerDeliveryRecord->remark = $target->remark ?? '';
         $playerDeliveryRecord->user_id = 0;
         $playerDeliveryRecord->user_name = '';
         $playerDeliveryRecord->save();
 
-        return ['balanceOld' =>$beforeGameAmount,'balance'=>$machineWallet->money];
+        return ['balanceOld' =>$beforeGameAmount,'balance'=>$afterGameAmount];
     }
 
 
@@ -557,19 +557,22 @@ class ATGServiceInterface extends GameServiceFactory implements GameServiceInter
         if($record->settlement_status == PlayGameRecord::SETTLEMENT_STATUS_SETTLED){
             return $this->error = ATGGameController::API_CODE_ORDER_SETTLED;
         }
-        //处理用户中奖金额
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
-        $beforeGameAmount = $machineWallet->money;
+
+        $player = $this->player;
+
+        // ✅ 从 Redis 读取余额（结算前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+        $afterGameAmount = $beforeGameAmount;  // 默认没有派彩
+
         //判断输赢
         if($data['amount'] > 0){
             //赢
             $money = $data['amount'];
-            //处理用户金额记录
-            // 更新玩家统计
-            $machineWallet->money = bcadd($machineWallet->money, $money, 2);
-            $machineWallet->save();
-            $player = $this->player;
+
+            // ✅ 使用 WalletService 原子加款
+            $result = \app\service\WalletService::add($player->id, $money);
+            $afterGameAmount = $result['balance'];
+
             //todo 语言文件后续处理
             //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
             $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -582,7 +585,7 @@ class ATGServiceInterface extends GameServiceFactory implements GameServiceInter
             $playerDeliveryRecord->source = 'player_bet_settlement';
             $playerDeliveryRecord->amount = $money;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
             $playerDeliveryRecord->tradeno = $record->order_no ?? '';
             $playerDeliveryRecord->remark = $target->remark ?? '';
             $playerDeliveryRecord->user_id = 0;
@@ -600,7 +603,7 @@ class ATGServiceInterface extends GameServiceFactory implements GameServiceInter
         //彩金记录
         Client::send('game-lottery', ['player_id' => $this->player->id, 'bet' => $record->bet, 'play_game_record_id' => $record->id]);
 
-        return ['balanceOld' => $beforeGameAmount,'balance' => $machineWallet->money];
+        return ['balanceOld' => $beforeGameAmount,'balance' => $afterGameAmount];
     }
 
     /**

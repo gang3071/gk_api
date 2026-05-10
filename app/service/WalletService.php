@@ -349,41 +349,34 @@ class WalletService
     {
         $cacheKey = self::getCacheKey($playerId);
 
-        // Lua 脚本：原子扣款，返回旧余额和新余额（用于爆机检测）
-        $script = <<<'LUA'
-            local balance = tonumber(redis.call('GET', KEYS[1]))
-            if not balance then
-                return {err = 'BALANCE_NOT_FOUND'}
-            end
-            if balance < tonumber(ARGV[1]) then
-                return {err = 'INSUFFICIENT_BALANCE'}
-            end
-            local newBalance = balance - tonumber(ARGV[1])
-            redis.call('SET', KEYS[1], newBalance)
-            redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
-            return cjson.encode({old = balance, new = newBalance})
-        LUA;
+        // 🔧 整数化改造：元 × 100 → 分
+        $amountInCents = (int)round($amount * 100);
 
         try {
-            $result = \support\Redis::eval($script, 1, $cacheKey, $amount, self::CACHE_TTL);
+            // 使用整数化的 LUA_ATOMIC_DECREMENT 脚本
+            $result = \support\Redis::eval(self::LUA_ATOMIC_DECREMENT, 1, $cacheKey, $amountInCents, self::CACHE_TTL);
 
-            if (is_array($result) && isset($result['err'])) {
-                if ($result['err'] === 'BALANCE_NOT_FOUND') {
-                    throw new \Exception(trans('wallet_not_found', [], 'message'));
-                }
-                if ($result['err'] === 'INSUFFICIENT_BALANCE') {
-                    throw new \Exception(trans('game_amount_insufficient', [], 'message'));
-                }
-            }
-
-            // 解析返回的 JSON：{old: 旧余额, new: 新余额}
+            // 解析返回的 JSON
             $balanceData = json_decode($result, true);
-            if (!$balanceData || !isset($balanceData['new'])) {
+            if (!$balanceData || !isset($balanceData['ok'])) {
                 throw new \Exception('Invalid balance data returned from Redis');
             }
 
-            $oldBalance = (float)($balanceData['old'] ?? 0);
-            $newBalance = (float)$balanceData['new'];
+            // 检查 Lua 脚本返回的错误
+            if ($balanceData['ok'] === 0) {
+                $error = $balanceData['error'] ?? 'unknown_error';
+                if ($error === 'key_not_found') {
+                    throw new \Exception(trans('wallet_not_found', [], 'message'));
+                }
+                if ($error === 'insufficient_balance') {
+                    throw new \Exception(trans('game_amount_insufficient', [], 'message'));
+                }
+                throw new \Exception("Atomic decrement failed: {$error}");
+            }
+
+            // 🔧 整数化改造：分 ÷ 100 → 元
+            $oldBalance = round($balanceData['old'] / 100, 2);
+            $newBalance = round($balanceData['balance'] / 100, 2);
 
             // 异步更新数据库并触发爆机检测
             self::asyncUpdateDB($playerId, $newBalance, $oldBalance);
@@ -429,26 +422,28 @@ class WalletService
     {
         $cacheKey = self::getCacheKey($playerId);
 
-        // Lua 脚本：原子加款，返回旧余额和新余额（用于爆机检测）
-        $script = <<<'LUA'
-            local balance = tonumber(redis.call('GET', KEYS[1])) or 0
-            local newBalance = balance + tonumber(ARGV[1])
-            redis.call('SET', KEYS[1], newBalance)
-            redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
-            return cjson.encode({old = balance, new = newBalance})
-        LUA;
+        // 🔧 整数化改造：元 × 100 → 分
+        $amountInCents = (int)round($amount * 100);
 
         try {
-            $result = \support\Redis::eval($script, 1, $cacheKey, $amount, self::CACHE_TTL);
+            // 使用整数化的 LUA_ATOMIC_INCREMENT 脚本
+            $result = \support\Redis::eval(self::LUA_ATOMIC_INCREMENT, 1, $cacheKey, $amountInCents, self::CACHE_TTL);
 
-            // 解析返回的 JSON：{old: 旧余额, new: 新余额}
+            // 解析返回的 JSON
             $balanceData = json_decode($result, true);
-            if (!$balanceData || !isset($balanceData['new'])) {
+            if (!$balanceData || !isset($balanceData['ok'])) {
                 throw new \Exception('Invalid balance data returned from Redis');
             }
 
-            $oldBalance = round((float)($balanceData['old'] ?? 0), 2);
-            $newBalance = round((float)$balanceData['new'], 2);
+            // 检查 Lua 脚本返回的错误
+            if ($balanceData['ok'] === 0) {
+                $error = $balanceData['error'] ?? 'unknown_error';
+                throw new \Exception("Atomic increment failed: {$error}");
+            }
+
+            // 🔧 整数化改造：分 ÷ 100 → 元
+            $oldBalance = round($balanceData['old'] / 100, 2);
+            $newBalance = round($balanceData['balance'] / 100, 2);
 
             // 异步更新数据库并触发爆机检测
             self::asyncUpdateDB($playerId, $newBalance, $oldBalance);
@@ -614,7 +609,9 @@ class WalletService
 
                 try {
                     $cacheKey = self::getCacheKey($wallet->player_id);
-                    Redis::setex($cacheKey, self::CACHE_TTL, $balance);
+                    // 🔧 整数化改造：元 × 100 → 分
+                    $balanceInCents = (int)round($balance * 100);
+                    Redis::setex($cacheKey, self::CACHE_TTL, $balanceInCents);
                     $successCount++;
                 } catch (\Throwable $e) {
                     $failedCount++;
@@ -626,7 +623,8 @@ class WalletService
             foreach ($notFoundPlayerIds as $playerId) {
                 try {
                     $cacheKey = self::getCacheKey($playerId);
-                    Redis::setex($cacheKey, self::CACHE_TTL, 0.0);
+                    // 🔧 整数化改造：0 分（整数）
+                    Redis::setex($cacheKey, self::CACHE_TTL, 0);
                     $successCount++;
                 } catch (\Throwable $e) {
                     $failedCount++;
