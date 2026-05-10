@@ -37,6 +37,19 @@ class WalletService
      * @param bool $forceRefresh 是否强制刷新缓存
      * @return float 余额
      */
+    /**
+     * 获取玩家余额（带 Redis 缓存）
+     *
+     * 🔧 整数化改造（2026-05-10）：
+     * - Redis 存储单位：分（整数）
+     * - 数据库存储单位：元（浮点）
+     * - 返回单位：元（浮点）
+     *
+     * @param int $playerId 玩家ID
+     * @param int $platformId 平台ID，默认1（实体机平台）
+     * @param bool $forceRefresh 是否强制刷新缓存
+     * @return float 余额（单位：元）
+     */
     public static function getBalance(int $playerId, int $platformId = 1, bool $forceRefresh = false): float
     {
         // 🚨 紧急开关：缓存被禁用时直接查询数据库
@@ -51,15 +64,18 @@ class WalletService
             if (!$forceRefresh) {
                 $cached = Redis::get($cacheKey);
                 if ($cached !== null && $cached !== false) {
-                    return round((float)$cached, 2);
+                    // 🔧 Redis 存储的是"分"（整数），需要 ÷ 100 转为"元"
+                    $balanceInCents = (int)$cached;
+                    return round($balanceInCents / 100, 2);
                 }
             }
 
             // 缓存未命中或强制刷新，从数据库读取
-            $balance = self::getBalanceFromDB($playerId, $platformId);
+            $balance = self::getBalanceFromDB($playerId, $platformId);  // 数据库返回"元"
 
-            // 更新缓存
-            Redis::setex($cacheKey, self::CACHE_TTL, $balance);
+            // 🔧 更新缓存：元 → 分（× 100）
+            $balanceInCents = (int)round($balance * 100);
+            Redis::setex($cacheKey, self::CACHE_TTL, $balanceInCents);
 
             return round($balance, 2);
         } catch (\Throwable $e) {
@@ -127,16 +143,24 @@ class WalletService
     /**
      * 更新缓存（由模型事件自动调用）
      *
-     * @param int $playerId
-     * @param int $platformId
-     * @param float $balance
-     * @return bool
+     * 🔧 整数化改造（2026-05-10）：
+     * - 接收参数：元（浮点）
+     * - Redis 存储：分（整数）
+     *
+     * @param int $playerId 玩家ID
+     * @param int $platformId 平台ID
+     * @param float $balance 余额（单位：元）
+     * @return bool 是否成功
      */
     public static function updateCache(int $playerId, int $platformId, float $balance): bool
     {
         try {
             $cacheKey = self::getCacheKey($playerId);
-            Redis::setex($cacheKey, self::CACHE_TTL, $balance);
+
+            // 🔧 转换为"分"（整数）存储
+            $balanceInCents = (int)round($balance * 100);
+            Redis::setex($cacheKey, self::CACHE_TTL, $balanceInCents);
+
             return true;
         } catch (\Throwable $e) {
             Log::warning('WalletService: Failed to update cache', [
@@ -241,7 +265,9 @@ class WalletService
 
             foreach ($playerIds as $index => $playerId) {
                 if (isset($cached[$index]) && $cached[$index] !== false && $cached[$index] !== null) {
-                    $result[$playerId] = round((float)$cached[$index], 2);
+                    // 🔧 Redis 存储的是"分"（整数），转为"元"
+                    $balanceInCents = (int)$cached[$index];
+                    $result[$playerId] = round($balanceInCents / 100, 2);
                 } else {
                     $missedIds[] = $playerId;
                 }
@@ -262,13 +288,14 @@ class WalletService
                 ->get();
 
             foreach ($wallets as $wallet) {
-                $balance = round((float)$wallet->money, 2);
+                $balance = round((float)$wallet->money, 2);  // 数据库返回"元"
                 $result[$wallet->player_id] = $balance;
 
-                // 回填缓存
+                // 🔧 回填缓存：元 → 分
                 try {
                     $cacheKey = self::getCacheKey($wallet->player_id);
-                    Redis::setex($cacheKey, self::CACHE_TTL, $balance);
+                    $balanceInCents = (int)round($balance * 100);
+                    Redis::setex($cacheKey, self::CACHE_TTL, $balanceInCents);
                 } catch (\Throwable $e) {
                     // 忽略缓存回填失败
                 }
@@ -278,10 +305,10 @@ class WalletService
             foreach ($missedIds as $playerId) {
                 if (!isset($result[$playerId])) {
                     $result[$playerId] = 0.00;
-                    // 缓存不存在的玩家（避免缓存穿透）
+                    // 🔧 缓存不存在的玩家（避免缓存穿透）：存储 0 分
                     try {
                         $cacheKey = self::getCacheKey($playerId);
-                        Redis::setex($cacheKey, self::CACHE_TTL, 0.0);
+                        Redis::setex($cacheKey, self::CACHE_TTL, 0);  // 0 分 = 0 元
                     } catch (\Throwable $e) {
                         // 忽略缓存回填失败
                     }
@@ -628,16 +655,34 @@ class WalletService
     /**
      * Lua 脚本：原子性增加余额
      */
+    /**
+     * Lua 脚本：原子性增加余额（整数化版本）
+     *
+     * 🔧 整数化改造（2026-05-10）：
+     * - Redis 存储单位：分（整数）
+     * - ARGV[1] 传入单位：分（整数）
+     * - 返回单位：分（整数）
+     */
     private const LUA_ATOMIC_INCREMENT = <<<'LUA'
 local key = KEYS[1]
-local amount = tonumber(ARGV[1])
+local amountInCents = math.floor(tonumber(ARGV[1]) + 0.5)  -- 确保整数
 local ttl = tonumber(ARGV[2]) or 3600
 
-local currentBalance = tonumber(redis.call('GET', key)) or 0
-local newBalance = currentBalance + amount
+-- Redis 存储的是"分"（整数）
+local currentBalanceInCents = tonumber(redis.call('GET', key)) or 0
 
-redis.call('SETEX', key, ttl, newBalance)
-return cjson.encode({ok = 1, balance = newBalance, old = currentBalance, new = newBalance})
+-- 整数加法
+local newBalanceInCents = currentBalanceInCents + amountInCents
+
+-- 存储"分"（整数）
+redis.call('SETEX', key, ttl, newBalanceInCents)
+
+return cjson.encode({
+    ok = 1,
+    balance = newBalanceInCents,
+    old = currentBalanceInCents,
+    new = newBalanceInCents
+})
 LUA;
 
     /**
@@ -648,28 +693,47 @@ LUA;
      * - 添加负数余额防护，确保余额不会为负数
      * - 解决余额等于扣款金额时因精度问题导致的扣款失败
      */
+    /**
+     * Lua 脚本：原子性减少余额（带余额检查）（整数化版本）
+     *
+     * 🔧 整数化改造（2026-05-10）：
+     * - Redis 存储单位：分（整数）
+     * - ARGV[1] 传入单位：分（整数）
+     * - 返回单位：分（整数）
+     * - 移除浮点容差（整数运算无需容差）
+     */
     private const LUA_ATOMIC_DECREMENT = <<<'LUA'
 local key = KEYS[1]
-local amount = tonumber(ARGV[1])
+local amountInCents = math.floor(tonumber(ARGV[1]) + 0.5)
 local ttl = tonumber(ARGV[2]) or 3600
 
-local currentBalance = tonumber(redis.call('GET', key)) or 0
+-- Redis 存储的是"分"（整数）
+local currentBalanceInCents = tonumber(redis.call('GET', key)) or 0
 
--- 余额不足检查（添加 0.01 元容差，解决浮点数精度问题）
-local tolerance = 0.01
-if currentBalance + tolerance < amount then
-    return cjson.encode({ok = 0, error = "insufficient_balance", balance = currentBalance})
+-- 余额不足检查（整数比较，无需容差）
+if currentBalanceInCents < amountInCents then
+    return cjson.encode({
+        ok = 0,
+        error = "insufficient_balance",
+        balance = currentBalanceInCents
+    })
 end
 
-local newBalance = currentBalance - amount
+-- 整数减法
+local newBalanceInCents = currentBalanceInCents - amountInCents
 
 -- 防止负数余额（双重保险）
-if newBalance < 0 then
-    newBalance = 0
+if newBalanceInCents < 0 then
+    newBalanceInCents = 0
 end
 
-redis.call('SETEX', key, ttl, newBalance)
-return cjson.encode({ok = 1, balance = newBalance, old = currentBalance, new = newBalance})
+redis.call('SETEX', key, ttl, newBalanceInCents)
+return cjson.encode({
+    ok = 1,
+    balance = newBalanceInCents,
+    old = currentBalanceInCents,
+    new = newBalanceInCents
+})
 LUA;
 
     /**
@@ -686,53 +750,64 @@ LUA;
      * - 保证并发安全
      * - 自动处理浮点数精度问题
      */
+    /**
+     * Lua 脚本：原子性洗分操作（整数化版本）
+     *
+     * 🔧 整数化改造（2026-05-10）：
+     * - Redis 存储单位：分（整数）
+     * - ARGV[1] 传入单位：分（整数）
+     * - 返回单位：分（整数）
+     * - 彻底解决"余额 2000 元只能洗 1900"的精度问题
+     */
     private const LUA_ATOMIC_WASH = <<<'LUA'
 local key = KEYS[1]
-local minWashAmount = tonumber(ARGV[1]) or 100  -- 最小洗分金额（默认100）
+local minWashAmountInCents = math.floor(tonumber(ARGV[1]) + 0.5)  -- 最小洗分金额（分）
 local ttl = tonumber(ARGV[2]) or 3600
 
-local currentBalance = tonumber(redis.call('GET', key)) or 0
+-- Redis 存储的是"分"（整数）
+local currentBalanceInCents = tonumber(redis.call('GET', key)) or 0
 
--- 计算可洗分金额：向下取整到百位
-local washAmount = math.floor(currentBalance / 100) * 100
+-- 🔧 计算可洗分金额：向下取整到百元（10000 分）
+-- 原逻辑：floor(balance / 100) * 100（元）
+-- 新逻辑：floor(balance / 10000) * 10000（分）
+local washAmountInCents = math.floor(currentBalanceInCents / 10000) * 10000
 
 -- 检查最小洗分金额
-if washAmount < minWashAmount then
+if washAmountInCents < minWashAmountInCents then
     return cjson.encode({
         ok = 0,
         error = "insufficient_wash_amount",
-        balance = currentBalance,
+        balance = currentBalanceInCents,
         wash_amount = 0,
-        min_required = minWashAmount
+        min_required = minWashAmountInCents
     })
 end
 
--- 检查余额是否足够（带容差）
-local tolerance = 0.01
-if currentBalance + tolerance < washAmount then
+-- 检查余额是否足够（整数比较，无需容差）
+if currentBalanceInCents < washAmountInCents then
     return cjson.encode({
         ok = 0,
         error = "insufficient_balance",
-        balance = currentBalance,
-        wash_amount = washAmount
+        balance = currentBalanceInCents,
+        wash_amount = washAmountInCents
     })
 end
 
--- 扣除洗分金额
-local newBalance = currentBalance - washAmount
+-- 扣除洗分金额（整数减法）
+local newBalanceInCents = currentBalanceInCents - washAmountInCents
 
 -- 防止负数余额
-if newBalance < 0 then
-    newBalance = 0
+if newBalanceInCents < 0 then
+    newBalanceInCents = 0
 end
 
-redis.call('SETEX', key, ttl, newBalance)
+redis.call('SETEX', key, ttl, newBalanceInCents)
 
 return cjson.encode({
     ok = 1,
-    balance = newBalance,           -- 扣款后余额
-    old_balance = currentBalance,   -- 扣款前余额
-    wash_amount = washAmount        -- 实际洗分金额
+    balance = newBalanceInCents,           -- 扣款后余额（分）
+    old_balance = currentBalanceInCents,   -- 扣款前余额（分）
+    wash_amount = washAmountInCents        -- 实际洗分金额（分）
 })
 LUA;
 
@@ -755,6 +830,19 @@ LUA;
      * @param int $ttl Redis 缓存过期时间（秒），默认 3600
      * @return array ['ok' => 1, 'balance' => 新余额, 'old' => 旧余额, 'new' => 新余额]
      */
+    /**
+     * 原子性增加余额（使用 Lua 脚本）（整数化版本）
+     *
+     * 🔧 整数化改造（2026-05-10）：
+     * - 接收参数：元（浮点）
+     * - 传入 Lua：分（整数）
+     * - 返回值：元（浮点）
+     *
+     * @param int $playerId 玩家ID
+     * @param float $amount 增加金额（单位：元，必须 > 0）
+     * @param int $ttl Redis 缓存过期时间（秒），默认 3600
+     * @return array ['ok' => 1, 'balance' => 新余额（元）, 'old' => 旧余额（元）, 'new' => 新余额（元）]
+     */
     public static function atomicIncrement(int $playerId, float $amount, int $ttl = 3600): array
     {
         if ($amount <= 0) {
@@ -764,26 +852,29 @@ LUA;
         try {
             $cacheKey = self::getCacheKey($playerId);
 
+            // 🔧 转换为"分"（整数）
+            $amountInCents = (int)round($amount * 100);
+
             // 执行 Lua 脚本，原子性增加余额
             $resultJson = Redis::eval(
                 self::LUA_ATOMIC_INCREMENT,
                 1,  // KEYS 数量
-                $cacheKey,  // KEYS[1]
-                $amount,    // ARGV[1]
-                $ttl        // ARGV[2]
+                $cacheKey,         // KEYS[1]
+                $amountInCents,    // ARGV[1]（分）
+                $ttl               // ARGV[2]
             );
 
             $result = json_decode($resultJson, true);
 
-            // 格式化余额精度
+            // 🔧 转换为"元"（浮点）
             if (isset($result['balance'])) {
-                $result['balance'] = round((float)$result['balance'], 2);
+                $result['balance'] = round($result['balance'] / 100, 2);
             }
             if (isset($result['old'])) {
-                $result['old'] = round((float)$result['old'], 2);
+                $result['old'] = round($result['old'] / 100, 2);
             }
             if (isset($result['new'])) {
-                $result['new'] = round((float)$result['new'], 2);
+                $result['new'] = round($result['new'] / 100, 2);
             }
 
             Log::info('WalletService: Atomic increment success', [
@@ -824,6 +915,19 @@ LUA;
      * @param int $ttl Redis 缓存过期时间（秒），默认 3600
      * @return array ['ok' => 1, 'balance' => 新余额] 或 ['ok' => 0, 'error' => 'insufficient_balance', 'balance' => 当前余额]
      */
+    /**
+     * 原子性减少余额（使用 Lua 脚本，带余额检查）（整数化版本）
+     *
+     * 🔧 整数化改造（2026-05-10）：
+     * - 接收参数：元（浮点）
+     * - 传入 Lua：分（整数）
+     * - 返回值：元（浮点）
+     *
+     * @param int $playerId 玩家ID
+     * @param float $amount 减少金额（单位：元，必须 > 0）
+     * @param int $ttl Redis 缓存过期时间（秒），默认 3600
+     * @return array ['ok' => 1, 'balance' => 新余额（元）] 或 ['ok' => 0, 'error' => 'insufficient_balance', 'balance' => 当前余额（元）]
+     */
     public static function atomicDecrement(int $playerId, float $amount, int $ttl = 3600): array
     {
         if ($amount <= 0) {
@@ -833,36 +937,29 @@ LUA;
         try {
             $cacheKey = self::getCacheKey($playerId);
 
-            // 🔍 调试日志：记录扣款前 Redis 原始值（用于排查精度问题）
-            $rawRedisValue = Redis::get($cacheKey);
-            if ($rawRedisValue !== null && $rawRedisValue !== false) {
-                Log::debug('WalletService: Atomic decrement - Redis raw value', [
-                    'player_id' => $playerId,
-                    'raw_value' => $rawRedisValue,
-                    'amount_to_deduct' => $amount,
-                ]);
-            }
+            // 🔧 转换为"分"（整数）
+            $amountInCents = (int)round($amount * 100);
 
             // 执行 Lua 脚本，原子性减少余额
             $resultJson = Redis::eval(
                 self::LUA_ATOMIC_DECREMENT,
                 1,  // KEYS 数量
-                $cacheKey,  // KEYS[1]
-                $amount,    // ARGV[1]
-                $ttl        // ARGV[2]
+                $cacheKey,         // KEYS[1]
+                $amountInCents,    // ARGV[1]（分）
+                $ttl               // ARGV[2]
             );
 
             $result = json_decode($resultJson, true);
 
-            // 格式化余额精度
+            // 🔧 转换为"元"（浮点）
             if (isset($result['balance'])) {
-                $result['balance'] = round((float)$result['balance'], 2);
+                $result['balance'] = round($result['balance'] / 100, 2);
             }
             if (isset($result['old'])) {
-                $result['old'] = round((float)$result['old'], 2);
+                $result['old'] = round($result['old'] / 100, 2);
             }
             if (isset($result['new'])) {
-                $result['new'] = round((float)$result['new'], 2);
+                $result['new'] = round($result['new'] / 100, 2);
             }
 
             if ($result['ok'] == 1) {
@@ -921,31 +1018,60 @@ LUA;
      *   'balance' => 当前余额
      * ]
      */
+    /**
+     * 原子性洗分操作（完全避免 TOCTOU 问题）（整数化版本）
+     *
+     * 🔧 整数化改造（2026-05-10）：
+     * - 接收参数：元（整数）
+     * - 传入 Lua：分（整数）
+     * - 返回值：元（浮点）
+     * - 彻底修复"余额 2000 元只能洗 1900"的问题 ✅
+     *
+     * @param int $playerId 玩家ID
+     * @param int $minWashAmount 最小洗分金额（单位：元，默认 100）
+     * @param int $ttl Redis 缓存过期时间（秒），默认 3600
+     * @return array [
+     *   'ok' => 1,
+     *   'balance' => 新余额（元）,
+     *   'old_balance' => 扣款前余额（元）,
+     *   'wash_amount' => 实际洗分金额（元）
+     * ] 或 [
+     *   'ok' => 0,
+     *   'error' => 错误类型,
+     *   'balance' => 当前余额（元）
+     * ]
+     */
     public static function atomicWash(int $playerId, int $minWashAmount = 100, int $ttl = 3600): array
     {
         try {
             $cacheKey = self::getCacheKey($playerId);
 
+            // 🔧 转换为"分"（整数）
+            $minWashAmountInCents = $minWashAmount * 100;
+
             // 执行 Lua 脚本，原子性完成洗分操作
             $resultJson = Redis::eval(
                 self::LUA_ATOMIC_WASH,
                 1,  // KEYS 数量
-                $cacheKey,      // KEYS[1]
-                $minWashAmount, // ARGV[1]
-                $ttl            // ARGV[2]
+                $cacheKey,                // KEYS[1]
+                $minWashAmountInCents,    // ARGV[1]（分）
+                $ttl                      // ARGV[2]
             );
 
             $result = json_decode($resultJson, true);
 
-            // 格式化余额精度
+            // 🔧 转换为"元"（浮点）
             if (isset($result['balance'])) {
-                $result['balance'] = round((float)$result['balance'], 2);
+                $result['balance'] = round($result['balance'] / 100, 2);
             }
             if (isset($result['old_balance'])) {
-                $result['old_balance'] = round((float)$result['old_balance'], 2);
+                $result['old_balance'] = round($result['old_balance'] / 100, 2);
             }
             if (isset($result['wash_amount'])) {
-                $result['wash_amount'] = round((float)$result['wash_amount'], 2);
+                $result['wash_amount'] = round($result['wash_amount'] / 100, 2);
+            }
+            if (isset($result['min_required'])) {
+                $result['min_required'] = round($result['min_required'] / 100, 2);
             }
 
             if ($result['ok'] == 1) {
