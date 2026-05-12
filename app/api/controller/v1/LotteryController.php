@@ -158,7 +158,7 @@ class LotteryController
                 $query->where('game_type', $data['type']);
             })
             ->when($data['type'] == GameType::TYPE_GAME, function ($query) use ($data) {
-                $query->where('source', PlayerLotteryRecord::SOURCE_GAME);
+                $query->whereIn('source', [PlayerLotteryRecord::SOURCE_GAME,PlayerLotteryRecord::SOURCE_MANUAL]);
             })
             ->where('status', PlayerLotteryRecord::STATUS_COMPLETE)
             ->when(!empty($data['id']), function ($query) use ($data) {
