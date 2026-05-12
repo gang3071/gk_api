@@ -477,6 +477,7 @@ return [
     'please_relogin' => 'Please login again',
     'insufficient_balance_100' => 'Scores are insufficient, unable to wash score',
     'insufficient_balance_1000' => 'Insufficient balance of 1000, unable to wash score',
+    'insufficient_balance_wash' => 'cores are insufficient, unable to wash score',
     'player_not_bind_store' => 'Player not bound to store',
     'open_point_config_not_found' => 'Open point configuration not found',
     'open_point_amount_invalid' => 'Open point amount invalid',

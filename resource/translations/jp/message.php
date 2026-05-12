@@ -474,6 +474,7 @@ return [
     'please_relogin' => '再度ログインしてください',
     'insufficient_balance_100' => 'スコアは不十分で、洗い流せません',
     'insufficient_balance_1000' => '残高不足1000、スコアを洗うことができません',
+    'insufficient_balance_wash' => 'スコアは不十分で、洗い流せません',
     'player_not_bind_store' => 'プレイヤーは店舗にバインドされていません',
     'open_point_config_not_found' => '開分設定が見つかりません',
     'open_point_amount_invalid' => '開分金額が無効です',
