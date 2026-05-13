@@ -78,7 +78,7 @@ class TranslateMenuNamesToEnglish extends AbstractMigration
 
         foreach ($updates as $id => $data) {
             // 检查当前名称
-            $current = $this->fetchRow("SELECT name FROM admin_menu WHERE id = {$id}");
+            $current = $this->fetchRow("SELECT name FROM admin_menus WHERE id = {$id}");
 
             if (!$current) {
                 $this->output->writeln("   ⏭  ID {$id}: 菜单不存在，跳过");
@@ -93,7 +93,7 @@ class TranslateMenuNamesToEnglish extends AbstractMigration
             }
 
             // 更新菜单名称
-            $this->execute("UPDATE admin_menu SET name = '{$data['new']}' WHERE id = {$id}");
+            $this->execute("UPDATE admin_menus SET name = '{$data['new']}' WHERE id = {$id}");
             $this->output->writeln("   ✅ ID {$id}: '{$current['name']}' => '{$data['new']}'");
             $updatedCount++;
         }
