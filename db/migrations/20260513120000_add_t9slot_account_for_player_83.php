@@ -54,6 +54,10 @@ class AddT9slotAccountForPlayer83 extends AbstractMigration
 
         // 插入账号记录
         $now = date('Y-m-d H:i:s');
+
+        // 对webId进行正确的SQL转义
+        $webIdValue = is_numeric($webId) ? $webId : "'{$webId}'";
+
         $this->execute("
             INSERT INTO player_game_platform (
                 player_id,
@@ -69,7 +73,7 @@ class AddT9slotAccountForPlayer83 extends AbstractMigration
                 {$platformId},
                 '{$player['name']}',
                 '{$player['uuid']}',
-                {$webId},
+                {$webIdValue},
                 '',
                 '{$now}',
                 '{$now}'
