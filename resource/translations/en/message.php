@@ -495,4 +495,5 @@ return [
     'other' => 'Other',
     'score_option' => 'Score Option',
     'custom_amount' => 'Custom Amount',
+    'game_service_unavailable' => 'Game service is temporarily unavailable, please try again later',
 ];

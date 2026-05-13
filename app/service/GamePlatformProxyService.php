@@ -142,7 +142,7 @@ class GamePlatformProxyService
 
             return json([
                 'code' => 500,
-                'msg' => '游戏服务暂时不可用，请稍后重试'
+                'msg' => trans('game_service_unavailable', [], 'message')
             ], 500);
         }
     }

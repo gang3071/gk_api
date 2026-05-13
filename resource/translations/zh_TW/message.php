@@ -496,4 +496,5 @@ return [
     'other' => '其他',
     'score_option' => '開分選項',
     'custom_amount' => '自訂金額',
+    'game_service_unavailable' => '遊戲服務暫時不可用，請稍後重試',
 ];
