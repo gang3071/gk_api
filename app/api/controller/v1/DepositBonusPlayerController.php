@@ -3,15 +3,15 @@
 namespace app\api\controller\v1;
 
 use app\model\DepositBonusActivity;
-use app\service\DepositBonusService;
 use app\service\DepositBonusBetService;
-use app\service\DepositBonusWithdrawService;
 use app\service\DepositBonusQrcodeService;
-use Respect\Validation\Validator as v;
+use app\service\DepositBonusService;
+use app\service\DepositBonusWithdrawService;
 use Respect\Validation\Exceptions\AllOfException;
+use Respect\Validation\Validator as v;
+use support\exception\BusinessException;
 use support\Request;
 use support\Response;
-use support\exception\BusinessException;
 use Webman\RateLimiter\Annotation\RateLimiter;
 
 /**
@@ -108,7 +108,7 @@ class DepositBonusPlayerController
         }
     }
 
-    #[RateLimiter(limit: 10)]
+    #[RateLimiter(limit: 20)]
     /**
      * 核销二维码（玩家扫码）
      */
