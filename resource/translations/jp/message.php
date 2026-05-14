@@ -492,4 +492,5 @@ return [
     'other' => 'その他',
     'score_option' => 'スコアオプション',
     'custom_amount' => 'カスタム金額',
+    'game_service_unavailable' => 'ゲームサービスは一時的に利用できません。後でもう一度お試しください',
 ];
