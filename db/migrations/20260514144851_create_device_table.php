@@ -3,7 +3,7 @@
 use Phinx\Migration\AbstractMigration;
 
 /**
- * 创建设备表
+ * 创建总后台设备表
  */
 class CreateDeviceTable extends AbstractMigration
 {
@@ -13,12 +13,12 @@ class CreateDeviceTable extends AbstractMigration
     public function up()
     {
         // 检查表是否已存在
-        if ($this->hasTable('device')) {
+        if ($this->hasTable('admin_device')) {
             return;
         }
 
         $this->execute("
-            CREATE TABLE `device` (
+            CREATE TABLE `admin_device` (
                 `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键ID',
                 `channel_id` INT(11) UNSIGNED NOT NULL DEFAULT 0 COMMENT '所属渠道ID',
                 `department_id` INT(11) UNSIGNED NOT NULL DEFAULT 0 COMMENT '所属部门ID',
@@ -40,7 +40,7 @@ class CreateDeviceTable extends AbstractMigration
                 KEY `idx_store_admin_id` (`store_admin_id`),
                 KEY `idx_status` (`status`),
                 KEY `idx_deleted_at` (`deleted_at`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='设备表';
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='总后台设备表';
         ");
     }
 
@@ -49,6 +49,6 @@ class CreateDeviceTable extends AbstractMigration
      */
     public function down()
     {
-        $this->execute("DROP TABLE IF EXISTS `device`;");
+        $this->execute("DROP TABLE IF EXISTS `admin_device`;");
     }
 }

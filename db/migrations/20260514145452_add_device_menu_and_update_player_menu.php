@@ -38,7 +38,7 @@ class AddDeviceMenuAndUpdatePlayerMenu extends AbstractMigration
         // pid = 0 表示顶级主菜单
         $this->execute("
             INSERT INTO `admin_menus` (`name`, `icon`, `url`, `plugin`, `pid`, `sort`, `status`, `open`, `type`, `created_at`, `updated_at`)
-            VALUES ('device_list', 'el-icon-mobile-phone', 'ex-admin/addons-webman-controller-DeviceController/index', 'webman', 0, 105, 1, 0, 1, NOW(), NOW())
+            VALUES ('device_list', 'el-icon-mobile-phone', 'ex-admin/addons-webman-controller-AdminDeviceController/index', 'webman', 0, 105, 1, 0, 1, NOW(), NOW())
         ");
     }
 
