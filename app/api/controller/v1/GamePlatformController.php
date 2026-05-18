@@ -14,7 +14,6 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerDisabledGame;
 use app\model\PlayerEnterGameRecord;
 use app\model\PlayerGamePlatform;
-use app\model\PlayerPlatformCash;
 use app\model\PlayerWalletTransfer;
 use app\model\StoreSetting;
 use app\service\ClientMaintainService;
@@ -1148,9 +1147,6 @@ class GamePlatformController
                 DB::beginTransaction();
                 try {
                     //玩家加點數
-                    /** @var PlayerPlatformCash $machineWallet */
-                    $machineWallet = PlayerPlatformCash::query()->where('platform_id',
-                        PlayerPlatformCash::PLATFORM_SELF)->where('player_id', $player->id)->lockForUpdate()->first();
                     $playerWalletTransfer = new PlayerWalletTransfer();
                     $playerWalletTransfer->player_id = $player->id;
                     $playerWalletTransfer->parent_player_id = $player->recommend_id ?? 0;
@@ -1159,7 +1155,8 @@ class GamePlatformController
                     $playerWalletTransfer->department_id = $player->department_id;
                     $playerWalletTransfer->type = PlayerWalletTransfer::TYPE_IN;
                     $playerWalletTransfer->game_amount = $balance;
-                    $playerWalletTransfer->player_amount = $machineWallet->money;
+                    // ✅ 从 Redis 读取实时余额（转入前）
+                    $playerWalletTransfer->player_amount = \app\service\WalletService::getBalance($player->id);
                     $playerWalletTransfer->tradeno = createOrderNo();
                     $result = $gameService->withdrawAmount([
                         'amount' => $balance,

@@ -164,11 +164,15 @@ class GameServiceFactory
      */
     public function createBetRecord(PlayerPlatformCash $machineWallet,Player $player,$record,$bet): float|string
     {
-        $beforeGameAmount = $machineWallet->money;
-        //处理用户金额记录
-        // 更新玩家统计
-        $machineWallet->money = bcsub($machineWallet->money, $bet, 2);
-        $machineWallet->save();
+        // ✅ 从 Redis 读取余额（下注前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+        // ✅ 使用 WalletService 原子扣款
+        $result = \app\service\WalletService::deduct($player->id, $bet);
+        if (!$result['success']) {
+            throw new \Exception($result['error'] ?? '余额不足');
+        }
+        $afterGameAmount = $result['balance'];
 
         //todo 语言文件后续处理
         //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
@@ -182,14 +186,14 @@ class GameServiceFactory
         $playerDeliveryRecord->source = 'player_bet';
         $playerDeliveryRecord->amount = $bet;
         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-        $playerDeliveryRecord->amount_after = $machineWallet->money;
+        $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
         $playerDeliveryRecord->tradeno = $record->order_no ?? '';
-        $playerDeliveryRecord->remark = $target->remark ?? '';
+        $playerDeliveryRecord->remark = '遊戲下注';
         $playerDeliveryRecord->user_id = 0;
         $playerDeliveryRecord->user_name = '';
         $playerDeliveryRecord->save();
 
-        return $machineWallet->money;
+        return $afterGameAmount;
     }
 
     /**
@@ -206,15 +210,12 @@ class GameServiceFactory
         $record->action_data = json_encode($data, JSON_UNESCAPED_UNICODE);
         $record->save();
 
+        // ✅ 从 Redis 读取余额（取消前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($this->player->id);
 
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
-
-        $beforeGameAmount = $machineWallet->money;
-        //处理用户金额记录
-        // 更新玩家统计
-        $machineWallet->money = bcadd($machineWallet->money, $bet, 2);
-        $machineWallet->save();
+        // ✅ 使用 WalletService 原子加款
+        $result = \app\service\WalletService::add($this->player->id, $bet);
+        $afterGameAmount = $result['balance'];
 
         $player = $this->player;
         //todo 语言文件后续处理
@@ -229,14 +230,14 @@ class GameServiceFactory
         $playerDeliveryRecord->source = 'player_cancel_bet';
         $playerDeliveryRecord->amount = $bet;
         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-        $playerDeliveryRecord->amount_after = $machineWallet->money;
+        $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
         $playerDeliveryRecord->tradeno = $record->order_no ?? '';
-        $playerDeliveryRecord->remark = $target->remark ?? '';
+        $playerDeliveryRecord->remark = '取消下注';
         $playerDeliveryRecord->user_id = 0;
         $playerDeliveryRecord->user_name = '';
         $playerDeliveryRecord->save();
 
-        return $machineWallet->money;
+        return $afterGameAmount;
     }
 
     /**

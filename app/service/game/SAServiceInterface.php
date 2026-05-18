@@ -2,6 +2,7 @@
 
 namespace app\service\game;
 
+use app\exception\GameException;
 use app\model\Game;
 use app\model\GameExtend;
 use app\model\GamePlatform;
@@ -11,13 +12,11 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayGameRecord;
-use app\exception\GameException;
 use app\wallet\controller\game\MtGameController;
 use app\wallet\controller\game\SAGameController;
 use Carbon\Carbon;
 use Exception;
 use support\Log;
-use Webman\RedisQueue\Client;
 use WebmanTech\LaravelHttpClient\Facades\Http;
 
 class SAServiceInterface extends GameServiceFactory implements GameServiceInterface,SingleWalletServiceInterface
@@ -353,9 +352,11 @@ class SAServiceInterface extends GameServiceFactory implements GameServiceInterf
     {
         $detail = json_decode($data['payoutdetails'],true);
         $betList = $detail['betlist'];
-        //处理用户中奖金额
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
+        $player = $this->player;
+
+        // ✅ 记录最终余额（循环中会更新）
+        $finalBalance = \app\service\WalletService::getBalance($player->id);
+
         foreach ($betList as $betInfo) {
             $orderNo = $betInfo['txnid'];
             //判断是否打鱼机游戏 需要分别处理数据
@@ -369,24 +370,26 @@ class SAServiceInterface extends GameServiceFactory implements GameServiceInterf
 
             if(!$record) {
                 $this->error = SAGameController::API_CODE_GENERAL_ERROR;
-                return $this->player->machine_wallet->money;
+                return \app\service\WalletService::getBalance($player->id);
             }
 
             if($record->settlement_status == PlayGameRecord::SETTLEMENT_STATUS_SETTLED){
                 $this->error = SAGameController::API_CODE_GENERAL_ERROR;
-                return $this->player->machine_wallet->money;
+                return \app\service\WalletService::getBalance($player->id);
             }
 
             //有金额则为赢
             if(isset($data['amount'])){
                 $money = $data['amount'];
-                $beforeGameAmount = $machineWallet->money;
-                //处理用户金额记录
-                // 更新玩家统计
-                $machineWallet->money = bcadd($machineWallet->money, $money, 2);
-                $machineWallet->save();
 
-                $player = $this->player;
+                // ✅ 从 Redis 读取余额（结算前）
+                $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+                // ✅ 使用 WalletService 原子加款
+                $result = \app\service\WalletService::add($player->id, $money);
+                $afterGameAmount = $result['balance'];
+                $finalBalance = $afterGameAmount;  // 更新最终余额
+
                 //todo 语言文件后续处理
                 //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
                 $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -399,7 +402,7 @@ class SAServiceInterface extends GameServiceFactory implements GameServiceInterf
                 $playerDeliveryRecord->source = 'player_bet_settlement';
                 $playerDeliveryRecord->amount = $money;
                 $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                $playerDeliveryRecord->amount_after = $machineWallet->money;
+                $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
                 $playerDeliveryRecord->tradeno = $record->order_no ?? '';
                 $playerDeliveryRecord->remark = $target->remark ?? '';
                 $playerDeliveryRecord->user_id = 0;
@@ -418,7 +421,7 @@ class SAServiceInterface extends GameServiceFactory implements GameServiceInterf
 //            Client::send('game-lottery', ['player_id' => $this->player->id, 'bet' => $record->bet, 'play_game_record_id' => $record->id]);
         }
 
-        return $machineWallet->money;
+        return $finalBalance;
     }
 
     /**

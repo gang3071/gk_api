@@ -1615,7 +1615,8 @@ class PlayerController
                         'oauthAppWithdrawCashId' => $playerWithdrawRecord->tradeno,
                         'userId' => $playerWithdrawRecord->talk_user_id,
                     ]);
-                    $beforeGameAmount = $player->machine_wallet->money;
+                    // ✅ 从 Redis 读取实时余额（扣款前）
+                    $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
                     if ($response->status() == 200) {
                         $playerWithdrawRecord->talk_result = $response->body();
                         $data = json_decode($response->body(), true);
@@ -1665,7 +1666,8 @@ class PlayerController
                         $playerDeliveryRecord->source = 'talk_withdrawal';
                         $playerDeliveryRecord->amount = $playerWithdrawRecord->point;
                         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                        $playerDeliveryRecord->amount_after = $player->machine_wallet->money;
+                        // ✅ 从 Redis 读取实时余额（扣款后）
+                        $playerDeliveryRecord->amount_after = \app\service\WalletService::getBalance($player->id);
                         $playerDeliveryRecord->tradeno = $playerWithdrawRecord->tradeno ?? '';
                         $playerDeliveryRecord->remark = $playerWithdrawRecord->remark ?? '';
                         $playerDeliveryRecord->save();
@@ -3077,19 +3079,24 @@ class PlayerController
             ->limit(50)
             ->get()
             ->toArray();
+
+        // ✅ 从 Redis 读取当前玩家实时余额
+        $myMoney = \app\service\WalletService::getBalance($player->id);
+
         return jsonSuccessResponse('success', [
             'list' => $list,
             'my_ranking' => [
                 'id' => $player->id,
                 'name' => $player->name,
                 'phone' => $player->phone,
-                'money' => \app\service\WalletService::getBalance($player->id), // ✅ Redis 实时余额
+                'money' => $myMoney, // ✅ Redis 实时余额
                 'avatar' => $player->avatar,
                 'ranking' => Player::query()
                         ->leftJoin('player_platform_cash', 'player.id', '=', 'player_platform_cash.player_id')
                         ->where('player.status', 1)
                         ->where('player.department_id', $request->department_id)
-                        ->where('player_platform_cash.money', '>', $player->machine_wallet->money)
+                        // ✅ 使用 Redis 余额进行排名比较
+                        ->where('player_platform_cash.money', '>', $myMoney)
                         ->whereNull('player.deleted_at')
                         ->count() + 1
             ]

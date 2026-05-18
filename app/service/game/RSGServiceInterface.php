@@ -2,7 +2,7 @@
 
 namespace app\service\game;
 
-use app\model\ChannelGameWeb;
+use app\exception\GameException;
 use app\model\Game;
 use app\model\GameExtend;
 use app\model\GamePlatform;
@@ -11,7 +11,6 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayGameRecord;
-use app\exception\GameException;
 use app\wallet\controller\game\RsgGameController;
 use Carbon\Carbon;
 use Exception;
@@ -474,21 +473,22 @@ class RSGServiceInterface extends GameServiceFactory implements GameServiceInter
         if($record->settlement_status == PlayGameRecord::SETTLEMENT_STATUS_SETTLED){
             return $this->error = RsgGameController::API_CODE_ORDER_SETTLED;
         }
-        //处理用户中奖金额
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
+
+        $player = $this->player;
+
+        // ✅ 从 Redis 读取余额（结算前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+        $afterGameAmount = $beforeGameAmount;  // 默认没有派彩
 
         //判断输赢
         if($data['Amount'] > 0){
             //赢
             $money = $data['Amount'];
-            $beforeGameAmount = $machineWallet->money;
-            //处理用户金额记录
-            // 更新玩家统计
-            $machineWallet->money = bcadd($machineWallet->money, $money, 2);
-            $machineWallet->save();
 
-            $player = $this->player;
+            // ✅ 使用 WalletService 原子加款
+            $result = \app\service\WalletService::add($player->id, $money);
+            $afterGameAmount = $result['balance'];
+
             //todo 语言文件后续处理
             //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
             $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -501,7 +501,7 @@ class RSGServiceInterface extends GameServiceFactory implements GameServiceInter
             $playerDeliveryRecord->source = 'player_bet_settlement';
             $playerDeliveryRecord->amount = $money;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
             $playerDeliveryRecord->tradeno = $record->order_no ?? '';
             $playerDeliveryRecord->remark = $target->remark ?? '';
             $playerDeliveryRecord->user_id = 0;
@@ -526,7 +526,7 @@ class RSGServiceInterface extends GameServiceFactory implements GameServiceInter
             Client::send('game-lottery', ['player_id' => $this->player->id, 'bet' => $record->bet, 'play_game_record_id' => $record->id]);
         }
 
-        return $this->player->machine_wallet->money;
+        return $afterGameAmount;
     }
 
     public function reBetResulet($data)
@@ -552,21 +552,22 @@ class RSGServiceInterface extends GameServiceFactory implements GameServiceInter
         if($record->settlement_status == PlayGameRecord::SETTLEMENT_STATUS_SETTLED){
             return $this->error = RsgGameController::API_CODE_ORDER_SETTLED;
         }
-        //处理用户中奖金额
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
+
+        $player = $this->player;
+
+        // ✅ 从 Redis 读取余额（彩金派发前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+        $afterGameAmount = $beforeGameAmount;  // 默认没有派彩
 
         //判断输赢
         if($data['Amount'] > 0){
             //赢
             $money = $data['Amount'];
-            $beforeGameAmount = $machineWallet->money;
-            //处理用户金额记录
-            // 更新玩家统计
-            $machineWallet->money = bcadd($machineWallet->money, $money, 2);
-            $machineWallet->save();
 
-            $player = $this->player;
+            // ✅ 使用 WalletService 原子加款
+            $result = \app\service\WalletService::add($player->id, $money);
+            $afterGameAmount = $result['balance'];
+
             //todo 语言文件后续处理
             //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
             $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -579,7 +580,7 @@ class RSGServiceInterface extends GameServiceFactory implements GameServiceInter
             $playerDeliveryRecord->source = 'jackpot_result';
             $playerDeliveryRecord->amount = $money;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
             $playerDeliveryRecord->tradeno = $record->order_no ?? '';
             $playerDeliveryRecord->remark = $target->remark ?? '';
             $playerDeliveryRecord->user_id = 0;
@@ -594,7 +595,7 @@ class RSGServiceInterface extends GameServiceFactory implements GameServiceInter
         $record->diff = $data['Amount'];
         $record->save();
 
-        return $this->player->machine_wallet->money;
+        return $afterGameAmount;
     }
 
     /**
@@ -610,29 +611,37 @@ class RSGServiceInterface extends GameServiceFactory implements GameServiceInter
             return $this->error = RsgGameController::API_CODE_DUPLICATE_TRANSACTION;
         }
 
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
         $player = $this->player;
         //需要扣除金额
         $money = $data['Amount'];
-        //已预扣金额
-        $beforeGameAmount = $machineWallet->money;
 
-        if($money > $machineWallet->money){
+        // ✅ 从 Redis 读取余额（预扣前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+        if($money > $beforeGameAmount){
             //余额不足
             $this->error = RsgGameController::API_CODE_INSUFFICIENT_BALANCE;
             //扣除现有所有金额进入游戏
-            $machineWallet->money = 0;
-            $machineWallet->save();
+            if ($beforeGameAmount > 0) {
+                $deductResult = \app\service\WalletService::deduct($player->id, $beforeGameAmount);
+                $afterGameAmount = $deductResult['success'] ? $deductResult['balance'] : 0;
+            } else {
+                $afterGameAmount = 0;
+            }
             $amount = $beforeGameAmount;
         }else{
-            $machineWallet->money = bcsub($machineWallet->money, $money, 2);
-            $machineWallet->save();
+            // ✅ 使用 WalletService 原子扣款
+            $result = \app\service\WalletService::deduct($player->id, $money);
+            if (!$result['success']) {
+                $this->error = RsgGameController::API_CODE_INSUFFICIENT_BALANCE;
+                return ['Balance' => $beforeGameAmount, 'Amount' => 0];
+            }
+            $afterGameAmount = $result['balance'];
             $amount = $money;
         }
 
         //记录交易后余额
-        $data['AfterBalance'] = $machineWallet->money;
+        $data['AfterBalance'] = $afterGameAmount;
         //预扣款记录
         $insert = [
             'player_id' => $this->player->id,
@@ -667,14 +676,14 @@ class RSGServiceInterface extends GameServiceFactory implements GameServiceInter
         $playerDeliveryRecord->source = 'player_prepay';
         $playerDeliveryRecord->amount = $money;
         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-        $playerDeliveryRecord->amount_after = $machineWallet->money;
+        $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
         $playerDeliveryRecord->tradeno = $record->order_no ?? '';
         $playerDeliveryRecord->remark = $target->remark ?? '';
         $playerDeliveryRecord->user_id = 0;
         $playerDeliveryRecord->user_name = '';
         $playerDeliveryRecord->save();
 
-        return ['Balance' =>$machineWallet->money,'Amount'=>$amount];
+        return ['Balance' => $afterGameAmount, 'Amount' => $amount];
     }
 
 
@@ -691,17 +700,19 @@ class RSGServiceInterface extends GameServiceFactory implements GameServiceInter
 //            return $this->error = RsgGameController::API_CODE_DUPLICATE_TRANSACTION;
 //        }
 
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $this->player->machine_wallet()->lockForUpdate()->first();
+        $player = $this->player;
 
         //退款金额
         $amount = $data['Amount'];
-        $beforeGameAmount = $machineWallet->money;
-        $machineWallet->money = bcadd($machineWallet->money, $amount, 2);
-        $machineWallet->save();
 
-        $player = $this->player;
-        $data['AfterBalance'] = $machineWallet->money;
+        // ✅ 从 Redis 读取余额（退款前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+        // ✅ 使用 WalletService 原子加款
+        $result = \app\service\WalletService::add($player->id, $amount);
+        $afterGameAmount = $result['balance'];
+
+        $data['AfterBalance'] = $afterGameAmount;
 
 //        //查询之前的同一交易记录
 //        /** @var PlayGameRecord $beforeRecord */
@@ -748,14 +759,14 @@ class RSGServiceInterface extends GameServiceFactory implements GameServiceInter
         $playerDeliveryRecord->source = 'player_refund';
         $playerDeliveryRecord->amount = $amount;
         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-        $playerDeliveryRecord->amount_after = $machineWallet->money;
+        $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
         $playerDeliveryRecord->tradeno = $record->order_no ?? '';
         $playerDeliveryRecord->remark = $target->remark ?? '';
         $playerDeliveryRecord->user_id = 0;
         $playerDeliveryRecord->user_name = '';
         $playerDeliveryRecord->save();
 
-        return ['Balance' =>$machineWallet->money,'Amount'=>$amount];
+        return ['Balance' => $afterGameAmount, 'Amount' => $amount];
     }
 
     /**

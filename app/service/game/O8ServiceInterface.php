@@ -2,6 +2,7 @@
 
 namespace app\service\game;
 
+use app\exception\GameException;
 use app\model\Game;
 use app\model\GameExtend;
 use app\model\GamePlatform;
@@ -11,7 +12,6 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayGameRecord;
-use app\exception\GameException;
 use app\wallet\controller\game\MtGameController;
 use app\wallet\controller\game\O8GameController;
 use app\wallet\controller\game\RsgLiveGameController;
@@ -442,13 +442,16 @@ class O8ServiceInterface extends GameServiceFactory implements GameServiceInterf
 
             $money = $order['turnover'] - $order['ggr'];
 
+            // ✅ 从 Redis 读取余额（结算前）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+            $afterGameAmount = $beforeGameAmount;  // 默认没有派彩
+
             //有金额则为赢  todo 需要额外优化O8不同状态时候的余额处理
             if ($order['txtype'] == 510) {
-                $beforeGameAmount = $machineWallet->money;
-                //处理用户金额记录
-                // 更新玩家统计
-                $machineWallet->money = bcadd($machineWallet->money, $money, 2);
-                $machineWallet->save();
+                // ✅ 使用 WalletService 原子加款
+                $result = \app\service\WalletService::add($player->id, $money);
+                $afterGameAmount = $result['balance'];
+
                 //todo 语言文件后续处理
                 //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
                 $playerDeliveryRecord = new PlayerDeliveryRecord;
@@ -461,7 +464,7 @@ class O8ServiceInterface extends GameServiceFactory implements GameServiceInterf
                 $playerDeliveryRecord->source = 'player_bet_settlement';
                 $playerDeliveryRecord->amount = $money;
                 $playerDeliveryRecord->amount_before = $beforeGameAmount;
-                $playerDeliveryRecord->amount_after = $machineWallet->money;
+                $playerDeliveryRecord->amount_after = $afterGameAmount;  // ✅ 使用 WalletService 返回的余额
                 $playerDeliveryRecord->tradeno = $record->order_no ?? '';
                 $playerDeliveryRecord->remark = $target->remark ?? '';
                 $playerDeliveryRecord->user_id = 0;
@@ -479,7 +482,7 @@ class O8ServiceInterface extends GameServiceFactory implements GameServiceInterf
             $return['transactions'][] = [
                 'txid'  => $record->id,
                 'ptxid' => $order['ptxid'],
-                'bal'   => $machineWallet->money,
+                'bal'   => $afterGameAmount,
                 'cur'   => 'TWD',
                 'dup'   => false
             ];
