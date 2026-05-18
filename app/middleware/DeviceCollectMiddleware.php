@@ -17,8 +17,16 @@ class DeviceCollectMiddleware implements MiddlewareInterface
             return jsonFailResponse(trans('device_not_found', [], 'message'), [], 403);
         }
 
+        // 未登录请求（如登录接口）跳过设备验证
+        $authHeader = $request->header('Authorization', '');
+        if (empty($authHeader)) {
+            return $handler($request);
+        }
+
         /** @var AdminDevice $device */
         $device = AdminDevice::query()->where('device_no', $deviceCpuId)->whereNull('deleted_at')->first();
+
+        var_dump($device);
 
         if (!empty($device)) {
             $player = checkPlayer();
