@@ -493,4 +493,6 @@ return [
     'score_option' => 'スコアオプション',
     'custom_amount' => 'カスタム金額',
     'game_service_unavailable' => 'ゲームサービスは一時的に利用できません。後でもう一度お試しください',
+    'device_store_mismatch' => 'デバイスは現在のアカウントと同じ店舗に属していません',
+    'device_not_found' => 'デバイスが見つかりません',
 ];
