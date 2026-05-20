@@ -2120,11 +2120,18 @@ class PlayerController
      * @return Response
      * @throws PlayerCheckException|Exception
      */
-    public function homePageAds(): Response
+    public function homePageAds(Request $request): Response
     {
         checkPlayer();
+        $data = $request->post();
+        $adPosition = $data['ad_position'] ?? 1;
+        if (!in_array($adPosition, [1, 2, 3])) {
+            return jsonFailResponse(trans('ad_position_invalid', [], 'message'));
+        }
+
         $slider = Slider::where('status', 1)
             ->where('department_id', \request()->department_id)
+            ->where('ad_position', $adPosition)
             ->whereNull('deleted_at')
             ->orderBy('sort', 'desc')
             ->get();
