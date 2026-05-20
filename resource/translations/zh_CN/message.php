@@ -509,4 +509,7 @@ return [
     'game_service_unavailable' => '游戏服务暂时不可用，请稍后重试',
     'device_store_mismatch' => '设备与当前账号不属于同一门店',
     'device_not_found' => '设备不存在',
+    'ad_position' => '广告位',
+    'ad_position_required' => '广告位参数不能为空',
+    'ad_position_invalid' => '广告位参数无效',
 ];
