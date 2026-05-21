@@ -55,3 +55,30 @@ Desktop.ini
 
 # WebSocket
 *.gateway
+
+# Claude Code
+.claude/
+
+# Documentation and reports
+CLAUDE.md
+*_REPORT.md
+*_SUMMARY.md
+*_GUIDE.md
+*_PLAN.md
+*_OPTIMIZATION.md
+README_*.md
+docs/
+
+# Database scripts
+database_*.sql
+database_*.md
+
+# Chinese documentation
+后台爆机功能集成说明.md
+多语言修改完成总结.md
+数据库保留表清单.md
+数据库清理-特别说明.md
+最终验证报告.md
+被清理的配置表清单.md
+设备爆机功能实现总结.md
+需要修改的API控制器列表.md
