@@ -495,4 +495,7 @@ return [
     'game_service_unavailable' => 'ゲームサービスは一時的に利用できません。後でもう一度お試しください',
     'device_store_mismatch' => 'デバイスは現在のアカウントと同じ店舗に属していません',
     'device_not_found' => 'デバイスが見つかりません',
+    'ad_position' => '広告位置',
+    'ad_position_required' => '広告位置パラメータは必須です',
+    'ad_position_invalid' => '広告位置パラメータが無効です',
 ];

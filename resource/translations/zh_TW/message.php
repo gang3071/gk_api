@@ -499,4 +499,7 @@ return [
     'game_service_unavailable' => '遊戲服務暫時不可用，請稍後重試',
     'device_store_mismatch' => '設備與當前帳號不屬於同一門店',
     'device_not_found' => '設備不存在',
+    'ad_position' => '廣告位',
+    'ad_position_required' => '廣告位參數不能為空',
+    'ad_position_invalid' => '廣告位參數無效',
 ];
