@@ -25,9 +25,9 @@ class WalletService
 
     /**
      * 缓存过期时间（秒）
-     * 1小时，足够长以提高命中率，余额通过模型事件自动同步保证一致性
+     * ⚠️ 60天：活跃玩家长期缓存，僵尸玩家自动清理
      */
-    private const CACHE_TTL = 3600;
+    private const CACHE_TTL = 5184000; // 60天 (60 * 24 * 3600)
 
     /**
      * 获取玩家余额（带 Redis 缓存）
