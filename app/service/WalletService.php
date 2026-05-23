@@ -25,9 +25,9 @@ class WalletService
 
     /**
      * 缓存过期时间（秒）
-     * ⚠️ 60天：活跃玩家长期缓存，僵尸玩家自动清理
+     * ⚠️ 已废弃：余额缓存现在永不过期（Redis as Single Source of Truth）
      */
-    private const CACHE_TTL = 5184000; // 60天 (60 * 24 * 3600)
+    // private const CACHE_TTL = 5184000; // 60天 (60 * 24 * 3600)
 
     /**
      * 获取玩家余额（带 Redis 缓存）
@@ -58,8 +58,8 @@ class WalletService
             // 缓存未命中或强制刷新，从数据库读取
             $balance = self::getBalanceFromDB($playerId, $platformId);
 
-            // 更新缓存
-            Redis::setex($cacheKey, self::CACHE_TTL, $balance);
+            // 更新缓存（永不过期，Redis 是余额的唯一实时标准）
+            Redis::set($cacheKey, $balance);
 
             return round($balance, 2);
         } catch (\Throwable $e) {
@@ -136,7 +136,7 @@ class WalletService
     {
         try {
             $cacheKey = self::getCacheKey($playerId);
-            Redis::setex($cacheKey, self::CACHE_TTL, $balance);
+            Redis::set($cacheKey, $balance);
             return true;
         } catch (\Throwable $e) {
             Log::warning('WalletService: Failed to update cache', [
@@ -268,7 +268,7 @@ class WalletService
                 // 回填缓存
                 try {
                     $cacheKey = self::getCacheKey($wallet->player_id);
-                    Redis::setex($cacheKey, self::CACHE_TTL, $balance);
+                    Redis::set($cacheKey, $balance);
                 } catch (\Throwable $e) {
                     // 忽略缓存回填失败
                 }
@@ -281,7 +281,7 @@ class WalletService
                     // 缓存不存在的玩家（避免缓存穿透）
                     try {
                         $cacheKey = self::getCacheKey($playerId);
-                        Redis::setex($cacheKey, self::CACHE_TTL, 0.0);
+                        Redis::set($cacheKey, 0.0);
                     } catch (\Throwable $e) {
                         // 忽略缓存回填失败
                     }
@@ -333,12 +333,11 @@ class WalletService
             end
             local newBalance = balance - tonumber(ARGV[1])
             redis.call('SET', KEYS[1], newBalance)
-            redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
             return cjson.encode({old = balance, new = newBalance})
         LUA;
 
         try {
-            $result = \support\Redis::eval($script, 1, $cacheKey, $amount, self::CACHE_TTL);
+            $result = \support\Redis::eval($script, 1, $cacheKey, $amount);
 
             if (is_array($result) && isset($result['err'])) {
                 if ($result['err'] === 'BALANCE_NOT_FOUND') {
@@ -407,12 +406,11 @@ class WalletService
             local balance = tonumber(redis.call('GET', KEYS[1])) or 0
             local newBalance = balance + tonumber(ARGV[1])
             redis.call('SET', KEYS[1], newBalance)
-            redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
             return cjson.encode({old = balance, new = newBalance})
         LUA;
 
         try {
-            $result = \support\Redis::eval($script, 1, $cacheKey, $amount, self::CACHE_TTL);
+            $result = \support\Redis::eval($script, 1, $cacheKey, $amount);
 
             // 解析返回的 JSON：{old: 旧余额, new: 新余额}
             $balanceData = json_decode($result, true);
@@ -587,7 +585,7 @@ class WalletService
 
                 try {
                     $cacheKey = self::getCacheKey($wallet->player_id);
-                    Redis::setex($cacheKey, self::CACHE_TTL, $balance);
+                    Redis::set($cacheKey, $balance);
                     $successCount++;
                 } catch (\Throwable $e) {
                     $failedCount++;
@@ -599,7 +597,7 @@ class WalletService
             foreach ($notFoundPlayerIds as $playerId) {
                 try {
                     $cacheKey = self::getCacheKey($playerId);
-                    Redis::setex($cacheKey, self::CACHE_TTL, 0.0);
+                    Redis::set($cacheKey, 0.0);
                     $successCount++;
                 } catch (\Throwable $e) {
                     $failedCount++;
@@ -631,12 +629,12 @@ class WalletService
     private const LUA_ATOMIC_INCREMENT = <<<'LUA'
 local key = KEYS[1]
 local amount = tonumber(ARGV[1])
-local ttl = tonumber(ARGV[2]) or 3600
 
 local currentBalance = tonumber(redis.call('GET', key)) or 0
 local newBalance = currentBalance + amount
 
-redis.call('SETEX', key, ttl, newBalance)
+-- ⚠️ 永不过期：余额是核心数据，Redis 是唯一实时标准
+redis.call('SET', key, newBalance)
 return cjson.encode({ok = 1, balance = newBalance, old = currentBalance, new = newBalance})
 LUA;
 
@@ -651,7 +649,6 @@ LUA;
     private const LUA_ATOMIC_DECREMENT = <<<'LUA'
 local key = KEYS[1]
 local amount = tonumber(ARGV[1])
-local ttl = tonumber(ARGV[2]) or 3600
 
 local currentBalance = tonumber(redis.call('GET', key)) or 0
 
@@ -668,7 +665,8 @@ if newBalance < 0 then
     newBalance = 0
 end
 
-redis.call('SETEX', key, ttl, newBalance)
+-- ⚠️ 永不过期：余额是核心数据，Redis 是唯一实时标准
+redis.call('SET', key, newBalance)
 return cjson.encode({ok = 1, balance = newBalance, old = currentBalance, new = newBalance})
 LUA;
 
@@ -689,7 +687,6 @@ LUA;
     private const LUA_ATOMIC_WASH = <<<'LUA'
 local key = KEYS[1]
 local washPointConfig = tonumber(ARGV[1]) or 100  -- 洗分配置（从后台获取的单次洗分基数）
-local ttl = tonumber(ARGV[2]) or 3600
 
 -- 防御性检查：确保配置值大于0
 if washPointConfig <= 0 then
@@ -733,7 +730,8 @@ if newBalance < 0 then
     newBalance = 0
 end
 
-redis.call('SETEX', key, ttl, newBalance)
+-- ⚠️ 永不过期：余额是核心数据，Redis 是唯一实时标准
+redis.call('SET', key, newBalance)
 
 return cjson.encode({
     ok = 1,
@@ -762,7 +760,7 @@ LUA;
      * @param int $ttl Redis 缓存过期时间（秒），默认 3600
      * @return array ['ok' => 1, 'balance' => 新余额, 'old' => 旧余额, 'new' => 新余额]
      */
-    public static function atomicIncrement(int $playerId, float $amount, int $ttl = 3600): array
+    public static function atomicIncrement(int $playerId, float $amount, int $ttl = 0): array
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be greater than 0');
@@ -776,8 +774,7 @@ LUA;
                 self::LUA_ATOMIC_INCREMENT,
                 1,  // KEYS 数量
                 $cacheKey,  // KEYS[1]
-                $amount,    // ARGV[1]
-                $ttl        // ARGV[2]
+                $amount     // ARGV[1]
             );
 
             $result = json_decode($resultJson, true);
@@ -831,7 +828,7 @@ LUA;
      * @param int $ttl Redis 缓存过期时间（秒），默认 3600
      * @return array ['ok' => 1, 'balance' => 新余额] 或 ['ok' => 0, 'error' => 'insufficient_balance', 'balance' => 当前余额]
      */
-    public static function atomicDecrement(int $playerId, float $amount, int $ttl = 3600): array
+    public static function atomicDecrement(int $playerId, float $amount, int $ttl = 0): array
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be greater than 0');
@@ -855,8 +852,7 @@ LUA;
                 self::LUA_ATOMIC_DECREMENT,
                 1,  // KEYS 数量
                 $cacheKey,  // KEYS[1]
-                $amount,    // ARGV[1]
-                $ttl        // ARGV[2]
+                $amount     // ARGV[1]
             );
 
             $result = json_decode($resultJson, true);
@@ -934,7 +930,7 @@ LUA;
      *   'balance' => 当前余额
      * ]
      */
-    public static function atomicWash(int $playerId, float $washPointConfig = 100, int $ttl = 3600): array
+    public static function atomicWash(int $playerId, float $washPointConfig = 100, int $ttl = 0): array
     {
         // 🔍 参数验证：洗分配置必须大于0
         if ($washPointConfig <= 0) {
@@ -959,8 +955,7 @@ LUA;
                 self::LUA_ATOMIC_WASH,
                 1,  // KEYS 数量
                 $cacheKey,         // KEYS[1]
-                $washPointConfig,  // ARGV[1] - 洗分配置（从后台获取）
-                $ttl               // ARGV[2]
+                $washPointConfig   // ARGV[1] - 洗分配置（从后台获取）
             );
 
             // 🔍 检查 Lua 脚本执行结果
