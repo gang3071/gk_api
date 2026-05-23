@@ -25,9 +25,9 @@ class WalletService
 
     /**
      * 缓存过期时间（秒）
-     * ⚠️ 60天：活跃玩家长期缓存，僵尸玩家自动清理
+     * ⚠️ 已废弃：余额缓存现在永不过期（Redis as Single Source of Truth）
      */
-    private const CACHE_TTL = 5184000; // 60天 (60 * 24 * 3600)
+    // private const CACHE_TTL = 5184000; // 60天 (60 * 24 * 3600)
 
     /**
      * 获取玩家余额（带 Redis 缓存）
@@ -836,10 +836,6 @@ LUA;
      * - 游戏赢钱
      * - 彩金发放
      *
-     * @param int $playerId 玩家ID
-     * @param float $amount 增加金额（必须 > 0）
-     * @param int $ttl Redis 缓存过期时间（秒），默认 3600
-     * @return array ['ok' => 1, 'balance' => 新余额, 'old' => 旧余额, 'new' => 新余额]
      */
     /**
      * 原子性增加余额（使用 Lua 脚本）（整数化版本）
@@ -854,7 +850,7 @@ LUA;
      * @param int $ttl Redis 缓存过期时间（秒），默认 3600
      * @return array ['ok' => 1, 'balance' => 新余额（元）, 'old' => 旧余额（元）, 'new' => 新余额（元）]
      */
-    public static function atomicIncrement(int $playerId, float $amount, int $ttl = 3600): array
+    public static function atomicIncrement(int $playerId, float $amount, int $ttl = 0): array
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be greater than 0');
@@ -920,13 +916,6 @@ LUA;
      * - 提现
      * - 游戏下注
      * - 转账到游戏平台
-     *
-     * @param int $playerId 玩家ID
-     * @param float $amount 减少金额（必须 > 0）
-     * @param int $ttl Redis 缓存过期时间（秒），默认 3600
-     * @return array ['ok' => 1, 'balance' => 新余额] 或 ['ok' => 0, 'error' => 'insufficient_balance', 'balance' => 当前余额]
-     */
-    /**
      * 原子性减少余额（使用 Lua 脚本，带余额检查）（整数化版本）
      *
      * 🔧 整数化改造（2026-05-10）：
@@ -939,7 +928,7 @@ LUA;
      * @param int $ttl Redis 缓存过期时间（秒），默认 3600
      * @return array ['ok' => 1, 'balance' => 新余额（元）] 或 ['ok' => 0, 'error' => 'insufficient_balance', 'balance' => 当前余额（元）]
      */
-    public static function atomicDecrement(int $playerId, float $amount, int $ttl = 3600): array
+    public static function atomicDecrement(int $playerId, float $amount, int $ttl = 0): array
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be greater than 0');
@@ -1043,7 +1032,7 @@ LUA;
      * - 彻底修复"余额 2000 元只能洗 1900"的问题 ✅
      * - 保留灵活的洗分配置，支持后台配置不同金额（100、500、600等）
      */
-    public static function atomicWash(int $playerId, int $washPointConfig = 100, int $ttl = 3600): array
+    public static function atomicWash(int $playerId, float $washPointConfig = 100, int $ttl = 0): array
     {
         try {
             $cacheKey = self::getCacheKey($playerId);
