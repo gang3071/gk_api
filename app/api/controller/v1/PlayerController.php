@@ -34,13 +34,13 @@ use app\model\StoreSetting;
 use app\model\SystemSetting;
 use app\service\GameLotteryServices;
 use app\service\LotteryServices;
+use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
 use app\service\payment\EHpayService;
 use app\service\payment\GBpayService;
 use app\service\SmsServicesServices;
 use Carbon\Carbon;
 use Exception;
-use GatewayWorker\Lib\Gateway;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Respect\Validation\Exceptions\AllOfException;
@@ -59,6 +59,26 @@ class PlayerController
 {
     /** 排除验签 */
     protected $noNeedSign = ['addBankCard', 'uploadAvatar', 'completeRecharge', 'editBankCard'];
+
+    /**
+     * 检查机台是否在线（通过 gk_work 接口）
+     * @param int $machineId
+     * @return bool
+     */
+    private function isMachineOnline(int $machineId): bool
+    {
+        try {
+            $client = new MachineClient();
+            $result = $client->checkOnline($machineId);
+            return $result['success'] && ($result['data']['online'] ?? false);
+        } catch (Exception $e) {
+            Log::error('Check machine online failed', [
+                'machine_id' => $machineId,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
 
     /**
      * 获取用户信息
@@ -2053,23 +2073,25 @@ class PlayerController
         $machinesList = $favoriteMachine->forPage($data['page'], $data['size'])->get();
         $lang = locale();
         $lang = Str::replace('_', '-', $lang);
+
+        // 批量检查机台在线状态
+        $machineIds = $machinesList->pluck('machine.id')->filter()->toArray();
+        $onlineStatusMap = [];
+        try {
+            $client = new MachineClient();
+            $result = $client->batchCheckOnline($machineIds);
+            if ($result['success'] && isset($result['data'])) {
+                $onlineStatusMap = $result['data'];
+            }
+        } catch (Exception $e) {
+            Log::error('Batch check machine online failed', ['error' => $e->getMessage()]);
+        }
+
         $list = [];
         /** @var PlayerFavoriteMachine $item */
         foreach ($machinesList as $item) {
             $machineServices = MachineServices::createServices($item->machine, $lang);
-            $onlineStatus = 'offline';
-            switch ($item->machine->type) {
-                case GameType::TYPE_SLOT:
-                    if (Gateway::isUidOnline($item->machine->domain . ':' . $item->machine->port) && Gateway::isUidOnline($item->machine->auto_card_domain . ':' . $item->machine->auto_card_port)) {
-                        $onlineStatus = 'online';
-                    }
-                    break;
-                case GameType::TYPE_STEEL_BALL:
-                    if (Gateway::isUidOnline($item->machine->domain . ':' . $item->machine->port)) {
-                        $onlineStatus = 'online';
-                    }
-                    break;
-            }
+            $onlineStatus = $onlineStatusMap[$item->machine->id] ?? 'offline';
             $nowTurn = $machineServices->now_turn;
             $machineMedia = $item->machine->machine_media->where('status', 1)->sortBy('sort')->makeHidden([
                 'user_id',
@@ -2179,6 +2201,20 @@ class PlayerController
         $ip = request()->getRealIp();
         /** @var Channel $channel */
         $channel = Channel::where('department_id', \request()->department_id)->first();
+
+        // 批量检查机台在线状态
+        $machineIds = $machinesList->pluck('id')->toArray();
+        $onlineStatusMap = [];
+        try {
+            $client = new MachineClient();
+            $result = $client->batchCheckOnline($machineIds);
+            if ($result['success'] && isset($result['data'])) {
+                $onlineStatusMap = $result['data'];
+            }
+        } catch (Exception $e) {
+            Log::error('Batch check machine online failed', ['error' => $e->getMessage()]);
+        }
+
         /** @var Machine $item */
         foreach ($machinesList as &$item) {
             $services = MachineServices::createServices($item, $lang);
@@ -2229,18 +2265,7 @@ class PlayerController
                     Cache::set('machine_play_route_num', $playRouteNum + 1, 24 * 60 * 60);
                     break;
             }
-            switch ($item->type) {
-                case GameType::TYPE_SLOT:
-                    if (Gateway::isUidOnline($item->domain . ':' . $item->port) && Gateway::isUidOnline($item->auto_card_domain . ':' . $item->auto_card_port)) {
-                        $machineInfo['online_status'] = 'online';
-                    }
-                    break;
-                case GameType::TYPE_STEEL_BALL:
-                    if (Gateway::isUidOnline($item->domain . ':' . $item->port)) {
-                        $machineInfo['online_status'] = 'online';
-                    }
-                    break;
-            }
+            $machineInfo['online_status'] = $onlineStatusMap[$item->id] ?? 'offline';
             $list[] = $machineInfo;
         }
         

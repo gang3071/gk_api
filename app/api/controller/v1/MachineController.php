@@ -30,12 +30,12 @@ use app\model\PlayHistory;
 use app\model\SystemSetting;
 use app\service\ActivityServices;
 use app\service\machine\Jackpot;
+use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
 use app\service\machine\Slot;
 use app\service\MediaServer;
 use Carbon\Carbon;
 use Exception;
-use GatewayWorker\Lib\Gateway;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 use Respect\Validation\Exceptions\AllOfException;
@@ -54,7 +54,27 @@ class MachineController
 {
     /** 排除验签 */
     protected $noNeedSign = [];
-    
+
+    /**
+     * 检查机台是否在线（通过 gk_work 接口）
+     * @param int $machineId
+     * @return bool
+     */
+    private function isMachineOnline(int $machineId): bool
+    {
+        try {
+            $client = new MachineClient();
+            $result = $client->checkOnline($machineId);
+            return $result['success'] && ($result['data']['online'] ?? false);
+        } catch (Exception $e) {
+            Log::error('Check machine online failed', [
+                'machine_id' => $machineId,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+
     #[RateLimiter(limit: 5)]
     /**
      * 机台列表
@@ -298,23 +318,25 @@ class MachineController
             ->get();
         $lang = locale();
         $lang = Str::replace('_', '-', $lang);
+
+        // 批量检查机台在线状态
+        $machineIds = $machineList->pluck('id')->toArray();
+        $onlineStatusMap = [];
+        try {
+            $client = new MachineClient();
+            $result = $client->batchCheckOnline($machineIds);
+            if ($result['success'] && isset($result['data'])) {
+                $onlineStatusMap = $result['data'];
+            }
+        } catch (Exception $e) {
+            Log::error('Batch check machine online failed', ['error' => $e->getMessage()]);
+        }
+
         $data = [];
         /** @var Machine $machine */
         foreach ($machineList as $machine) {
             $machineServices = MachineServices::createServices($machine, $lang);
-            $onlineStatus = 'offline';
-            switch ($machine->type) {
-                case GameType::TYPE_SLOT:
-                    if (Gateway::isUidOnline($machine->domain . ':' . $machine->port) && Gateway::isUidOnline($machine->auto_card_domain . ':' . $machine->auto_card_port)) {
-                        $onlineStatus = 'online';
-                    }
-                    break;
-                case GameType::TYPE_STEEL_BALL:
-                    if (Gateway::isUidOnline($machine->domain . ':' . $machine->port)) {
-                        $onlineStatus = 'online';
-                    }
-                    break;
-            }
+            $onlineStatus = $onlineStatusMap[$machine->id] ?? 'offline';
             $nowTurn = $machineServices->now_turn;
             if ($machine->type == GameType::TYPE_SLOT) {
                 $nowTurn = $nowTurn > 0 ? intval(ceil($nowTurn / 3)) : 0;
@@ -416,16 +438,9 @@ class MachineController
         if (!$machine) {
             return jsonFailResponse(trans('machine_not_fount', [], 'message'));
         }
-        switch ($machine->type) {
-            case GameType::TYPE_SLOT:
-                if (!Gateway::isUidOnline($machine->domain . ':' . $machine->port) || !Gateway::isUidOnline($machine->auto_card_domain . ':' . $machine->auto_card_port)) {
-                    return jsonFailResponse(trans('machine_has_offline', ['{code}' => $machine->code], 'message'));
-                }
-                break;
-            case GameType::TYPE_STEEL_BALL:
-                if (!Gateway::isUidOnline($machine->domain . ':' . $machine->port)) {
-                    return jsonFailResponse(trans('machine_has_offline', ['{code}' => $machine->code], 'message'));
-                }
+        // 检查机台是否在线
+        if (!$this->isMachineOnline($machine->id)) {
+            return jsonFailResponse(trans('machine_has_offline', ['{code}' => $machine->code], 'message'));
         }
         //檢查玩家是否有權限玩
         /** @var PlayerPlatformCash $platform */
@@ -850,25 +865,9 @@ class MachineController
             throw new Exception(trans('machine_maintaining', [], 'message'));
         }
         switch ($machine->type) {
-            case GameType::TYPE_SLOT:
-                switch ($machine->control_type) {
-                    case Machine::CONTROL_TYPE_MEI:
-                        if (!Gateway::isUidOnline($machine->domain . ':' . $machine->port) || !Gateway::isUidOnline($machine->auto_card_domain . ':' . $machine->auto_card_port)) {
-                            throw new Exception(trans('machine_has_offline', ['{code}' => $machine->code], 'message'));
-                        }
-                        break;
-                    case Machine::CONTROL_TYPE_SONG:
-                        if (!Gateway::isUidOnline($machine->domain . ':' . $machine->port)) {
-                            throw new Exception(trans('machine_has_offline', ['{code}' => $machine->code], 'message'));
-                        }
-                        break;
-                    default:
-                        throw new Exception(trans('machine_has_offline', ['{code}' => $machine->code], 'message'));
-                }
-                
-                break;
-            case GameType::TYPE_STEEL_BALL:
-                if (!Gateway::isUidOnline($machine->domain . ':' . $machine->port)) {
+            // 检查机台是否在线
+            default:
+                if (!$this->isMachineOnline($machine->id)) {
                     throw new Exception(trans('machine_has_offline', ['{code}' => $machine->code], 'message'));
                 }
         }

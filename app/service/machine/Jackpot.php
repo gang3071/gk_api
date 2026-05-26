@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace app\service\machine;
 
 use app\model\GameType;
@@ -7,16 +9,16 @@ use app\model\Machine;
 use app\model\MachineLotteryRecord;
 use app\model\Notice;
 use app\service\LotteryServices;
-use GatewayWorker\Lib\Gateway;
+use Exception;
 use Illuminate\Support\Str;
+use Psr\Log\LoggerInterface;
 use support\Cache;
 use support\Log;
-use think\Exception;
-use Webman\Push\PushException;
 use Webman\RedisQueue\Client;
 
 /**
- * Class Jackpot
+ * Jackpot 机台服务类（钢珠机）
+ *
  * @property int $auto 自动状态
  * @property int $reward_status 开奖状态
  * @property int $rush_status rush状态
@@ -46,63 +48,70 @@ use Webman\RedisQueue\Client;
  * @property int $gift_bet 玩家开分增点时押注
  * @property int $now_turn 当前转数
  * @property int $has_lock 机台锁
- *
- * @package app\service\machine
  */
-class Jackpot extends MachineServices implements BaseMachine
+class Jackpot extends AbstractMachineService
 {
-    const PREFIX = 'A2'; //前缀
+    // ==================== 指令常量定义 ====================
 
-    const ALL = 'all'; //机台状态
-    const OPEN_ONE = '41'; //开分一次
-    const OPEN_TEN = '42'; //开分10次
+    /** 指令前缀 */
+    public const PREFIX = 'A2';
 
-    const WASH_ZERO = '43'; //洗分清零
-    const WASH_ZERO_REMAINDER = '44'; //洗分清零留余数
+    // 基础指令
+    public const ALL = 'all';
+    public const OPEN_ONE = '41';
+    public const OPEN_TEN = '42';
+    public const WASH_ZERO = '43';
+    public const WASH_ZERO_REMAINDER = '44';
+    public const AUTO_UP_TURN = '45';
+    public const RESET_READY_TURN = '46';
+    public const TURN_DOWN_ALL = '47';
+    public const TURN_TO_POINT = '48';
+    public const POINT_TO_TURN = '49';
+    public const OPEN_ANY_POINT = '4A';
+    public const SCORE_TO_POINT = '4B';
+    public const TURN_UP_ALL = '4C';
+    public const OP_3 = '4D';
+    public const CLEAR_GIVE = '4E';
+    public const CLEAR_LOG = '4F';
 
-    const AUTO_UP_TURN = '45'; //自动上转(开始游戏)
-    const RESET_READY_TURN = '46'; //重設預備轉入的轉數
-    const TURN_DOWN_ALL = '47'; //全部下转
+    // 读取指令
+    public const TESTING = '20';
+    public const MACHINE_POINT = '21';
+    public const MACHINE_SCORE = '22';
+    public const MACHINE_TURN = '23';
+    public const WIN_NUMBER = '24';
+    public const READ_OPEN_POINT = '25';
+    public const READ_WASH_POINT = '26';
+    public const BB_RUSH = '2B';
+    public const REWARD_SWITCH = '2D';
+    public const REWARD_SWITCH_OPT = '64';
 
-    const TURN_TO_POINT = '48'; //转数转分数
-    const POINT_TO_TURN = '49'; //分数转转数
+    // PUSH 控制
+    public const PUSH = '2E';
+    public const PUSH_STOP = '00';
+    public const PUSH_ONE = '01';
+    public const PUSH_TWO = '02';
+    public const PUSH_THREE = '03';
 
-    const OPEN_ANY_POINT = '4A'; //开任意分数
-    const SCORE_TO_POINT = '4B'; //得分转分数
-    const TURN_UP_ALL = '4C'; //全部上转
-    const OP_3 = '4D'; //開 OP_3 個保轉
-    const CLEAR_GIVE = '4E'; //清除開贈要求
-    const CLEAR_LOG = '4F'; //清除历史记录
-    const BB_RUSH = '2B'; //读取BB rush
+    // 保留
+    public const KEEPING = '40';
 
-    const TESTING = '20'; //测试连接
-    const MACHINE_POINT = '21'; //读取机台当前分
-    const MACHINE_SCORE = '22'; //读取机台当前得分
-    const MACHINE_TURN = '23'; //读取机台当前转数
-    const WIN_NUMBER = '24'; //讀取中洞對獎次數
-    const READ_OPEN_POINT = '25'; //讀取总開分
-    const READ_WASH_POINT = '26'; //讀取总下分
-    const REWARD_SWITCH = '2D';// 大賞燈切換
-    const REWARD_SWITCH_OPT = '64';
-    const PUSH = '2E'; //PUSH 0000停止
-    const PUSH_STOP = '00'; //PUSH 0000停止
-    const PUSH_ONE = '01'; //PUSH 1下
-    const PUSH_TWO = '02'; //PUSH 1秒2下
-    const PUSH_THREE = '03'; //PUSH 1秒5下
-
-    const KEEPING = '40'; //保留
-
-    public $cacheData = [];
-
-    public $expirationTime = 5000000; // 3秒内返回
-
-    public $log = null;
-
-    public function __construct(Machine $machine, $lang = 'zh_CN')
+    /**
+     * 构造函数
+     *
+     * @param Machine $machine 机台对象
+     * @param string $lang 语言代码
+     */
+    public function __construct(Machine $machine, string $lang = 'zh_CN')
     {
-        $this->machine = $machine;
-        $this->cacheKey = self::CACHE_PREFIX . $this->machine->id;
-        $this->cacheDataKey = self::MACHINE_DATA_PREFIX . $this->machine->id;
+        parent::__construct($machine, $lang);
+    }
+
+    /**
+     * 初始化缓存 Key 数组
+     */
+    protected function initializeCacheKeys(): void
+    {
         $this->cacheDataKeyArr = [
             $this->cacheDataKey . '_auto',
             $this->cacheDataKey . '_move_point',
@@ -134,6 +143,13 @@ class Jackpot extends MachineServices implements BaseMachine
             $this->cacheDataKey . '_bb_status',
             $this->cacheDataKey . '_has_lock',
         ];
+    }
+
+    /**
+     * 初始化机台信息字段列表
+     */
+    protected function initializeMachineInfo(): void
+    {
         $this->machineInfo = [
             'auto',
             'move_point',
@@ -147,181 +163,233 @@ class Jackpot extends MachineServices implements BaseMachine
             'bb_status',
             'has_lock',
         ];
-        $this->lang = $lang;
-        $this->cacheData = $this->getMachineCache();
-        $this->log = Log::channel('jackpot_machine');
     }
 
     /**
-     * 获取属性
-     * @param $name
-     * @return mixed|null
+     * 初始化日志实例
+     *
+     * @return LoggerInterface
      */
-    public function __get($name)
+    protected function initializeLogger(): LoggerInterface
+    {
+        return Log::channel('jackpot_machine');
+    }
+
+    /**
+     * 覆盖父类的 __set 方法，增加 Jackpot 特定的推送逻辑
+     *
+     * @param string $name 属性名
+     * @param mixed $value 属性值
+     */
+    public function __set(string $name, mixed $value): void
     {
         $key = $this->cacheDataKey . '_' . $name;
-        if (in_array($key, $this->cacheDataKeyArr)) {
-            try {
-                // 尝试从缓存获取
-                $value = Cache::get($key, 0);
-                return $value;
-            } catch (\Exception $e) {
-                // 获取失败时立即重试1次
-                try {
-                    $value = Cache::get($key, 0);
-                    \support\Log::warning('Redis缓存读取失败后重试成功', [
-                        'machine_id' => $this->machine->id,
-                        'field' => $name,
-                        'error' => $e->getMessage()
-                    ]);
-                    return $value;
-                } catch (\Exception $e2) {
-                    // 重试仍失败，记录错误日志并返回默认值
-                    \support\Log::error('Redis缓存读取失败（重试1次后仍失败）', [
-                        'machine_id' => $this->machine->id,
-                        'machine_code' => $this->machine->code,
-                        'field' => $name,
-                        'key' => $key,
-                        'error' => $e2->getMessage()
-                    ]);
-                    return 0;
-                }
-            }
+
+        if (!in_array($key, $this->cacheDataKeyArr)) {
+            return;
         }
-        return null;
-    }
 
-    /**
-     * 设置属性
-     * @param $name
-     * @param $value
-     * @return void
-     * @throws PushException
-     */
-    public function __set($name, $value)
-    {
-        $key = $this->cacheDataKey . '_' . $name;
-        if (in_array($key, $this->cacheDataKeyArr)) {
-            try {
-                // 保存到缓存，失败时立即重试1次
-                $saveResult = Cache::set($this->cacheDataKey . '_' . $name, $value);
-                if (!$saveResult) {
-                    $saveResult = Cache::set($this->cacheDataKey . '_' . $name, $value);
-                }
-            } catch (\Exception $e) {
-                // 捕获异常后再重试1次
-                try {
-                    $saveResult = Cache::set($this->cacheDataKey . '_' . $name, $value);
-                    \support\Log::warning('Redis缓存保存异常后重试成功', [
-                        'machine_id' => $this->machine->id,
-                        'field' => $name,
-                        'error' => $e->getMessage()
-                    ]);
-                } catch (\Exception $e2) {
-                    $saveResult = false;
-                    \support\Log::error('Redis缓存保存异常（重试1次后仍失败）', [
-                        'machine_id' => $this->machine->id,
-                        'machine_code' => $this->machine->code,
-                        'field' => $name,
-                        'value' => $value,
-                        'error' => $e2->getMessage()
-                    ]);
-                }
-            }
-
-            // 关键字段保存失败时记录额外日志
+        $saveResult = false;
+        try {
+            $saveResult = Cache::set($this->cacheDataKey . '_' . $name, $value);
             if (!$saveResult) {
-                $criticalFields = ['gaming', 'gaming_user_id', 'last_play_time', 'point', 'turn', 'keeping', 'win_number'];
-                if (in_array($name, $criticalFields)) {
-                    \support\Log::error('关键字段Redis保存失败', [
-                        'machine_id' => $this->machine->id,
-                        'machine_code' => $this->machine->code,
-                        'field' => $name,
-                        'value' => $value
-                    ]);
-                }
+                $saveResult = Cache::set($this->cacheDataKey . '_' . $name, $value);
             }
+        } catch (Exception $e) {
+            try {
+                $saveResult = Cache::set($this->cacheDataKey . '_' . $name, $value);
+                Log::warning('Redis缓存保存异常后重试成功', [
+                    'machine_id' => $this->machine->id,
+                    'field' => $name,
+                    'error' => $e->getMessage()
+                ]);
+            } catch (Exception $e2) {
+                $saveResult = false;
+                Log::error('Redis缓存保存异常（重试1次后仍失败）', [
+                    'machine_id' => $this->machine->id,
+                    'machine_code' => $this->machine->code,
+                    'field' => $name,
+                    'value' => $value,
+                    'error' => $e2->getMessage()
+                ]);
+            }
+        }
 
-            $machineCacheInfo = $this->getAllData() ?? [];
-            if (!empty($machineCacheInfo)) {
-                $info = [
-                    'id' => $this->machine->id,
-                    'last_game_at' => $this->machine->last_game_at,
-                    'odds_x' => $this->machine->odds_x,
-                    'odds_y' => $this->machine->odds_y,
-                    'type' => $this->machine->type,
-                    'gaming_user_id' => $this->machine->gaming_user_id,
-                    'gaming' => $this->machine->gaming,
-                    'auto' => $machineCacheInfo[$this->cacheDataKey . '_auto'],
-                    'move_point' => $machineCacheInfo[$this->cacheDataKey . '_move_point'],
-                    'reward_status' => $machineCacheInfo[$this->cacheDataKey . '_reward_status'],
-                    'play_start_time' => $machineCacheInfo[$this->cacheDataKey . '_play_start_time'],
-                    'turn' => $machineCacheInfo[$this->cacheDataKey . '_turn'],
-                    'point' => $machineCacheInfo[$this->cacheDataKey . '_point'],
-                    'score' => $machineCacheInfo[$this->cacheDataKey . '_score'],
-                    'last_play_time' => $machineCacheInfo[$this->cacheDataKey . '_last_play_time'],
-                    'open_point' => $machineCacheInfo[$this->cacheDataKey . '_open_point'],
-                    'wash_point' => $machineCacheInfo[$this->cacheDataKey . '_wash_point'],
-                    'keep_seconds' => $machineCacheInfo[$this->cacheDataKey . '_keep_seconds'],
-                    'keeping' => $machineCacheInfo[$this->cacheDataKey . '_keeping'],
-                    'keeping_user_id' => $machineCacheInfo[$this->cacheDataKey . '_keeping_user_id'],
-                    'last_keep_at' => $machineCacheInfo[$this->cacheDataKey . '_last_keep_at'],
-                    'player_win_number' => $machineCacheInfo[$this->cacheDataKey . '_player_win_number'],
-                    'player_open_point' => $machineCacheInfo[$this->cacheDataKey . '_player_open_point'],
-                    'player_wash_point' => $machineCacheInfo[$this->cacheDataKey . '_player_wash_point'],
-                    'last_point_at' => $machineCacheInfo[$this->cacheDataKey . '_last_point_at'],
-                    'action_time' => $machineCacheInfo[$this->cacheDataKey . '_action_time'],
-                    'win_number' => $machineCacheInfo[$this->cacheDataKey . '_win_number'],
-                    'push_auto' => $machineCacheInfo[$this->cacheDataKey . '_push_auto'],
-                    'change_point_card_status' => $machineCacheInfo[$this->cacheDataKey . '_change_point_card_status'],
-                    'now_turn' => $machineCacheInfo[$this->cacheDataKey . '_now_turn'],
-                    'rush_status' => $machineCacheInfo[$this->cacheDataKey . '_rush_status'],
-                    'bb_status' => $machineCacheInfo[$this->cacheDataKey . '_bb_status'],
-                    'has_lock' => $machineCacheInfo[$this->cacheDataKey . '_has_lock'],
-                ];
-                switch ($name) {
-                    case 'gaming_user_id':
-                        if (!empty($value)) {
-                            $this->sendMachineRealTimeInformation($this->machine->gamingPlayer->department_id,
-                                'game_start', $info);
-                        }
-                        break;
-                    case 'auto':
-                    case 'turn':
-                    case 'win_number':
-                    case 'push_auto':
-                    case 'reward_status':
-                    case 'last_point_at':
-                    case 'wash_point':
-                    case 'keep_seconds':
-                    case 'score':
-                    case 'rush_status':
-                    case 'bb_status':
-                    if (!empty($this->machine->gamingPlayer)) {
-                        $this->sendMachineRealTimeInformation($this->machine->gamingPlayer->department_id,
-                            'game_info_change', $info);
-                    }
-                        break;
-                }
-                if (in_array($name, $this->machineInfo) && !empty($this->machine->gaming_user_id)) {
-                    $this->sendMachineNowInfoMessage($this->machine->gaming_user_id, $this->machine->id, $name, $info);
-                }
+        // 关键字段保存失败时记录额外日志
+        if (!$saveResult) {
+            $criticalFields = ['gaming', 'gaming_user_id', 'last_play_time', 'point', 'turn', 'keeping', 'win_number'];
+            if (in_array($name, $criticalFields)) {
+                Log::error('关键字段Redis保存失败', [
+                    'machine_id' => $this->machine->id,
+                    'machine_code' => $this->machine->code,
+                    'field' => $name,
+                    'value' => $value
+                ]);
             }
+        }
+
+        // Jackpot 特定的推送逻辑
+        $machineCacheInfo = $this->getAllData();
+        if (!empty($machineCacheInfo)) {
+            $info = $this->buildMachineInfo($machineCacheInfo);
+            $this->handleFieldUpdate($name, $value, $info);
         }
     }
 
     /**
-     * 获取所有属性
-     * @return iterable
+     * 构建机台信息数组
+     *
+     * @param array $machineCacheInfo 缓存数据
+     * @return array
      */
-    private function getAllData(): iterable
+    private function buildMachineInfo(array $machineCacheInfo): array
     {
-        return Cache::getMultiple($this->cacheDataKeyArr, 0);
+        return [
+            'id' => $this->machine->id,
+            'last_game_at' => $this->machine->last_game_at,
+            'odds_x' => $this->machine->odds_x,
+            'odds_y' => $this->machine->odds_y,
+            'type' => $this->machine->type,
+            'gaming_user_id' => $this->machine->gaming_user_id,
+            'gaming' => $this->machine->gaming,
+            'auto' => $machineCacheInfo[$this->cacheDataKey . '_auto'] ?? 0,
+            'move_point' => $machineCacheInfo[$this->cacheDataKey . '_move_point'] ?? 0,
+            'reward_status' => $machineCacheInfo[$this->cacheDataKey . '_reward_status'] ?? 0,
+            'play_start_time' => $machineCacheInfo[$this->cacheDataKey . '_play_start_time'] ?? 0,
+            'turn' => $machineCacheInfo[$this->cacheDataKey . '_turn'] ?? 0,
+            'point' => $machineCacheInfo[$this->cacheDataKey . '_point'] ?? 0,
+            'score' => $machineCacheInfo[$this->cacheDataKey . '_score'] ?? 0,
+            'last_play_time' => $machineCacheInfo[$this->cacheDataKey . '_last_play_time'] ?? 0,
+            'open_point' => $machineCacheInfo[$this->cacheDataKey . '_open_point'] ?? 0,
+            'wash_point' => $machineCacheInfo[$this->cacheDataKey . '_wash_point'] ?? 0,
+            'keep_seconds' => $machineCacheInfo[$this->cacheDataKey . '_keep_seconds'] ?? 0,
+            'keeping' => $machineCacheInfo[$this->cacheDataKey . '_keeping'] ?? 0,
+            'keeping_user_id' => $machineCacheInfo[$this->cacheDataKey . '_keeping_user_id'] ?? 0,
+            'last_keep_at' => $machineCacheInfo[$this->cacheDataKey . '_last_keep_at'] ?? 0,
+            'player_win_number' => $machineCacheInfo[$this->cacheDataKey . '_player_win_number'] ?? 0,
+            'player_open_point' => $machineCacheInfo[$this->cacheDataKey . '_player_open_point'] ?? 0,
+            'player_wash_point' => $machineCacheInfo[$this->cacheDataKey . '_player_wash_point'] ?? 0,
+            'last_point_at' => $machineCacheInfo[$this->cacheDataKey . '_last_point_at'] ?? 0,
+            'action_time' => $machineCacheInfo[$this->cacheDataKey . '_action_time'] ?? 0,
+            'win_number' => $machineCacheInfo[$this->cacheDataKey . '_win_number'] ?? 0,
+            'push_auto' => $machineCacheInfo[$this->cacheDataKey . '_push_auto'] ?? 0,
+            'change_point_card_status' => $machineCacheInfo[$this->cacheDataKey . '_change_point_card_status'] ?? 0,
+            'now_turn' => $machineCacheInfo[$this->cacheDataKey . '_now_turn'] ?? 0,
+            'rush_status' => $machineCacheInfo[$this->cacheDataKey . '_rush_status'] ?? 0,
+            'bb_status' => $machineCacheInfo[$this->cacheDataKey . '_bb_status'] ?? 0,
+            'has_lock' => $machineCacheInfo[$this->cacheDataKey . '_has_lock'] ?? 0,
+        ];
+    }
+
+    /**
+     * 处理字段更新的推送逻辑
+     * 根据字段类型推送不同的实时消息
+     *
+     * @param string $name 字段名
+     * @param mixed $value 字段值
+     * @param array $info 机台信息
+     */
+    private function handleFieldUpdate(string $name, mixed $value, array $info): void
+    {
+        if (!function_exists('sendSocketMessage')) {
+            return;
+        }
+
+        try {
+            // 玩家开始游戏
+            if ($name === 'gaming_user_id' && !empty($value) && !empty($this->machine->gamingPlayer)) {
+                sendSocketMessage("department-{$this->machine->gamingPlayer->department_id}", [
+                    'msg_type' => 'game_start',
+                    'data' => $info,
+                    'timestamp' => time(),
+                ]);
+            }
+
+            // 重要字段变化
+            $importantFields = [
+                'auto', 'turn', 'win_number', 'push_auto', 'reward_status',
+                'last_point_at', 'wash_point', 'keep_seconds', 'score',
+                'rush_status', 'bb_status'
+            ];
+
+            if (in_array($name, $importantFields) && !empty($this->machine->gamingPlayer)) {
+                sendSocketMessage("department-{$this->machine->gamingPlayer->department_id}", [
+                    'msg_type' => 'game_info_change',
+                    'data' => $info,
+                    'timestamp' => time(),
+                ]);
+            }
+
+            // 推送给机台和玩家
+            if (in_array($name, $this->machineInfo) && !empty($this->machine->gaming_user_id)) {
+                // 推送到机台频道
+                sendSocketMessage("machine-{$this->machine->id}", [
+                    'msg_type' => 'machine_field_update',
+                    'machine_id' => $this->machine->id,
+                    'field' => $name,
+                    'value' => $value,
+                    'info' => $info,
+                    'timestamp' => time(),
+                ]);
+
+                // 推送给当前玩家
+                sendSocketMessage("player-{$this->machine->gaming_user_id}", [
+                    'msg_type' => 'my_machine_field_update',
+                    'machine_id' => $this->machine->id,
+                    'field' => $name,
+                    'value' => $value,
+                    'timestamp' => time(),
+                ]);
+            }
+        } catch (Exception $e) {
+            Log::warning('推送字段更新失败', [
+                'machine_id' => $this->machine->id,
+                'field' => $name,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * 处理发送指令时的错误
+     * 特定指令失败时设置机台锁并发送异常通知
+     *
+     * @param string $cmd 指令代码
+     * @param Exception $e 异常对象
+     */
+    protected function handleSendCmdError(string $cmd, Exception $e): void
+    {
+        // 特定指令失败时设置机台锁
+        $lockCommands = [
+            self::OPEN_ANY_POINT,
+            self::OPEN_ONE,
+            self::OPEN_TEN,
+            self::WASH_ZERO,
+        ];
+
+        if (in_array($cmd, $lockCommands)) {
+            $this->has_lock = 1;
+            if (function_exists('sendMachineException')) {
+                sendMachineException(
+                    $this->machine,
+                    Notice::TYPE_MACHINE_LOCK,
+                    $this->machine->gaming_user_id
+                );
+            }
+        }
+
+        // 记录错误日志
+        $this->log->error('发送指令异常', [
+            'cmd' => $cmd,
+            'machine_code' => $this->machine->code,
+            'error' => $e->getMessage(),
+        ]);
     }
 
     /**
      * 钢珠消息处理
-     * @param string $message 消息
+     *
+     * @param string $message 消息内容
      * @return bool
      */
     public function jackPotCmd(string $message): bool
@@ -335,11 +403,12 @@ class Jackpot extends MachineServices implements BaseMachine
             $status1 = decodeStatus(substr($msg, 4, 2));
             $orgBbStatus = $this->bb_status;
             $orgRushStatus = $this->rush_status;
-            $this->bb_status = substr($status1, 7, 1); // 开奖状态
-            $this->rush_status = substr($status1, 6, 1); // rush确变状态
-            $this->handle_status = substr($status1, 4, 1); // 圖柄確認
-            $this->auto = substr($status1, 5, 1); // 自动状态
+            $this->bb_status = (int)substr($status1, 7, 1);
+            $this->rush_status = (int)substr($status1, 6, 1);
+            $this->handle_status = (int)substr($status1, 4, 1);
+            $this->auto = (int)substr($status1, 5, 1);
             $this->action_time = getMillisecond();
+
             $this->log->info('机器接收指令日志', [
                 'jackPot -> jackPotCmd',
                 [
@@ -353,157 +422,23 @@ class Jackpot extends MachineServices implements BaseMachine
                     'player_win_number' => $this->player_win_number,
                 ]
             ]);
-            // 开奖状态和rush确变状态只要一个为1进入开奖状态
-            if ($this->bb_status == 1 || $this->rush_status == 1) {
-                $this->reward_status = 1;
-                $this->last_play_time = time();
-            }
-            // 开奖状态和rush确变状态都为0并且当前状态为开奖中
-            if ($this->bb_status == 0 && $this->rush_status == 0) {
-                $rewardStatus = $this->reward_status;
-                $this->reward_status = 0;
-                if ($rewardStatus == 1) {
-                    if (!empty($this->machine->gamingPlayer)) {
-                        (new LotteryServices())->setMachine($this->machine)->setPlayer($this->machine->gamingPlayer)->fixedPotCheckLottery($this->score);
-                    }
-                    if ($this->score > 0 && !empty($this->machine->gaming_user_id)) {
-                        Client::send('play-activity', [
-                            'machine_id' => $this->machine->id,
-                            'player_id' => $this->machine->gaming_user_id,
-                            'point' => $this->score,
-                        ]);
-                    }
-                    // 开奖结束后需剔除其他观看中玩家
-                    sendSocketMessage('group-' . $this->machine->id, [
-                        'msg_type' => 'machine_reward_end',
-                        'machine_id' => $this->machine->id,
-                        'machine_code' => $this->machine->code,
-                        'gaming_user_id' => $this->machine->gaming_user_id,
-                    ]);
-                    $this->sendCmd(self::SCORE_TO_POINT, 0, 'player', $this->machine->gaming_user_id);
-                }
-            }
-            if ($orgBbStatus == 0 && $orgRushStatus == 0 && $this->bb_status == 1 && $this->rush_status == 1 && $this->now_turn > 0) {
-                $machineLotteryRecord = new MachineLotteryRecord();
-                $machineLotteryRecord->machine_id = $this->machine->id;
-                $machineLotteryRecord->player_id = $this->machine->gaming_user_id ?? 0;
-                $machineLotteryRecord->department_id = $this->machine->gamingPlayer->department_id ?? 0;
-                $machineLotteryRecord->draw_bet = $this->win_number;
-                $machineLotteryRecord->use_turn = $this->now_turn;
-                $machineLotteryRecord->save();
-                $this->now_turn = 0;
-            }
-            if (($orgBbStatus == 0 && $orgRushStatus == 1 && $this->bb_status == 0 && $this->rush_status == 0 && $this->now_turn > 0) || ($orgBbStatus == 1 && $this->bb_status == 0 && $this->rush_status == 1 && $this->now_turn > 0)) {
-                $this->now_turn = 0;
-            }
-            
+
+            // 开奖状态处理
+            $this->handleRewardStatus($orgBbStatus, $orgRushStatus);
+
+            // 开奖记录处理
+            $this->handleLotteryRecord($orgBbStatus, $orgRushStatus);
+
             $gamingUserId = $this->machine->gaming_user_id;
-            switch ($fun) {
-                case Jackpot::TURN_UP_ALL:
-                case Jackpot::TURN_TO_POINT:
-                case Jackpot::TURN_DOWN_ALL:
-                case Jackpot::POINT_TO_TURN:
-                case Jackpot::SCORE_TO_POINT:
-                case Jackpot::OPEN_ONE:
-                case Jackpot::OPEN_TEN:
-                case Jackpot::OPEN_ANY_POINT:
-                case Jackpot::WASH_ZERO:
-                case Jackpot::WASH_ZERO_REMAINDER:
-                case Jackpot::AUTO_UP_TURN:
-                case Jackpot::BB_RUSH:
-                $this->setActionVersion($fun);
-                    break;
-                case Jackpot::MACHINE_POINT:
-                    $this->point = $data;
-                    $this->setActionVersion($fun);
-                    break;
-                case Jackpot::CLEAR_LOG:
-                    $this->win_number = 0;
-                    $this->setActionVersion($fun);
-                    break;
-                case Jackpot::MACHINE_SCORE:
-                    $this->score = $data;
-                    if ($data > 0) {
-                        $this->reward_status = 1;
-                    }
-                    $this->setActionVersion($fun);
-                    break;
-                case Jackpot::MACHINE_TURN:
-                    $this->turn = $data;
-                    if ($data <= 0 && !empty($this->machine->gaming_user_id)) {
-                        Cache::delete('gift_cache_' . $this->machine->id . '_' . $this->machine->gaming_user_id);
-                    }
-                    $this->setActionVersion($fun);
-                    break;
-                case Jackpot::WIN_NUMBER:
-                    if ($this->win_number > 0 && $this->win_number > $data && $this->change_point_card_status == 0) {
-                        sendMachineException($this->machine, Notice::TYPE_MACHINE_WIN_NUMBER);
-                        if (!empty($gamingUserId)) {
-                            if ($this->auto == 1) {
-                                $this->sendCmd(self::AUTO_UP_TURN, 0, 'player', $gamingUserId, 1);
-                            }
-                        }
-                        $this->win_number = $data;
-                        return true;
-                    }
-                    if ($this->win_number > 0 && $this->win_number != $data && !empty($gamingUserId) && $this->change_point_card_status == 0) {
-                        $this->last_play_time = time();
-                        if ($this->reward_status == 0) {
-                            Client::send('play-keep-machine', [
-                                'change_amount' => abs($data - $this->win_number),
-                                'machine_id' => $this->machine->id,
-                                'player_id' => $gamingUserId,
-                            ]);
-                            Client::send('lottery-machine', [
-                                'num' => $data,
-                                'last_num' => $this->win_number,
-                                'machine_id' => $this->machine->id,
-                                'player_id' => $gamingUserId,
-                            ]);
-                        }
-                    }
-                    if (($this->rush_status == 0 && $this->bb_status == 0) || ($this->rush_status == 1 && $this->bb_status == 0)) {
-                        $nowTurn = $this->now_turn;
-                        $bet = $this->win_number;
-                        $this->now_turn = bcadd($nowTurn, bcsub($data, $bet, 2), 2);
-                        if (!empty($gamingUserId)) {
-                            $playerNumber = $this->player_win_number;
-                            $this->player_win_number = bcadd($playerNumber, bcsub($data, $bet, 2), 2);
-                        }
-                    }
-                    $this->win_number = $data;
-                    $this->change_point_card_status = 0;
-                    $this->setActionVersion($fun);
-                    break;
-                case Jackpot::READ_OPEN_POINT:
-                    $this->open_point = $data;
-                    $this->setActionVersion($fun);
-                    break;
-                case Jackpot::READ_WASH_POINT:
-                    $this->wash_point = $data;
-                    $this->setActionVersion($fun);
-                    break;
-                case Jackpot::PUSH:
-                    $pushStatus = substr($msg, 4, 2);
-                    if ($pushStatus == Jackpot::PUSH_STOP) {
-                        $this->push_auto = 0;
-                    }
-                    if ($pushStatus == Jackpot::PUSH_THREE) {
-                        $this->push_auto = 1;
-                    }
-                    $this->setActionVersion($fun);
-                    break;
-                case Jackpot::TESTING:
-                    $this->sendMachineNowStatusMessage($this->machine->id);
-                    break;
-                default:
-                    return false;
-            }
-        } catch (\Exception $e) {
-            $this->log->error('消息处理错误: ', [
+
+            // 处理指令
+            $this->handleCommand($fun, $data, $gamingUserId);
+
+        } catch (Exception $e) {
+            $this->log->error('消息处理错误', [
                 $e->getMessage(),
                 [
-                    'msg' => $msg,
+                    'msg' => $msg ?? '',
                     'action' => $fun ?? '',
                     'trace' => $e->getTraceAsString(),
                     'machineInfo' => $this->getMachineCache(),
@@ -516,320 +451,343 @@ class Jackpot extends MachineServices implements BaseMachine
     }
 
     /**
-     * @param string $cmd
-     * @param int $data
-     * @param string $source
-     * @param int $source_id
-     * @param int $isSystem
-     * @return true
-     * @throws Exception
-     * @throws PushException
+     * 处理开奖状态
+     *
+     * @param int $orgBbStatus 原始BB状态
+     * @param int $orgRushStatus 原始Rush状态
      */
-    public function sendCmd(
-        string $cmd,
-        int $data = 0,
-        string $source = 'player',
-        int $source_id = 0,
-        int $isSystem = 0
-    ): bool {
-        $uid = $this->machine->domain . ':' . $this->machine->port;
-        try {
-            if (!Gateway::isUidOnline($uid)) {
-                throw new Exception(trans('machine_has_offline', ['{code}' => $this->machine->code], 'message'));
-            }
-            switch ($cmd) {
-                case self::TESTING:
-                default:
-                    Gateway::sendToUid($uid, hex2bin($this->createCmd(self::PREFIX . $cmd, $data)));
-                    if ($source == 'admin') {
-                        sendSocketMessage('private-admin-1-' . $source_id, [
-                            'msg_type' => 'machine_action_result',
-                            'id' => $this->machine->id,
-                            'description' => $this->getDescription($cmd),
-                        ]);
-                    }
-                    break;
-                case self::PUSH . self::PUSH_STOP:
-                    Gateway::sendToUid($uid,
-                        hex2bin($this->createCmd(self::PREFIX . self::PUSH, $data, self::PUSH_STOP)));
-                    break;
-                case self::PUSH . self::PUSH_ONE:
-                    Gateway::sendToUid($uid,
-                        hex2bin($this->createCmd(self::PREFIX . self::PUSH, $data, self::PUSH_ONE)));
-                    break;
-                case self::PUSH . self::PUSH_TWO:
-                    Gateway::sendToUid($uid,
-                        hex2bin($this->createCmd(self::PREFIX . self::PUSH, $data, self::PUSH_TWO)));
-                    break;
-                case self::PUSH . self::PUSH_THREE:
-                    Gateway::sendToUid($uid,
-                        hex2bin($this->createCmd(self::PREFIX . self::PUSH, $data, self::PUSH_THREE)));
-                    break;
-                case self::REWARD_SWITCH . self::REWARD_SWITCH_OPT:
-                    Gateway::sendToUid($uid,
-                        hex2bin($this->createCmd(self::PREFIX . self::REWARD_SWITCH, $data, self::REWARD_SWITCH_OPT)));
-                    break;
-                case self::OPEN_ANY_POINT:
-                case self::OPEN_ONE:
-                case self::OPEN_TEN:
-                    $this->openPoint($uid, $cmd, $data, $source, $source_id);
-                    break;
-                case self::SCORE_TO_POINT:
-                    if ($this->reward_status == 1) {
-                        throw new Exception(trans('machine_reward_drawing', ['{code}' => $this->machine->code],
-                            'message'));
-                    }
-                    $this->machineAction($uid, $cmd, $source, $source_id);
-                    break;
-                case self::WASH_ZERO_REMAINDER:
-                case self::MACHINE_SCORE:
-                case self::MACHINE_POINT:
-                case self::MACHINE_TURN:
-                case self::WIN_NUMBER:
-                case self::TURN_DOWN_ALL:
-                case self::TURN_UP_ALL:
-                case self::POINT_TO_TURN:
-                case self::TURN_TO_POINT:
-                case self::WASH_ZERO:
-                case self::CLEAR_LOG:
-                    $this->machineAction($uid, $cmd, $source, $source_id);
-                    break;
-                case self::AUTO_UP_TURN:
-                    if ($this->reward_status == 1) {
-                        throw new Exception(trans('machine_reward_drawing', ['{code}' => $this->machine->code],
-                            'message'));
-                    }
-                    if ($this->score > 0) {
-                        throw new Exception(trans('machine_sore_exist',
-                            ['{code}' => $this->machine->code, '{score}' => $this->score], 'message'));
-                    }
-                    Gateway::sendToUid($uid, hex2bin($this->createCmd(self::PREFIX . $cmd, $data)));
-                    break;
-            }
-        } catch (Exception $e) {
-            if (in_array($cmd, [
-                    self::OPEN_ANY_POINT,
-                    self::OPEN_ONE,
-                    self::OPEN_TEN,
-                    self::WASH_ZERO
-            ])) {
-                $this->has_lock = 1;
-                sendMachineException($this->machine, Notice::TYPE_MACHINE_LOCK, $this->machine->gaming_user_id);
-            }
-            throw new Exception($e->getMessage());
-        }
-        // MongoDB 已移除，条件调用日志函数
-        if (function_exists('saveMachineOperationLog')) {
-            saveMachineOperationLog($this->machine, $this->machine->gamingPlayer, json_encode($this->getAllData()), $cmd, 1,
-                $isSystem, $data);
-        }
-
-        return true;
-    }
-
-    /**
-     * 创建cmd
-     * @param string $cmd 指令
-     * @param int $data 数据
-     * @param string $option 可选值
-     * @return string
-     * @throws Exception
-     */
-    private function createCmd(string $cmd, int $data = 0, string $option = '00'): string
+    private function handleRewardStatus(int $orgBbStatus, int $orgRushStatus): void
     {
-        $decodeData = jackpotEncodeData($data);
-        $cmd .= "{$option}00" . $decodeData;
-        $cmd .= jackpotEncodeDataXor55($data) . '000000000000'; // 异或位处理
-        $cmd .= crc8(hex2bin($cmd), 0x31, 0x00, 0x00, true, true, false);
-        return $cmd . 'DD';
+        // 开奖状态和rush确变状态只要一个为1进入开奖状态
+        if ($this->bb_status == 1 || $this->rush_status == 1) {
+            $this->reward_status = 1;
+            $this->last_play_time = time();
+        }
+
+        // 开奖状态和rush确变状态都为0并且当前状态为开奖中
+        if ($this->bb_status == 0 && $this->rush_status == 0) {
+            $rewardStatus = $this->reward_status;
+            $this->reward_status = 0;
+            if ($rewardStatus == 1) {
+                $this->handleRewardEnd();
+            }
+        }
     }
 
     /**
-     * 获取机台信息描述
-     * @param string $fun 操作指令
+     * 处理开奖结束
+     */
+    private function handleRewardEnd(): void
+    {
+        if (!empty($this->machine->gamingPlayer)) {
+            (new LotteryServices())
+                ->setMachine($this->machine)
+                ->setPlayer($this->machine->gamingPlayer)
+                ->fixedPotCheckLottery($this->score);
+        }
+
+        if ($this->score > 0 && !empty($this->machine->gaming_user_id)) {
+            Client::send('play-activity', [
+                'machine_id' => $this->machine->id,
+                'player_id' => $this->machine->gaming_user_id,
+                'point' => $this->score,
+            ]);
+        }
+
+        // 开奖结束后需剔除其他观看中玩家
+        if (function_exists('sendSocketMessage')) {
+            sendSocketMessage('group-' . $this->machine->id, [
+                'msg_type' => 'machine_reward_end',
+                'machine_id' => $this->machine->id,
+                'machine_code' => $this->machine->code,
+                'gaming_user_id' => $this->machine->gaming_user_id,
+            ]);
+        }
+
+        $this->sendCmd(self::SCORE_TO_POINT, 0, 'player', (int)$this->machine->gaming_user_id);
+    }
+
+    /**
+     * 处理开奖记录
+     *
+     * @param int $orgBbStatus 原始BB状态
+     * @param int $orgRushStatus 原始Rush状态
+     */
+    private function handleLotteryRecord(int $orgBbStatus, int $orgRushStatus): void
+    {
+        if ($orgBbStatus == 0 && $orgRushStatus == 0
+            && $this->bb_status == 1 && $this->rush_status == 1 && $this->now_turn > 0) {
+            $machineLotteryRecord = new MachineLotteryRecord();
+            $machineLotteryRecord->machine_id = $this->machine->id;
+            $machineLotteryRecord->player_id = $this->machine->gaming_user_id ?? 0;
+            $machineLotteryRecord->department_id = $this->machine->gamingPlayer->department_id ?? 0;
+            $machineLotteryRecord->draw_bet = $this->win_number;
+            $machineLotteryRecord->use_turn = $this->now_turn;
+            $machineLotteryRecord->save();
+            $this->now_turn = 0;
+        }
+
+        if (($orgBbStatus == 0 && $orgRushStatus == 1 && $this->bb_status == 0
+                && $this->rush_status == 0 && $this->now_turn > 0)
+            || ($orgBbStatus == 1 && $this->bb_status == 0 && $this->rush_status == 1 && $this->now_turn > 0)) {
+            $this->now_turn = 0;
+        }
+    }
+
+    /**
+     * 处理指令
+     *
+     * @param string $fun 指令代码
+     * @param int $data 数据
+     * @param int|null $gamingUserId 游戏中的玩家ID
+     */
+    private function handleCommand(string $fun, int $data, ?int $gamingUserId): void
+    {
+        switch ($fun) {
+            case self::TURN_UP_ALL:
+            case self::TURN_TO_POINT:
+            case self::TURN_DOWN_ALL:
+            case self::POINT_TO_TURN:
+            case self::SCORE_TO_POINT:
+            case self::OPEN_ONE:
+            case self::OPEN_TEN:
+            case self::OPEN_ANY_POINT:
+            case self::WASH_ZERO:
+            case self::WASH_ZERO_REMAINDER:
+            case self::AUTO_UP_TURN:
+            case self::BB_RUSH:
+                $this->setActionVersion($fun);
+                break;
+
+            case self::MACHINE_POINT:
+                $this->point = $data;
+                $this->setActionVersion($fun);
+                break;
+
+            case self::CLEAR_LOG:
+                $this->win_number = 0;
+                $this->setActionVersion($fun);
+                break;
+
+            case self::MACHINE_SCORE:
+                $this->score = $data;
+                if ($data > 0) {
+                    $this->reward_status = 1;
+                }
+                $this->setActionVersion($fun);
+                break;
+
+            case self::MACHINE_TURN:
+                $this->turn = $data;
+                if ($data <= 0 && !empty($gamingUserId)) {
+                    Cache::delete('gift_cache_' . $this->machine->id . '_' . $gamingUserId);
+                }
+                $this->setActionVersion($fun);
+                break;
+
+            case self::WIN_NUMBER:
+                $this->handleWinNumber($data, $gamingUserId);
+                break;
+
+            case self::READ_OPEN_POINT:
+                $this->open_point = $data;
+                $this->setActionVersion($fun);
+                break;
+
+            case self::READ_WASH_POINT:
+                $this->wash_point = $data;
+                $this->setActionVersion($fun);
+                break;
+
+            case self::PUSH:
+                $this->handlePushCommand(substr(strtoupper(bin2hex('')), 4, 2));
+                $this->setActionVersion($fun);
+                break;
+
+            case self::TESTING:
+                // 状态消息推送已迁移到 gk_work
+                break;
+
+            default:
+                // 不处理未知指令
+                break;
+        }
+    }
+
+    /**
+     * 处理中洞对奖次数
+     *
+     * @param int $data 数据
+     * @param int|null $gamingUserId 游戏中的玩家ID
+     */
+    private function handleWinNumber(int $data, ?int $gamingUserId): void
+    {
+        if ($this->win_number > 0 && $this->win_number > $data && $this->change_point_card_status == 0) {
+            if (function_exists('sendMachineException')) {
+                sendMachineException($this->machine, Notice::TYPE_MACHINE_WIN_NUMBER);
+            }
+            if (!empty($gamingUserId) && $this->auto == 1) {
+                $this->sendCmd(self::AUTO_UP_TURN, 0, 'player', $gamingUserId, 1);
+            }
+            $this->win_number = $data;
+            return;
+        }
+
+        if ($this->win_number > 0 && $this->win_number != $data
+            && !empty($gamingUserId) && $this->change_point_card_status == 0) {
+            $this->last_play_time = time();
+            if ($this->reward_status == 0) {
+                Client::send('play-keep-machine', [
+                    'change_amount' => abs($data - $this->win_number),
+                    'machine_id' => $this->machine->id,
+                    'player_id' => $gamingUserId,
+                ]);
+                Client::send('lottery-machine', [
+                    'num' => $data,
+                    'last_num' => $this->win_number,
+                    'machine_id' => $this->machine->id,
+                    'player_id' => $gamingUserId,
+                ]);
+            }
+        }
+
+        if (($this->rush_status == 0 && $this->bb_status == 0)
+            || ($this->rush_status == 1 && $this->bb_status == 0)) {
+            $nowTurn = $this->now_turn;
+            $bet = $this->win_number;
+            $this->now_turn = (int)bcadd((string)$nowTurn, bcsub((string)$data, (string)$bet, 2), 2);
+            if (!empty($gamingUserId)) {
+                $playerNumber = $this->player_win_number;
+                $this->player_win_number = (int)bcadd((string)$playerNumber, bcsub((string)$data, (string)$bet, 2), 2);
+            }
+        }
+
+        $this->win_number = $data;
+        $this->change_point_card_status = 0;
+        $this->setActionVersion(self::WIN_NUMBER);
+    }
+
+    /**
+     * 处理PUSH指令
+     *
+     * @param string $pushStatus PUSH状态
+     */
+    private function handlePushCommand(string $pushStatus): void
+    {
+        if ($pushStatus == self::PUSH_STOP) {
+            $this->push_auto = 0;
+        }
+        if ($pushStatus == self::PUSH_THREE) {
+            $this->push_auto = 1;
+        }
+    }
+
+    /**
+     * 设置操作版本号
+     *
+     * @param string $name 操作名称
+     * @return float
+     */
+    public function setActionVersion(string $name): float
+    {
+        $version = getMillisecond();
+        Cache::set($this->cacheDataKey . '_action_' . $name, $version, 60 * 60);
+        return $version;
+    }
+
+    /**
+     * 获取操作版本号
+     *
+     * @param string $name 操作名称
+     * @return float
+     */
+    public function getActionVersion(string $name): float
+    {
+        return (float)Cache::get($this->cacheDataKey . '_action_' . $name, 0);
+    }
+
+    /**
+     * 获取机台操作描述
+     *
+     * @param string $fun 操作指令（空则返回完整状态）
      * @return string
      */
     public function getDescription(string $fun = ''): string
     {
         locale(Str::replace('-', '_', $this->lang));
-        $description = '';
-        $autoStatus = $this->auto == 1 ? trans('machine_status_yes', [], 'machine_action') : trans('machine_status_no',
-            [], 'machine_action');
-        $lotteryStatus = $this->reward_status == 1 ? trans('machine_status_yes', [],
-            'machine_action') : trans('machine_status_no', [], 'machine_action');
-        $bbStatus = $this->bb_status == 1 ? trans('machine_status_yes', [],
-            'machine_action') : trans('machine_status_no', [], 'machine_action');
-        $rushStatus = $this->rush_status == 1 ? trans('machine_status_yes', [],
-            'machine_action') : trans('machine_status_no', [], 'machine_action');
+
         if (empty($fun)) {
-            $nowTurn = $this->now_turn;
-            $description .= trans('machine_auto_status', [], 'machine_action') . $autoStatus . PHP_EOL;
-            $description .= trans('machine_lottery_status', [], 'machine_action') . $lotteryStatus . PHP_EOL;
-            $description .= trans('machine_bb_status', [], 'machine_action') . $bbStatus . PHP_EOL;
-            $description .= trans('machine_rush_status', [], 'machine_action') . $rushStatus . PHP_EOL;
-            $description .= trans('machine_point', [], 'machine_action') . ($this->point ?? 0) . PHP_EOL;
-            $description .= trans('machine_score', [], 'machine_action') . ($this->score ?? 0) . PHP_EOL;
-            $description .= trans('machine_turn', [], 'machine_action') . ($this->turn ?? 0) . PHP_EOL;
-            $description .= trans('now_turn', [], 'machine_action') . ($nowTurn ?? 0) . PHP_EOL;
-            $description .= trans('machine_open_point', [], 'machine_action') . ($this->open_point ?? 0) . PHP_EOL;
-            $description .= trans('machine_wash_point', [], 'machine_action') . ($this->wash_point ?? 0);
-        } else {
-            $description .= trans('function.' . GameType::TYPE_STEEL_BALL . '_' . Machine::CONTROL_TYPE_SONG . '.' . $fun,
-                [], 'machine_action');
-            switch ($fun) {
-                case Jackpot::MACHINE_POINT:
-                    $description .= ': ' . $this->point;
-                    break;
-                case Jackpot::MACHINE_SCORE:
-                    $description .= ': ' . $this->score;
-                    break;
-                case Jackpot::MACHINE_TURN:
-                    $description .= ': ' . $this->turn;
-                    break;
-                case Jackpot::WIN_NUMBER:
-                    $description .= ': ' . $this->win_number;
-                    break;
-                case Jackpot::READ_OPEN_POINT:
-                    $description .= ': ' . $this->open_point;
-                    break;
-                case Jackpot::READ_WASH_POINT:
-                    $description .= ': ' . $this->wash_point;
-                    break;
-            }
+            return $this->getFullStatusDescription();
+        }
+
+        return $this->getCommandDescription($fun);
+    }
+
+    /**
+     * 获取完整状态描述
+     *
+     * @return string
+     */
+    private function getFullStatusDescription(): string
+    {
+        $lines = [];
+        $nowTurn = $this->now_turn;
+
+        $lines[] = trans('machine_auto_status', [], 'machine_action') . $this->formatBoolStatus($this->auto);
+        $lines[] = trans('machine_lottery_status', [], 'machine_action') . $this->formatBoolStatus($this->reward_status);
+        $lines[] = trans('machine_bb_status', [], 'machine_action') . $this->formatBoolStatus($this->bb_status);
+        $lines[] = trans('machine_rush_status', [], 'machine_action') . $this->formatBoolStatus($this->rush_status);
+        $lines[] = trans('machine_point', [], 'machine_action') . ($this->point ?? 0);
+        $lines[] = trans('machine_score', [], 'machine_action') . ($this->score ?? 0);
+        $lines[] = trans('machine_turn', [], 'machine_action') . ($this->turn ?? 0);
+        $lines[] = trans('now_turn', [], 'machine_action') . ($nowTurn ?? 0);
+        $lines[] = trans('machine_open_point', [], 'machine_action') . ($this->open_point ?? 0);
+        $lines[] = trans('machine_wash_point', [], 'machine_action') . ($this->wash_point ?? 0);
+
+        return implode(PHP_EOL, $lines);
+    }
+
+    /**
+     * 获取指令描述
+     *
+     * @param string $fun 指令代码
+     * @return string
+     */
+    private function getCommandDescription(string $fun): string
+    {
+        $description = trans(
+            'function.' . GameType::TYPE_STEEL_BALL . '_' . Machine::CONTROL_TYPE_SONG . '.' . $fun,
+            [],
+            'machine_action'
+        );
+
+        // 根据指令类型附加数据
+        $valueMap = [
+            self::MACHINE_POINT => $this->point,
+            self::MACHINE_SCORE => $this->score,
+            self::MACHINE_TURN => $this->turn,
+            self::WIN_NUMBER => $this->win_number,
+            self::READ_OPEN_POINT => $this->open_point,
+            self::READ_WASH_POINT => $this->wash_point,
+        ];
+
+        if (isset($valueMap[$fun])) {
+            $description .= ': ' . $valueMap[$fun];
         }
 
         return $description;
     }
 
     /**
-     * 开分
-     * @param string $uid
-     * @param string $cmd
-     * @param int $data
-     * @param string $source
-     * @param int $source_id
-     * @return void
-     * @throws Exception
-     * @throws PushException
+     * 格式化布尔状态为翻译文本
+     *
+     * @param int|null $value 状态值
+     * @return string
      */
-    private function openPoint(
-        string $uid,
-        string $cmd,
-        int $data = 0,
-        string $source = 'player',
-        int $source_id = 0
-    ): void {
-        try {
-            $beforePoint = $this->point;
-            Gateway::sendToUid($uid, hex2bin($this->createCmd(self::PREFIX . $cmd, $data)));
-            Gateway::sendToUid($uid, hex2bin($this->createCmd(self::PREFIX . self::MACHINE_POINT)));
-            $beforeActionTime = $this->action_time;
-            $handleDuration = 0;
-            $sleep = 50000; // 5毫秒取一次值
-            while (true) {
-                $point = $this->point;
-                $actionTime = $this->action_time;
-                if ($actionTime > $beforeActionTime && $beforePoint < $point) {
-                    if ($source == 'admin') {
-                        sendSocketMessage('private-admin-1-' . $source_id, [
-                            'msg_type' => 'machine_action_result',
-                            'id' => $this->machine->id,
-                            'description' => $this->getDescription(),
-                        ]);
-                    }
-                    return;
-                }
-                if ($handleDuration >= $this->expirationTime) { // 只跑1.5秒钟
-                    $this->log->error('指令超时异常', ['jackpot -> openPoint', [$this->machine->code]]);
-                    throw new Exception(trans('machine_action_fail', [], 'message'));
-                }
-                usleep($sleep);
-                $handleDuration += $sleep;
-            }
-        } catch (Exception $e) {
-            throw new Exception($e->getMessage());
-        }
-    }
-
-    /**
-     * 读取当前分数
-     * @param string $uid
-     * @param string $cmd
-     * @param string $source
-     * @param int $source_id
-     * @param int $attempts
-     * @return void
-     * @throws Exception
-     * @throws PushException
-     */
-    private function machineAction(
-        string $uid,
-        string $cmd,
-        string $source = 'player',
-        int $source_id = 0,
-        int $attempts = 0
-    ): void {
-        $maxRetries = 8;
-        $expirationTime = 1000000;
-        try {
-            $beforeActionTime = $this->setActionVersion($cmd);
-            if ($cmd == Jackpot::CLEAR_LOG) {
-                Gateway::sendToUid($uid, hex2bin($this->createCmd(self::PREFIX . $cmd, 0, '09')));
-            } else {
-                Gateway::sendToUid($uid, hex2bin($this->createCmd(self::PREFIX . $cmd)));
-            }
-            $handleDuration = 0;
-            $sleep = 5000; // 5毫秒取一次值
-            while (true) {
-                $actionTime = $this->getActionVersion($cmd);
-                if ($actionTime > $beforeActionTime) {
-                    if ($source == 'admin') {
-                        sendSocketMessage('private-admin-1-' . $source_id, [
-                            'msg_type' => 'machine_action_result',
-                            'id' => $this->machine->id,
-                            'description' => $this->getDescription($cmd),
-                        ]);
-                    }
-                    return;
-                }
-                if ($handleDuration >= $expirationTime) {
-                    throw new Exception(trans('machine_action_fail', [], 'message'));
-                }
-                usleep($sleep);
-                $handleDuration += $sleep;
-            }
-        } catch (Exception $e) {
-            $attempts++;
-            if ($attempts >= $maxRetries) {
-                $this->log->error('指令超时异常', ['jackpot -> machineAction -> ' . $cmd, [$this->machine->code]]);
-                throw new Exception(trans('machine_action_fail', [], 'message'));
-            }
-            usleep(50000);
-            $this->machineAction($uid, $cmd, $source, $source_id, $attempts);
-        }
-    }
-
-    /**
-     * 设置操作版本号
-     * @param $name
-     * @return float
-     */
-    public function setActionVersion($name): float
+    private function formatBoolStatus(?int $value): string
     {
-        $version = getMillisecond();
-
-        Cache::set($this->cacheDataKey . '_' . 'action_' . $name, $version, 60 * 60);
-
-        return $version;
-    }
-
-    /**
-     * 获取操作版本号
-     * @param $name
-     * @return float
-     */
-    public function getActionVersion($name): float
-    {
-        return (float)Cache::get($this->cacheDataKey . '_' . 'action_' . $name);
+        return $value == 1
+            ? trans('machine_status_yes', [], 'machine_action')
+            : trans('machine_status_no', [], 'machine_action');
     }
 }
