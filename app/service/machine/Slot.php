@@ -64,21 +64,48 @@ class Slot extends AbstractMachineService
     // 操作指令 - 开分/洗分（使用中）
     public const OPEN_ONE = '41';                              // 单次开分
     public const OPEN_TEN = '42';                              // 十次开分
+    public const OPEN_FIVE = '49';                             // 开分×5
     public const OPEN_ANY_POINT = '4A';                        // 任意分数开分
     public const WASH_ZERO = '43';                             // 洗分清零
+    public const WASH_POINT = '44';                            // 洗分
     public const ALL_DOWN = '47';                              // 全部下分
+    public const MOVE_POINT_ON = '45';                         // 移分 长ON
     public const MOVE_POINT_OFF = '46';                        // 关闭移分（使用中）
 
     // 操作指令 - 状态控制
     public const REWARD_SWITCH = '2D';                         // 奖励开关
     public const REWARD_SWITCH_OPT = '64';                     // 奖励开关选项
 
+    // 输出控制指令
+    public const OUTPUT = '4B';                                // 输出控制前缀
+    public const ALL_OFF = '00';                               // 全OFF
+    public const U1_ON = '01';                                 // U1 ON
+    public const U2_ON = '02';                                 // U2 ON
+    public const U3_ON = '03';                                 // U3 ON
+    public const U4_ON = '04';                                 // U4 ON
+    public const U5_ON = '05';                                 // U5 ON
+    public const U6_ON = '06';                                 // U6 ON
+    public const U7_ON = '07';                                 // U7 ON
+    public const U8_ON = '08';                                 // U8 ON
+    public const U1_PULSE = '21';                              // U1 PULSE
+    public const U2_PULSE = '22';                              // U2 PULSE
+    public const U3_PULSE = '23';                              // U3 PULSE
+    public const U4_PULSE = '24';                              // U4 PULSE
+    public const U5_PULSE = '25';                              // U5 PULSE
+    public const U6_PULSE = '26';                              // U6 PULSE
+    public const U7_PULSE = '27';                              // U7 PULSE
+    public const U8_PULSE = '28';                              // U8 PULSE
+
     // 查询指令 - 读取机台状态（使用中）
+    public const OPEN_TESTING = '20';                          // 开分卡测试
     public const READ_SCORE = '21';                            // 读取当前得分
     public const READ_CREDIT2 = '22';                          // 读取信用2
     public const READ_BET = '23';                              // 读取压分
     public const READ_WIN = '24';                              // 读取总得分
+    public const READ_BB = '25';                               // 读取BB
     public const READ_RB = '26';                               // 读取RB
+    public const OPEN_TABLE = '27';                            // 读取开分表
+    public const WASH_TABLE = '28';                            // 读取洗分表
 
     // 自动卡指令 - 控制老虎机自动游戏（使用中）
     public const OUT_ON = 'AA5708000001150D';                  // 开启出分
@@ -89,6 +116,7 @@ class Slot extends AbstractMachineService
     public const STOP_TWO = 'AA5708000006960D';                // 停止转轴2（使用中）
     public const STOP_THREE = 'AA5708000007C80D';              // 停止转轴3（使用中）
     public const TESTING = 'AA57080000004B0D';                 // 测试/心跳
+    public const GET_AUTO_STATUS = 'AA570800000A5D0D';         // 获取自动状态
 
     /**
      * 初始化Redis缓存键名数组
