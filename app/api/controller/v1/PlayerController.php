@@ -2234,9 +2234,9 @@ class PlayerController
                 'push_ip',
                 'media_ip'
             ])->all();
+            $machineInfo['id'] = $item->id;
             $machineInfo['machine_media'] = !empty($machineMedia) ? array_values($machineMedia) : [];
             $machineInfo['online_status'] = 'offline';
-            $machineInfo['id'] = $item->id;
             $machineInfo['type'] = $item->type;
             $machineInfo['cate_id'] = $item->cate_id;
             $machineInfo['code'] = $item->code;

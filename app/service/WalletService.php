@@ -25,9 +25,10 @@ class WalletService
 
     /**
      * 缓存过期时间（秒）
-     * ⚠️ 已废弃：余额缓存现在永不过期（Redis as Single Source of Truth）
+     * ⚠️ 注意：余额缓存永不过期（Redis as Single Source of Truth）
+     * 此值仅用于兼容 Lua 脚本参数，实际上 Lua 脚本会忽略此参数
      */
-    // private const CACHE_TTL = 5184000; // 60天 (60 * 24 * 3600)
+    private const CACHE_TTL = 0; // 0 表示永不过期
 
     /**
      * 获取玩家余额（带 Redis 缓存）

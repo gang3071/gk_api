@@ -85,7 +85,7 @@ class AutoShiftService
 
             DB::commit();
 
-            \Log::info('保存自动交班配置成功', [
+            Log::info('保存自动交班配置成功', [
                 'department_id' => $data['department_id'],
                 'bind_admin_user_id' => $data['bind_admin_user_id'],
                 'is_enabled' => $config->is_enabled,
@@ -96,7 +96,7 @@ class AutoShiftService
 
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('保存自动交班配置失败', [
+            Log::error('保存自动交班配置失败', [
                 'data' => $data,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -264,7 +264,7 @@ class AutoShiftService
 
             DB::commit();
 
-            \Log::info('自动交班成功', [
+            Log::info('自动交班成功', [
                 'config_id' => $config->id,
                 'shift_record_id' => $shiftRecord->id,
                 'time_range' => $startTime->toDateTimeString() . ' ~ ' . $endTime->toDateTimeString(),
@@ -311,10 +311,10 @@ class AutoShiftService
                 $log->execution_duration = (int)$duration;
                 $log->save();
             } catch (\Exception $logError) {
-                \Log::error('记录失败日志时出错', ['error' => $logError->getMessage()]);
+                Log::error('记录失败日志时出错', ['error' => $logError->getMessage()]);
             }
 
-            \Log::error('自动交班失败', [
+            Log::error('自动交班失败', [
                 'config_id' => $config->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -441,7 +441,7 @@ class AutoShiftService
             // 发送推送
             $result = $api->trigger($channel, $event, $message);
 
-            \Log::info('发送自动交班通知', [
+            Log::info('发送自动交班通知', [
                 'channel' => $channel,
                 'event' => $event,
                 'shift_name' => $shiftName,
@@ -450,7 +450,7 @@ class AutoShiftService
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('发送自动交班通知失败', [
+            Log::error('发送自动交班通知失败', [
                 'config_id' => $config->id,
                 'error' => $e->getMessage(),
             ]);
