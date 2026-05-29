@@ -2,7 +2,6 @@
 
 namespace app\service\machine;
 
-use app\model\GameType;
 use Exception;
 use Illuminate\Http\Client\RequestException;
 use support\Log;
@@ -255,15 +254,12 @@ class MachineClient
     /**
      * 检查机台是否在线
      *
-     * 在线状态判断规则：
-     * - Slot老虎机 (type=1): 需要 main_online=true AND auto_online=true (两个TCP连接都在线)
-     * - 钢珠机 (type=2): 只需要 main_online=true
-     *
+     * 在线状态由 gk_work 计算并返回
      * 注意：未来可优化为从 Redis 读取在线状态（需要 gk_work 同步到 Redis）
      *
      * @param int $machineId 机台ID
      * @param string $lang 语言
-     * @return array 返回格式: ['success' => bool, 'data' => ['online' => bool, 'main_online' => bool, 'auto_online' => bool|null], 'message' => string]
+     * @return array 返回格式: ['success' => bool, 'data' => ['online' => bool], 'message' => string]
      * @throws Exception
      */
     public function checkOnline(int $machineId, string $lang = 'zh_TW'): array
@@ -298,39 +294,16 @@ class MachineClient
             ]);
 
             if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
-                $data = $body['data'] ?? [];
-
-                // 计算综合在线状态
-                // Slot老虎机：需要 main 和 auto 两个连接都在线
-                // 钢珠机：只需要 main 连接在线
-                $mainOnline = $data['main_online'] ?? false;
-                $autoOnline = $data['auto_online'] ?? null;
-                $type = $data['type'] ?? null;
-
-                if ($type === GameType::TYPE_SLOT) {
-                    // Slot 需要两个连接都在线
-                    $online = $mainOnline && $autoOnline;
-                } else {
-                    // 钢珠机只需要 main 在线
-                    $online = $mainOnline;
-                }
-
                 return [
                     'success' => true,
-                    'data' => [
-                        'online' => $online,
-                        'main_online' => $mainOnline,
-                        'auto_online' => $autoOnline,
-                        'type' => $type,
-                        'control_type' => $data['control_type'] ?? null,
-                    ],
+                    'data' => $body['data'] ?? [],
                     'message' => $body['msg'] ?? 'success',
                 ];
             }
 
             return [
                 'success' => false,
-                'data' => ['online' => false, 'main_online' => false, 'auto_online' => null],
+                'data' => ['online' => false],
                 'message' => $body['msg'] ?? 'Unknown error',
             ];
 
@@ -351,9 +324,7 @@ class MachineClient
     /**
      * 批量检查机台在线状态
      *
-     * 在线状态判断规则：
-     * - Slot老虎机 (type=1): 需要 main_online=true AND auto_online=true (两个TCP连接都在线)
-     * - 钢珠机 (type=2): 只需要 main_online=true
+     * 在线状态由 gk_work 计算并返回
      *
      * @param array $machineIds 机台ID数组
      * @param string $lang 语言
@@ -395,26 +366,17 @@ class MachineClient
             if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
                 $rawData = $body['data'] ?? [];
 
-                // 处理返回数据，根据机型计算在线状态
+                // 处理返回数据格式，转换为 [机台ID => 状态] 格式
                 $processedData = [];
-                foreach ($rawData as $machineId => $status) {
-                    if (is_array($status)) {
-                        $mainOnline = $status['main_online'] ?? false;
-                        $autoOnline = $status['auto_online'] ?? null;
-                        $type = $status['type'] ?? null;
-
-                        if ($type === GameType::TYPE_SLOT) {
-                            // Slot 需要两个连接都在线
-                            $online = $mainOnline && $autoOnline;
-                        } else {
-                            // 钢珠机只需要 main 在线
-                            $online = $mainOnline;
-                        }
-
+                foreach ($rawData as $item) {
+                    if (is_array($item) && isset($item['machine_id'])) {
+                        // 新格式：包含 machine_id 的数组
+                        $machineId = $item['machine_id'];
+                        $online = !empty($item['online']);  // 直接使用 gk_work 计算的 online 字段
                         $processedData[$machineId] = $online ? 'online' : 'offline';
-                    } else {
+                    } elseif (is_string($item)) {
                         // 兼容旧格式：直接返回 online/offline 字符串
-                        $processedData[$machineId] = $status;
+                        $processedData[$item] = $item;
                     }
                 }
 
