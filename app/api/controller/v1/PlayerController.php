@@ -2234,9 +2234,11 @@ class PlayerController
                 'push_ip',
                 'media_ip'
             ])->all();
+
+            // 初始化机台信息数组
+            $machineInfo = [];
             $machineInfo['id'] = $item->id;
             $machineInfo['machine_media'] = !empty($machineMedia) ? array_values($machineMedia) : [];
-            $machineInfo['online_status'] = 'offline';
             $machineInfo['type'] = $item->type;
             $machineInfo['cate_id'] = $item->cate_id;
             $machineInfo['code'] = $item->code;

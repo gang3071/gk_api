@@ -9,6 +9,7 @@ use app\model\StoreAutoShiftConfig;
 use app\model\StoreAutoShiftLog;
 use Carbon\Carbon;
 use support\Db;
+use support\Log;
 use Webman\Push\Api;
 
 /**
@@ -172,6 +173,7 @@ class AutoShiftService
             DB::beginTransaction();
 
             // 1. 锁定配置记录（防止并发执行）
+            /** @var StoreAutoShiftConfig|null $config */
             $config = StoreAutoShiftConfig::query()
                 ->where('id', $config->id)
                 ->lockForUpdate()
