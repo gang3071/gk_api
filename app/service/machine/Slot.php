@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace app\service\machine;
 
-use app\model\GameType;
-use app\model\Machine;
 use app\model\Notice;
 use Exception;
-use Illuminate\Support\Str;
 use Psr\Log\LoggerInterface;
 use support\Log;
 
 /**
- * 老虎机服务类
+ * Slot 老虎机服务类（MEI 协议）
+ *
+ * 职责：
+ * - 从 Redis 读取机台状态
+ * - 通过 HTTP 向 gk_work 发送机台指令
+ * - 基于 Redis 状态变化进行实时推送
+ *
+ * 注意：TCP 连接和消息处理已迁移到 gk_work 项目
  *
  * @property int $auto 自动状态
  * @property int $move_point 移分状态
@@ -48,82 +52,47 @@ use support\Log;
  * @property int $now_turn 当前转数
  * @property int $has_lock 机台锁
  */
-class SlotOptimized extends AbstractMachineService
+class Slot extends AbstractMachineService
 {
-    // ==================== 指令常量定义 ====================
+    // ==================== 机台指令常量 ====================
+    // 注意：这些常量定义了MEI协议的老虎机指令代码，通过gk_work转发给机台硬件
+    //      实际使用场景见：app/functions.php 和各个Controller
 
-    /** 指令前缀 */
-    public const PREFIX = 'A2';
+    // 通用指令
+    public const ALL = 'all';                                  // 全部数据
 
-    // 基础指令
-    public const ALL = 'all';
-    public const OPEN_ONE = '41';
-    public const OPEN_TEN = '42';
-    public const WASH_ZERO = '43';
-    public const WASH_POINT = '44';
-    public const MOVE_POINT_ON = '45';
-    public const MOVE_POINT_OFF = '46';
-    public const ALL_DOWN = '47';
-    public const OPEN_FIVE = '49';
-    public const OPEN_ANY_POINT = '4A';
-    public const REWARD_SWITCH = '2D';
-    public const REWARD_SWITCH_OPT = '64';
-    public const MACHINE_BUSY = '1F';
+    // 操作指令 - 开分/洗分（使用中）
+    public const OPEN_ONE = '41';                              // 单次开分
+    public const OPEN_TEN = '42';                              // 十次开分
+    public const OPEN_ANY_POINT = '4A';                        // 任意分数开分
+    public const WASH_ZERO = '43';                             // 洗分清零
+    public const ALL_DOWN = '47';                              // 全部下分
+    public const MOVE_POINT_OFF = '46';                        // 关闭移分（使用中）
 
-    // 输出控制
-    public const OUTPUT = '4B';
-    public const ALL_OFF = '00';
-    public const U1_ON = '01';
-    public const U2_ON = '02';
-    public const U3_ON = '03';
-    public const U4_ON = '04';
-    public const U5_ON = '05';
-    public const U6_ON = '06';
-    public const U7_ON = '07';
-    public const U8_ON = '08';
-    public const U1_PULSE = '21';
-    public const U2_PULSE = '22';
-    public const U3_PULSE = '23';
-    public const U4_PULSE = '24';
-    public const U5_PULSE = '25';
-    public const U6_PULSE = '26';
-    public const U7_PULSE = '27';
-    public const U8_PULSE = '28';
+    // 操作指令 - 状态控制
+    public const REWARD_SWITCH = '2D';                         // 奖励开关
+    public const REWARD_SWITCH_OPT = '64';                     // 奖励开关选项
 
-    // 读取指令
-    public const OPEN_TESTING = '20';
-    public const READ_SCORE = '21';
-    public const READ_CREDIT2 = '22';
-    public const READ_BET = '23';
-    public const READ_WIN = '24';
-    public const READ_BB = '25';
-    public const READ_RB = '26';
-    public const OPEN_TABLE = '27';
-    public const WASH_TABLE = '28';
-    public const INSERT_COIN_TABLE = '29';
-    public const OUT_COIN_TABLE = '2A';
-    public const ALL_UP = '4C';
+    // 查询指令 - 读取机台状态（使用中）
+    public const READ_SCORE = '21';                            // 读取当前得分
+    public const READ_CREDIT2 = '22';                          // 读取信用2
+    public const READ_BET = '23';                              // 读取压分
+    public const READ_WIN = '24';                              // 读取总得分
+    public const READ_RB = '26';                               // 读取RB
 
-    // 自动卡指令
-    public const OUT_ON = 'AA5708000001150D';
-    public const OUT_OFF = 'AA5708000002F70D';
-    public const PRESSURE = 'AA5708000003A90D';
-    public const START = 'AA57080000042A0D';
-    public const STOP_ONE = 'AA5708000005740D';
-    public const STOP_TWO = 'AA5708000006960D';
-    public const STOP_THREE = 'AA5708000007C80D';
-    public const TESTING = 'AA57080000004B0D';
-    public const GET_AUTO_STATUS = 'AA52082000000D0D';
-    public const AUTO_START = 'AA5208200081DF0D';
-    public const AUTO_STOP = 'AA5208200080810D';
-    public const AUTO = 'AA520820';
-
-    // 指令类型
-    public const TYPE_OPEN_CARD = 1;
-    public const TYPE_OUT_CARD = 2;
+    // 自动卡指令 - 控制老虎机自动游戏（使用中）
+    public const OUT_ON = 'AA5708000001150D';                  // 开启出分
+    public const OUT_OFF = 'AA5708000002F70D';                 // 关闭出分（使用中）
+    public const PRESSURE = 'AA5708000003A90D';                // 压分
+    public const START = 'AA57080000042A0D';                   // 开始游戏
+    public const STOP_ONE = 'AA5708000005740D';                // 停止转轴1（使用中）
+    public const STOP_TWO = 'AA5708000006960D';                // 停止转轴2（使用中）
+    public const STOP_THREE = 'AA5708000007C80D';              // 停止转轴3（使用中）
+    public const TESTING = 'AA57080000004B0D';                 // 测试/心跳
 
     /**
-     * 初始化缓存 Key 数组
+     * 初始化Redis缓存键名数组
+     * 定义需要从Redis读取/写入的所有老虎机状态字段
      */
     protected function initializeCacheKeys(): void
     {
@@ -165,6 +134,7 @@ class SlotOptimized extends AbstractMachineService
 
     /**
      * 初始化机台信息字段列表
+     * 定义需要通过WebSocket实时推送给前端的字段
      */
     protected function initializeMachineInfo(): void
     {
@@ -183,9 +153,9 @@ class SlotOptimized extends AbstractMachineService
     }
 
     /**
-     * 初始化日志实例
+     * 初始化日志实例 - 使用专用的slot_machine日志通道
      *
-     * @return LoggerInterface
+     * @return LoggerInterface 日志记录器实例
      */
     protected function initializeLogger(): LoggerInterface
     {
@@ -226,96 +196,5 @@ class SlotOptimized extends AbstractMachineService
             'machine_code' => $this->machine->code,
             'error' => $e->getMessage(),
         ]);
-    }
-
-    /**
-     * 获取机台操作描述
-     *
-     * @param string $cmd 操作指令（空则返回完整状态）
-     * @return string
-     */
-    public function getDescription(string $cmd = ''): string
-    {
-        locale(Str::replace('-', '_', $this->lang));
-
-        if (empty($cmd)) {
-            return $this->getFullStatusDescription();
-        }
-
-        return $this->getCommandDescription($cmd);
-    }
-
-    /**
-     * 获取完整状态描述
-     *
-     * @return string
-     */
-    private function getFullStatusDescription(): string
-    {
-        $lines = [];
-        $nowTurn = $this->now_turn;
-
-        $lines[] = trans('machine_auto_status', [], 'machine_action') . $this->formatBoolStatus($this->auto);
-        $lines[] = trans('machine_bb_status', [], 'machine_action') . $this->formatBoolStatus($this->bb_status);
-        $lines[] = trans('machine_rb_status', [], 'machine_action') . $this->formatBoolStatus($this->rb_status);
-        $lines[] = trans('machine_has_lock', [], 'machine_action') . $this->formatBoolStatus($this->has_lock);
-        $lines[] = trans('machine_move_point_status', [], 'machine_action') . $this->formatBoolStatus($this->move_point);
-        $lines[] = trans('machine_lottery_status', [], 'machine_action') . $this->formatBoolStatus($this->reward_status);
-        $lines[] = trans('machine_point', [], 'machine_action') . ($this->point ?? 0);
-        $lines[] = trans('machine_score', [], 'machine_action') . ($this->score ?? 0);
-        $lines[] = trans('machine_bet', [], 'machine_action') . ($this->bet ?? 0);
-        $lines[] = trans('machine_win', [], 'machine_action') . ($this->win ?? 0);
-        $lines[] = trans('machine_bb', [], 'machine_action') . ($this->bb ?? 0);
-        $lines[] = trans('machine_rb', [], 'machine_action') . ($this->rb ?? 0);
-        $lines[] = trans('now_turn', [], 'machine_action') . ($nowTurn > 0 ? ceil($nowTurn / 3) : 0);
-        $lines[] = trans('machine_open_point', [], 'machine_action') . ($this->open_point ?? 0);
-        $lines[] = trans('machine_wash_point', [], 'machine_action') . ($this->wash_point ?? 0);
-
-        return implode(PHP_EOL, $lines);
-    }
-
-    /**
-     * 获取指令描述
-     *
-     * @param string $cmd 指令代码
-     * @return string
-     */
-    private function getCommandDescription(string $cmd): string
-    {
-        $description = trans(
-            'function.' . GameType::TYPE_SLOT . '_' . Machine::CONTROL_TYPE_MEI . '.' . $cmd,
-            [],
-            'machine_action'
-        );
-
-        // 根据指令类型附加数据
-        $valueMap = [
-            self::READ_SCORE => $this->point,
-            self::READ_CREDIT2 => $this->score,
-            self::READ_BET => $this->bet,
-            self::READ_WIN => $this->win,
-            self::READ_RB => $this->rb,
-            self::OPEN_TABLE => $this->open_point,
-            self::WASH_TABLE => $this->wash_point,
-        ];
-
-        if (isset($valueMap[$cmd])) {
-            $description .= ': ' . $valueMap[$cmd];
-        }
-
-        return $description;
-    }
-
-    /**
-     * 格式化布尔状态为翻译文本
-     *
-     * @param int|null $value 状态值
-     * @return string
-     */
-    private function formatBoolStatus(?int $value): string
-    {
-        return $value == 1
-            ? trans('machine_status_yes', [], 'machine_action')
-            : trans('machine_status_no', [], 'machine_action');
     }
 }

@@ -98,7 +98,7 @@ class WalletService
      */
     private static function isCacheEnabled(): bool
     {
-        return env('WALLET_CACHE_ENABLED', true);
+        return config('services.wallet.cache_enabled', true);
     }
 
     /**

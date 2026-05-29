@@ -38,8 +38,8 @@ use app\model\SystemSetting;
 use app\service\ActivityServices;
 use app\service\FishServices;
 use app\service\LotteryServices;
+use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
-use app\service\machine\Slot;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use Illuminate\Database\Eloquent\Builder;
@@ -610,13 +610,31 @@ function machineOpenAny(
     ?MachineCategoryGiveRule $machineCategoryGiveRule
 ): bool
 {
+    // 声明变量，避免编辑器报未定义错误
+    $openScore = 0;
+    $gameRecord = null;
+    $playerGameLog = null;
     $orgTurn = 0;
+    $preClearCommands = [];
+    $lockAcquired = false;
+
     // 增加业务锁
     $actionLockerKey = 'machine_open_lock' . $machine->id;
     $lock = Locker::lock($actionLockerKey, 8, true);
-    if (!$lock->acquire()) {
-        throw new Exception(trans('machine_is_using_msg1', [], 'message'));
-    }
+
+    try {
+        if (!$lock->acquire()) {
+            throw new Exception(trans('machine_is_using_msg1', [], 'message'));
+        }
+        $lockAcquired = true;
+
+        Log::info('[MachineOpenAny] 开始上分', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'money' => $money,
+            'gift_score' => $giftScore,
+        ]);
+
     $lang = locale();
     $lang = Str::replace('_', '-', $lang);
     $services = MachineServices::createServices($machine, $lang);
@@ -667,6 +685,46 @@ function machineOpenAny(
     }
     Cache::set('machine_open_point' . $machine->id . '_' . $player->id, 1, 5);
 
+    // ✅ 重构：将TCP指令移到事务外，避免事务回滚时TCP指令已执行的问题
+    // 先记录需要发送的清零指令（事务提交后执行）
+    $preClearCommands = [];
+    if ($machine->gaming == 0 && $services->reward_status == 0) {
+        switch ($machine->type) {
+            case GameType::TYPE_SLOT:
+                if ($services->point > 0) {
+                    $preClearCommands[] = ['cmd' => $services::WASH_ZERO, 'data' => 0];
+                }
+                break;
+            case GameType::TYPE_STEEL_BALL:
+                if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
+                    if ($services->score > 0) {
+                        $preClearCommands[] = ['cmd' => $services::SCORE_TO_POINT, 'data' => 0];
+                    }
+                    if ($services->turn > 0) {
+                        $preClearCommands[] = ['cmd' => $services::TURN_DOWN_ALL, 'data' => 0];
+                    }
+                    if ($services->point > 0) {
+                        $preClearCommands[] = ['cmd' => $services::WASH_ZERO, 'data' => 0];
+                    }
+                }
+                if ($machine->control_type == Machine::CONTROL_TYPE_SONG) {
+                    $preClearCommands[] = ['cmd' => $services::MACHINE_SCORE, 'data' => 0];
+                    if ($services->score > 0) {
+                        $preClearCommands[] = ['cmd' => $services::SCORE_TO_POINT, 'data' => 0];
+                    }
+                    $preClearCommands[] = ['cmd' => $services::MACHINE_TURN, 'data' => 0];
+                    if ($services->turn > 0) {
+                        $preClearCommands[] = ['cmd' => $services::TURN_DOWN_ALL, 'data' => 0];
+                    }
+                    $preClearCommands[] = ['cmd' => $services::MACHINE_POINT, 'data' => 0];
+                    if ($services->point > 0) {
+                        $preClearCommands[] = ['cmd' => $services::WASH_ZERO, 'data' => 0];
+                    }
+                }
+                break;
+        }
+    }
+
     DB::beginTransaction();
     try {
         //先扣點（使用 Lua 原子操作，Redis 作为唯一实时标准）
@@ -688,42 +746,6 @@ function machineOpenAny(
         if ($machine->type == GameType::TYPE_SLOT) {
             if ($services->point + $openScore > 4000) {
                 throw new Exception(trans('machine_wash_limit_msg1', [], 'message'));
-            }
-        }
-        if ($machine->gaming == 0 && $services->reward_status == 0) {
-            switch ($machine->type) {
-                case GameType::TYPE_SLOT:
-                    if ($services->point > 0) {
-                        $services->sendCmd($services::WASH_ZERO, 0, 'player', $player->id);
-                    }
-                    break;
-                case GameType::TYPE_STEEL_BALL:
-                    if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        if ($services->score > 0) {
-                            $services->sendCmd($services::SCORE_TO_POINT, 0, 'player', $player->id);
-                        }
-                        if ($services->turn > 0) {
-                            $services->sendCmd($services::TURN_DOWN_ALL, 0, 'player', $player->id);
-                        }
-                        if ($services->point > 0) {
-                            $services->sendCmd($services::WASH_ZERO, 0, 'player', $player->id);
-                        }
-                    }
-                    if ($machine->control_type == Machine::CONTROL_TYPE_SONG) {
-                        $services->sendCmd($services::MACHINE_SCORE, 0, 'player', $player->id);
-                        if ($services->score > 0) {
-                            $services->sendCmd($services::SCORE_TO_POINT, 0, 'player', $player->id);
-                        }
-                        $services->sendCmd($services::MACHINE_TURN, 0, 'player', $player->id);
-                        if ($services->turn > 0) {
-                            $services->sendCmd($services::TURN_DOWN_ALL, 0, 'player', $player->id);
-                        }
-                        $services->sendCmd($services::MACHINE_POINT, 0, 'player', $player->id);
-                        if ($services->point > 0) {
-                            $services->sendCmd($services::WASH_ZERO, 0, 'player', $player->id);
-                        }
-                    }
-                    break;
             }
         }
         //记录游戏局记录
@@ -778,14 +800,57 @@ function machineOpenAny(
             $ActivityServices->addPlayerActivityRecord();
         }
         DB::commit();
+
+        Log::info('[MachineOpenAny] 数据库事务提交成功', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'open_score' => $openScore,
+            'after_amount' => $afterGameAmount,
+        ]);
     } catch (\Exception $e) {
         DB::rollback();
+
+        Log::error('[MachineOpenAny] 数据库事务失败', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        // ✅ 数据库事务失败，回滚 Redis 余额（补偿事务）
+        try {
+            \app\service\WalletService::add($player->id, $money, 1);
+            Log::info('[MachineOpenAny] Redis余额回滚成功', [
+                'player_id' => $player->id,
+                'refund_amount' => $money
+            ]);
+        } catch (\Exception $refundError) {
+            Log::critical('[MachineOpenAny] Redis余额回滚失败，需人工介入', [
+                'player_id' => $player->id,
+                'machine_id' => $machine->id,
+                'refund_amount' => $money,
+                'error' => $refundError->getMessage()
+            ]);
+        }
+
         throw new Exception($e->getMessage());
     }
+
+    // ✅ 数据库事务提交成功，现在发送TCP指令（清零+开分）
     try {
+        // 1. 发送清零指令
+        if (!empty($preClearCommands)) {
+            foreach ($preClearCommands as $clearCmd) {
+                $services->sendCmd($clearCmd['cmd'], $clearCmd['data'], 'player', $player->id);
+            }
+        }
+
+        // 2. 更新Redis缓存状态
         $services->player_open_point = bcadd($services->player_open_point, $openScore);
         $services->last_point_at = time();
         $services->last_play_time = time();
+
+        // 3. 发送开分指令
         switch ($machine->type) {
             case GameType::TYPE_STEEL_BALL:
                 $services->sendCmd($services::OPEN_ANY_POINT, $openScore, 'player', $player->id);
@@ -878,18 +943,152 @@ function machineOpenAny(
             ]);
         }
     } catch (\Exception $e) {
-        $log = Log::channel('song_jackpot_machine');
-
-        $log->error('消息处理错误: ', [
-            $e->getTrace(),
-            $e->getMessage()
+        Log::error('[MachineOpenAny] 机台指令发送失败，开始补偿事务', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
         ]);
+
+        // ✅ 新增：核查机台实际状态，防止双倍支付漏洞
+        $shouldRefund = true; // 默认需要退款
+        try {
+            // 确保必要变量已定义
+            if (!isset($services) || !isset($lang)) {
+                throw new Exception('服务对象未初始化，无法核查机台状态');
+            }
+
+            $client = new MachineClient();
+            // 查询机台分数（会触发 gk_work 从机台读取数据并更新 Redis）
+            $statusResult = $client->sendCommand(
+                $machine->id,
+                $services::MACHINE_POINT,
+                0,
+                $lang,
+                $player->id
+            );
+
+            // 如果查询成功，检查机台是否实际已上分（__get 会从 Redis 实时读取）
+            if ($statusResult['success']) {
+                $actualGaming = $services->gaming;
+                $actualGamingUserId = $services->gaming_user_id;
+
+                // 机台显示上分成功 → 不退款
+                if ($actualGaming == 1 && $actualGamingUserId == $player->id) {
+                    $shouldRefund = false;
+
+                    Log::critical('[MachineOpenAny] TCP指令疑似成功但响应失败，机台已上分，不执行退款', [
+                        'player_id' => $player->id,
+                        'machine_id' => $machine->id,
+                        'actual_gaming' => $actualGaming,
+                        'actual_gaming_user_id' => $actualGamingUserId,
+                        'actual_point' => $services->point,
+                        'original_error' => $e->getMessage(),
+                    ]);
+
+                    // 标记订单为不确定状态，需人工核查
+                    if (!empty($playerGameLog)) {
+                        $playerGameLog->status = 'uncertain';
+                        $playerGameLog->fail_reason = 'TCP响应失败但机台已上分，需人工核查';
+                        $playerGameLog->save();
+                    }
+
+                    throw new Exception(trans('machine_open_uncertain', [], 'message'));
+                }
+            }
+        } catch (Exception $checkError) {
+            Log::warning('[MachineOpenAny] 无法核查机台状态，继续执行补偿逻辑', [
+                'machine_id' => $machine->id,
+                'check_error' => $checkError->getMessage()
+            ]);
+            // 如果是 'machine_open_uncertain' 异常，直接抛出
+            if (strpos($checkError->getMessage(), trans('machine_open_uncertain', [], 'message')) !== false) {
+                throw $checkError;
+            }
+            // 其他查询异常，继续执行补偿逻辑
+        }
+
+        // ✅ 补偿事务：撤销数据库记录（仅在确认需要退款时执行）
+        if ($shouldRefund) {
+            try {
+                DB::beginTransaction();
+
+                // 1. 标记游戏记录为失败状态
+                if (!empty($playerGameLog)) {
+                    $playerGameLog->status = 'failed';
+                    $playerGameLog->fail_reason = '机台指令发送失败: ' . $e->getMessage();
+                    $playerGameLog->save();
+                }
+
+                // 2. 更新游戏局记录
+                if (!empty($gameRecord) && isset($openScore)) {
+                    $gameRecord->open_point = bcsub($gameRecord->open_point, $openScore, 2);
+                    $gameRecord->open_amount = bcsub($gameRecord->open_amount, $money, 2);
+                    $gameRecord->give_amount = bcsub($gameRecord->give_amount, $giftScore, 2);
+                    $gameRecord->save();
+                }
+
+                // 3. 撤销机台占用状态
+                $machine->gaming = 0;
+                $machine->gaming_user_id = 0;
+                $machine->save();
+
+                DB::commit();
+
+                Log::info('[MachineOpenAny] 补偿事务-数据库回滚成功', [
+                    'player_id' => $player->id,
+                    'machine_id' => $machine->id
+                ]);
+
+            } catch (\Exception $compensateDbError) {
+                DB::rollback();
+                Log::critical('[MachineOpenAny] 补偿事务-数据库回滚失败，需人工介入', [
+                    'player_id' => $player->id,
+                    'machine_id' => $machine->id,
+                    'original_error' => $e->getMessage(),
+                    'compensate_error' => $compensateDbError->getMessage()
+                ]);
+            }
+
+            // 4. 退款到玩家账户（仅在确认机台未上分时执行）
+            try {
+                \app\service\WalletService::add($player->id, $money, 1);
+                Log::info('[MachineOpenAny] 补偿事务-退款成功', [
+                    'player_id' => $player->id,
+                    'refund_amount' => $money,
+                    'after_balance' => \app\service\WalletService::getBalance($player->id),
+                    'reason' => 'confirmed_machine_not_opened'
+                ]);
+            } catch (\Exception $refundError) {
+                Log::critical('[MachineOpenAny] 补偿事务-退款失败，需人工介入', [
+                    'player_id' => $player->id,
+                    'machine_id' => $machine->id,
+                    'refund_amount' => $money,
+                    'original_error' => $e->getMessage(),
+                    'refund_error' => $refundError->getMessage()
+                ]);
+            }
+        }
+
         throw new Exception(trans('open_any_fail', [$e->getTrace(), $e->getMessage()], 'message'));
-    } finally {
-        $lock->release();
     }
 
-    return true;
+        Log::info('[MachineOpenAny] 上分完成', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'success' => true,
+        ]);
+
+        return true;
+    } catch (Exception $outerException) {
+        // 最外层异常处理
+        throw $outerException;
+    } finally {
+        // 确保锁被释放（只有成功获取锁后才释放）
+        if ($lockAcquired) {
+            $lock->release();
+        }
+    }
 }
 
 /**
@@ -902,21 +1101,45 @@ function machineOpenAny(
 function isAllowClientGivePoint(Machine $machine, Player $player): bool
 {
     try {
-        $services = MachineServices::createServices($machine, $player);
+        $lang = locale();
+        $lang = Str::replace('_', '-', $lang);
+        $services = MachineServices::createServices($machine, $lang);
         switch ($machine->type) {
             case GameType::TYPE_SLOT:
-                $services->sendCmd($services::READ_SCORE, 0, 'player', $player->id);
+                // 批量发送查询指令（优化：1-2次HTTP调用 → 1次）
+                $commands = [
+                    ['cmd' => $services::READ_SCORE, 'data' => 0],
+                ];
                 if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                    $services->sendCmd($services::READ_CREDIT2, 0, 'player', $player->id);
+                    $commands[] = ['cmd' => $services::READ_CREDIT2, 'data' => 0];
                 }
+
+                $client = new MachineClient();
+                $result = $client->batchSendCommands($machine->id, $commands, $lang, $player->id);
+
+                if (!$result['success']) {
+                    throw new Exception('批量查询机台状态失败: ' . $result['message']);
+                }
+
+                // 指令执行后，Redis数据已更新，重新读取
                 if ($services->point > 0 || $services->score > 0) {
                     return false;
                 }
                 break;
             case GameType::TYPE_STEEL_BALL:
-                $services->sendCmd($services::MACHINE_POINT, 0, 'player', $player->id, 1);
-                $services->sendCmd($services::MACHINE_SCORE, 0, 'player', $player->id, 1);
-                $services->sendCmd($services::MACHINE_TURN, 0, 'player', $player->id, 1);
+                // 批量发送查询指令（优化：3次HTTP调用 → 1次）
+                $client = new MachineClient();
+                $result = $client->batchSendCommands($machine->id, [
+                    ['cmd' => $services::MACHINE_POINT, 'data' => 0],
+                    ['cmd' => $services::MACHINE_SCORE, 'data' => 0],
+                    ['cmd' => $services::MACHINE_TURN, 'data' => 0],
+                ], $lang, $player->id);
+
+                if (!$result['success']) {
+                    throw new Exception('批量查询机台状态失败: ' . $result['message']);
+                }
+
+                // 指令执行后，Redis数据已更新，重新读取
                 if ($services->point > 0 || $services->score > 0 || $services->turn > 0) {
                     return false;
                 }
@@ -1326,7 +1549,7 @@ function saveImg($avatar): mixed
     $filename = time() . '_' . uniqid() . ".{$format}"; //文件名
     $newPath = $newPath . $filename;
     if (file_put_contents($newPath, $avatarContent)) {
-        $avatar = env('APP_URL', 'http://127.0.0.1:8787') . $savePath . $filename;
+        $avatar = config('services.app.url') . $savePath . $filename;
     }
 
     return $avatar;
@@ -1455,7 +1678,7 @@ function addPlayerExtend(Player $player): void
  */
 function getStrategyUrl($strategy_id): string
 {
-    return env('STRATEGY_URL', 'http://8.218.226.64:777/#/pages/detail/index?id=') . $strategy_id;
+    return config('services.strategy.url') . $strategy_id;
 }
 
 /**
@@ -2011,27 +2234,6 @@ function checkCRC8(string $data): bool
     $crc8 = substr($data, 28, 4);
     if ($crc8 !== crc8(hex2bin($str), 0x31, 0x00, 0x00)) {
         throw new Exception('crc8检查不通过' . $crc8 . crc8(hex2bin($str), 0x31, 0x00, 0x00));
-    }
-
-    return true;
-}
-
-/**
- * slot检查Xor55
- * @param string $msg
- * @param string $data
- * @return bool
- * @throws Exception
- */
-function checkSlotXor55(string $msg, string $data): bool
-{
-    $fun = substr($msg, 2, 2);
-    if ($fun == Slot::MACHINE_BUSY) {
-        return true;
-    }
-    $xor55 = substr($msg, 20, 4);
-    if ($xor55 !== encodeDataXor55($data)) {
-        throw new Exception('xor55检查不通过');
     }
 
     return true;
@@ -2620,7 +2822,24 @@ function machineWash(
     bool    $hasLottery = false
 ): bool|PlayerLotteryRecord
 {
+    // 添加分布式锁
+    $actionLockerKey = 'machine_wash_lock_' . $machine->id;
+    $lock = Locker::lock($actionLockerKey, 8, true);
+    $lockAcquired = false;
+
     try {
+        if (!$lock->acquire()) {
+            throw new Exception(trans('machine_is_using_msg1', [], 'message'));
+        }
+        $lockAcquired = true;
+
+        Log::info('[MachineWash] 开始洗分', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'path' => $path,
+            'is_system' => $is_system,
+        ]);
+
         $lang = locale();
         $services = MachineServices::createServices($machine, $lang);
         if ($services->last_point_at + 5 >= time()) {
@@ -2628,6 +2847,7 @@ function machineWash(
         }
         // 洗分限制（强制退出洗分）
         $giftPoint = getGivePoints($player->id, $machine->id);
+        $playerLotteryRecord = null; // 彩金记录
         $gamingTurnPoint = 0; // 转数
         $gamingPressure = 0; // 压分
         $gamingScore = 0; // 得分
@@ -2637,35 +2857,61 @@ function machineWash(
             case GameType::TYPE_STEEL_BALL:
                 // 弃台需要下转,下珠
                 if ($path == 'leave') {
+                    $leaveCommands = [];
+
                     if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        $services->sendCmd($services::PUSH . $services::PUSH_STOP, 0, 'player', $player->id,
-                            $is_system);
+                        // 批量发送弃台指令（优化：最多4次HTTP调用 → 1次）
+                        $leaveCommands[] = ['cmd' => $services::PUSH . $services::PUSH_STOP, 'data' => 0];
+
                         if ($services->auto == 1) {
-                            $services->sendCmd($services::AUTO_UP_TURN, 0, 'player', $player->id, $is_system);
+                            $leaveCommands[] = ['cmd' => $services::AUTO_UP_TURN, 'data' => 0];
                         }
                         if ($services->score > 0) {
-                            $services->sendCmd($services::SCORE_TO_POINT, 0, 'player', $player->id, $is_system);
+                            $leaveCommands[] = ['cmd' => $services::SCORE_TO_POINT, 'data' => 0];
                         }
                         if ($services->turn > 0) {
-                            $services->sendCmd($services::TURN_DOWN_ALL, 0, 'player', $player->id, $is_system);
+                            $leaveCommands[] = ['cmd' => $services::TURN_DOWN_ALL, 'data' => 0];
                         }
                     }
+
                     if ($machine->control_type == Machine::CONTROL_TYPE_SONG) {
+                        // 批量发送弃台指令（优化：最多5次HTTP调用 → 1次）
                         if ($services->auto == 1) {
-                            $services->sendCmd($services::AUTO_UP_TURN, 0, 'player', $player->id, $is_system);
+                            $leaveCommands[] = ['cmd' => $services::AUTO_UP_TURN, 'data' => 0];
                         }
-                        $services->sendCmd($services::MACHINE_TURN, 0, 'player', $player->id, $is_system);
-                        $services->sendCmd($services::MACHINE_SCORE, 0, 'player', $player->id, $is_system);
+
+                        $leaveCommands[] = ['cmd' => $services::MACHINE_TURN, 'data' => 0];
+                        $leaveCommands[] = ['cmd' => $services::MACHINE_SCORE, 'data' => 0];
+
                         if ($services->score > 0) {
-                            $services->sendCmd($services::SCORE_TO_POINT, 0, 'player', $player->id, $is_system);
+                            $leaveCommands[] = ['cmd' => $services::SCORE_TO_POINT, 'data' => 0];
                         }
                         if ($services->turn > 0) {
-                            $services->sendCmd($services::TURN_DOWN_ALL, 0, 'player', $player->id, $is_system);
+                            $leaveCommands[] = ['cmd' => $services::TURN_DOWN_ALL, 'data' => 0];
+                        }
+                    }
+
+                    // 批量发送所有弃台指令
+                    if (!empty($leaveCommands)) {
+                        $client = new MachineClient();
+                        $result = $client->batchSendCommands($machine->id, $leaveCommands, $lang, $player->id);
+
+                        if (!$result['success']) {
+                            throw new Exception('批量发送弃台指令失败: ' . $result['message']);
                         }
                     }
                 }
-                $services->sendCmd($services::MACHINE_POINT, 0, 'player', $player->id, $is_system);
-                $services->sendCmd($services::WIN_NUMBER, 0, 'player', $player->id, $is_system);
+                // 批量查询机台状态（优化：2次HTTP调用 → 1次）
+                $client = new MachineClient();
+                $result = $client->batchSendCommands($machine->id, [
+                    ['cmd' => $services::MACHINE_POINT, 'data' => 0],
+                    ['cmd' => $services::WIN_NUMBER, 'data' => 0],
+                ], $lang, $player->id);
+
+                if (!$result['success']) {
+                    throw new Exception('批量查询机台状态失败: ' . $result['message']);
+                }
+
                 $gamingTurnPoint = $services->player_win_number;
                 $money = $services->point;
                 if (!empty($giftPoint) && $path == 'leave') {
@@ -2673,22 +2919,37 @@ function machineWash(
                 }
                 break;
             case GameType::TYPE_SLOT:
+                // 批量发送老虎机洗分指令（优化：最多6次HTTP调用 → 2次）
+                $slotCommands = [];
+
                 if ($services->move_point == 1 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                    $services->sendCmd($services::MOVE_POINT_OFF, 0, 'player', $player->id, $is_system);
+                    $slotCommands[] = ['cmd' => $services::MOVE_POINT_OFF, 'data' => 0];
                 }
                 if ($services->auto == 1) {
-                    $services->sendCmd($services::OUT_OFF, 0, 'player', $player->id, $is_system);
+                    $slotCommands[] = ['cmd' => $services::OUT_OFF, 'data' => 0];
                 }
-                $services->sendCmd($services::STOP_ONE, 0, 'player', $player->id, $is_system);
-                $services->sendCmd($services::STOP_TWO, 0, 'player', $player->id, $is_system);
-                $services->sendCmd($services::STOP_THREE, 0, 'player', $player->id, $is_system);
-                $services->sendCmd($services::READ_SCORE, 0, 'player', $player->id, $is_system);
+
+                // 无条件发送的4个停止和读取指令
+                $slotCommands[] = ['cmd' => $services::STOP_ONE, 'data' => 0];
+                $slotCommands[] = ['cmd' => $services::STOP_TWO, 'data' => 0];
+                $slotCommands[] = ['cmd' => $services::STOP_THREE, 'data' => 0];
+                $slotCommands[] = ['cmd' => $services::READ_SCORE, 'data' => 0];
+
+                $client = new MachineClient();
+                $result = $client->batchSendCommands($machine->id, $slotCommands, $lang, $player->id);
+
+                if (!$result['success']) {
+                    throw new Exception('批量发送老虎机洗分指令失败: ' . $result['message']);
+                }
+
                 Log::channel('song_slot_machine')->info('slot -> wash', [
                     'point' => $money,
                     'code' => $machine->code,
                     'bet' => $services->bet,
                     'player_pressure' => $services->player_pressure,
                 ]);
+
+                // READ_BET单独发送（因为在日志之后）
                 $services->sendCmd($services::READ_BET, 0, 'player', $player->id, $is_system);
                 $gamingPressure = bcsub($services->bet, $services->player_pressure);
                 $gamingScore = bcsub($services->win, $services->player_score);
@@ -2704,20 +2965,13 @@ function machineWash(
                 }
                 break;
         }
-    } catch (\Exception $e) {
-        throw new Exception($e->getMessage());
-    }
 
     /** 彩金预留检查 */
     if ($hasLottery && $machine->type == GameType::TYPE_SLOT && $path == 'down' && $money > 0) {
-        try {
-            $playerLotteryRecord = (new LotteryServices())->setMachine($machine)->setPlayer($player)->fixedPotCheckLottery($money,
-                true);
-            if ($playerLotteryRecord) {
-                return $playerLotteryRecord;
-            }
-        } catch (\Exception $e) {
-            throw new Exception($e->getMessage());
+        $playerLotteryRecord = (new LotteryServices())->setMachine($machine)->setPlayer($player)->fixedPotCheckLottery($money,
+            true);
+        if ($playerLotteryRecord) {
+            return $playerLotteryRecord;
         }
     }
     DB::beginTransaction();
@@ -2727,42 +2981,57 @@ function machineWash(
                 max($gamingScore, 0), max($gamingTurnPoint, 0), $path);
         }
         if ($path == 'leave') {
-            if ($services->keeping == 1) {
-                // 更新保留日志
-                updateKeepingLog($machine->id, $player->id);
-            }
-            $machine->gaming = 0;
-            $machine->gaming_user_id = 0;
-            $machine->save();
-
-            if ($machine->type == GameType::TYPE_STEEL_BALL) {
-                $activityServices = new ActivityServices($machine, $player);
-                $activityServices->playerFinishActivity(true);
-            }
-            /** TODO 计算打码量 */
+        if ($services->keeping == 1) {
+            // 更新保留日志
+            updateKeepingLog($machine->id, $player->id);
         }
-        // 斯洛离开机台或弃台下分重置活动 检查彩金中奖情况
-        if ($machine->type == GameType::TYPE_SLOT) {
-            // 离开机台参与活动结束
+        $machine->gaming = 0;
+        $machine->gaming_user_id = 0;
+        $machine->save();
+
+        if ($machine->type == GameType::TYPE_STEEL_BALL) {
             $activityServices = new ActivityServices($machine, $player);
             $activityServices->playerFinishActivity(true);
-            // 下分检查彩金获奖情况
-            if ($money > 0) {
-                $playerLotteryRecord = (new LotteryServices())->setMachine($machine)->setPlayer($player)->fixedPotCheckLottery($money,
-                    false, $path == 'leave');
-            }
         }
-        DB::commit();
-        // 执行下分操作
+        /** TODO 计算打码量 */
+    }
+    // 斯洛离开机台或弃台下分重置活动 检查彩金中奖情况
+    if ($machine->type == GameType::TYPE_SLOT) {
+        // 离开机台参与活动结束
+        $activityServices = new ActivityServices($machine, $player);
+        $activityServices->playerFinishActivity(true);
+        // 下分检查彩金获奖情况
+        if ($money > 0) {
+            $playerLotteryRecord = (new LotteryServices())->setMachine($machine)->setPlayer($player)->fixedPotCheckLottery($money,
+                false, $path == 'leave');
+        }
+    }
+    DB::commit();
+        // 执行下分操作（批量发送，优化：2次HTTP调用 → 1次）
+        $client = new MachineClient();
         switch ($machine->type) {
             case GameType::TYPE_STEEL_BALL:
-                $services->sendCmd($services::WASH_ZERO, 0, 'player', $player->id, $is_system);
-                $services->sendCmd($services::CLEAR_LOG, 0, 'player', $player->id, $is_system);
+                $result = $client->batchSendCommands($machine->id, [
+                    ['cmd' => $services::WASH_ZERO, 'data' => 0],
+                    ['cmd' => $services::CLEAR_LOG, 'data' => 0],
+                ], $lang, $player->id);
+
+                if (!$result['success']) {
+                    throw new Exception('批量发送洗分清零指令失败: ' . $result['message']);
+                }
+
                 $services->player_win_number = 0;
                 break;
             case GameType::TYPE_SLOT:
-                $services->sendCmd($services::WASH_ZERO, 0, 'player', $player->id, $is_system);
-                $services->sendCmd($services::ALL_DOWN, 0, 'player', $player->id, $is_system);
+                $result = $client->batchSendCommands($machine->id, [
+                    ['cmd' => $services::WASH_ZERO, 'data' => 0],
+                    ['cmd' => $services::ALL_DOWN, 'data' => 0],
+                ], $lang, $player->id);
+
+                if (!$result['success']) {
+                    throw new Exception('批量发送洗分清零指令失败: ' . $result['message']);
+                }
+
                 $services->player_pressure = 0;
                 $services->player_score = 0;
                 $services->bet = 0;
@@ -2814,10 +3083,32 @@ function machineWash(
             break;
     }
 
-    // 清理消息缓存
-    LotteryServices::clearNoticeCache($player->id, $machine->id);
+        // 清理消息缓存
+        LotteryServices::clearNoticeCache($player->id, $machine->id);
 
-    return $playerLotteryRecord ?? true;
+        Log::info('[MachineWash] 洗分完成', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'money' => $money ?? 0,
+            'path' => $path,
+            'success' => true,
+        ]);
+
+        return $playerLotteryRecord ?? true;
+    } catch (\Exception $e) {
+        Log::error('[MachineWash] 洗分失败', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        throw $e;
+    } finally {
+        // 确保锁被释放（只有成功获取锁后才释放）
+        if ($lockAcquired) {
+            $lock->release();
+        }
+    }
 }
 
 /**

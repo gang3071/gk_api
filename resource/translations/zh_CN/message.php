@@ -34,6 +34,7 @@ return [
     'keeping_cancel_success' => '取消保留成功',
     'machine_not_found' => '未找到机台',
     'machine_open_wash_too_fast' => '操作上下分需间隔5秒，若发现使用非法程序操作将冻结帐号',
+    'machine_open_uncertain' => '上分操作状态未知，请联系客服核实',
     'game_amount_insufficient' => '您的游戏钱包馀额不足',
     'machine_min_open' => '最小上分金额需为:',
     'machine_max_open' => '机器最大上分为: ',

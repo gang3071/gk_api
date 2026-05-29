@@ -4,8 +4,8 @@ namespace app\service\machine;
 
 use Exception;
 use Illuminate\Http\Client\RequestException;
-use Illuminate\Support\Facades\Http;
 use support\Log;
+use WebmanTech\LaravelHttpClient\Facades\Http;
 
 /**
  * 机台操作客户端
@@ -17,13 +17,50 @@ class MachineClient
     private int $timeout;
 
     /**
+     * HTTP客户端连接池（每个worker进程维护一个实例，支持Keep-Alive）
+     * @var \Illuminate\Http\Client\PendingRequest|null
+     */
+    private static $httpClientPool = null;
+
+    /**
      * @param string|null $baseUrl gk_work 的基础 URL，默认从环境变量读取
      * @param int $timeout 请求超时时间（秒）
      */
-    public function __construct(?string $baseUrl = null, int $timeout = 30)
+    public function __construct(?string $baseUrl = null, int $timeout = 10)
     {
-        $this->baseUrl = $baseUrl ?? env('GK_WORK_URL', 'http://127.0.0.1:8788');
+        $this->baseUrl = $baseUrl ?? config('services.gk_work.url');
         $this->timeout = $timeout;
+    }
+
+    /**
+     * 获取HTTP客户端实例（支持连接复用和Keep-Alive）
+     *
+     * @return \Illuminate\Http\Client\PendingRequest
+     */
+    private function getHttpClient()
+    {
+        if (self::$httpClientPool === null) {
+            self::$httpClientPool = Http::timeout($this->timeout)
+                ->withOptions([
+                    'http_version' => '1.1',  // 使用HTTP/1.1（支持Keep-Alive）
+                    'curl' => [
+                        CURLOPT_FORBID_REUSE => false,    // 允许连接复用
+                        CURLOPT_FRESH_CONNECT => false,   // 不强制新连接
+                        CURLOPT_MAXCONNECTS => 50,        // 连接池大小（最多保持50个Keep-Alive连接）
+                        CURLOPT_TCP_KEEPALIVE => 1,       // 启用TCP Keep-Alive
+                        CURLOPT_TCP_KEEPIDLE => 60,       // 空闲60秒后发送探测包
+                        CURLOPT_TCP_KEEPINTVL => 10,      // 探测包间隔10秒
+                    ],
+                ]);
+
+            Log::info('[MachineClient] HTTP连接池已初始化', [
+                'worker_id' => posix_getpid(),
+                'pool_size' => 50,
+                'keep_alive' => true,
+            ]);
+        }
+
+        return self::$httpClientPool;
     }
 
     /**
@@ -44,8 +81,17 @@ class MachineClient
         string $lang = 'zh_TW',
         ?int $playerId = null
     ): array {
+        $startTime = microtime(true);
+
+        Log::info('[MachineClient] 发送机台指令', [
+            'machine_id' => $machineId,
+            'cmd' => $cmd,
+            'data' => $data,
+            'player_id' => $playerId,
+        ]);
+
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->getHttpClient()
                 ->withHeaders([
                     'Accept-Language' => $lang,
                     'X-Admin-Id' => 0, // 来自客户端API，使用0表示系统调用
@@ -58,13 +104,16 @@ class MachineClient
                     'lang' => $lang,
                 ]);
 
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
 
             if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
-                Log::info('Machine command sent successfully', [
+                Log::info('[MachineClient] 指令执行成功', [
                     'machine_id' => $machineId,
                     'cmd' => $cmd,
                     'player_id' => $playerId,
+                    'duration_ms' => $duration,
+                    'status_code' => $response->status(),
                 ]);
 
                 return [
@@ -74,11 +123,13 @@ class MachineClient
                 ];
             }
 
-            Log::warning('Machine command failed', [
+            Log::warning('[MachineClient] 指令执行失败', [
                 'machine_id' => $machineId,
                 'cmd' => $cmd,
                 'status_code' => $response->status(),
-                'response' => $body,
+                'duration_ms' => $duration,
+                'response_code' => $body['code'] ?? null,
+                'response_msg' => $body['msg'] ?? null,
             ]);
 
             return [
@@ -88,10 +139,111 @@ class MachineClient
             ];
 
         } catch (RequestException $e) {
-            Log::error('Machine command HTTP error', [
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('[MachineClient] HTTP请求异常', [
                 'machine_id' => $machineId,
                 'cmd' => $cmd,
+                'player_id' => $playerId,
+                'duration_ms' => $duration,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            throw new Exception(trans('machine_command_failed', [], 'message') . ': ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 批量发送机台指令
+     * 一次HTTP调用发送多个指令，减少网络往返次数
+     *
+     * @param int $machineId 机台ID
+     * @param array $commands 指令数组 [['cmd' => 'xxx', 'data' => 0], ...]
+     * @param string $lang 语言
+     * @param int|null $playerId 玩家ID（可选，用于日志追踪）
+     * @return array 返回格式: ['success' => bool, 'data' => array, 'message' => string]
+     * @throws Exception
+     */
+    public function batchSendCommands(
+        int $machineId,
+        array $commands,
+        string $lang = 'zh_TW',
+        ?int $playerId = null
+    ): array {
+        if (empty($commands)) {
+            throw new Exception('批量指令列表不能为空');
+        }
+
+        $startTime = microtime(true);
+
+        Log::info('[MachineClient] 批量发送机台指令', [
+            'machine_id' => $machineId,
+            'commands_count' => count($commands),
+            'commands' => array_column($commands, 'cmd'),
+            'player_id' => $playerId,
+        ]);
+
+        try {
+            $response = $this->getHttpClient()
+                ->withHeaders([
+                    'Accept-Language' => $lang,
+                    'X-Admin-Id' => 0,
+                    'X-Player-Id' => $playerId ?? 0,
+                ])
+                ->post($this->baseUrl . '/api/admin/machine/batch-send-cmd', [
+                    'machine_id' => $machineId,
+                    'commands' => $commands,
+                    'lang' => $lang,
+                ]);
+
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+            $body = $response->json();
+
+            if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
+                $successCount = $body['data']['success_count'] ?? 0;
+                $failedCount = $body['data']['failed_count'] ?? 0;
+
+                Log::info('[MachineClient] 批量指令执行完成', [
+                    'machine_id' => $machineId,
+                    'commands_count' => count($commands),
+                    'success_count' => $successCount,
+                    'failed_count' => $failedCount,
+                    'duration_ms' => $duration,
+                    'status_code' => $response->status(),
+                ]);
+
+                return [
+                    'success' => true,
+                    'data' => $body['data'] ?? [],
+                    'message' => $body['msg'] ?? 'success',
+                ];
+            }
+
+            Log::warning('[MachineClient] 批量指令执行失败', [
+                'machine_id' => $machineId,
+                'commands_count' => count($commands),
+                'duration_ms' => $duration,
+                'status_code' => $response->status(),
+                'response_code' => $body['code'] ?? null,
+                'response_msg' => $body['msg'] ?? null,
+            ]);
+
+            return [
+                'success' => false,
+                'data' => [],
+                'message' => $body['msg'] ?? 'Unknown error',
+            ];
+
+        } catch (RequestException $e) {
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('[MachineClient] 批量指令HTTP请求异常', [
+                'machine_id' => $machineId,
+                'commands_count' => count($commands),
+                'duration_ms' => $duration,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             throw new Exception(trans('machine_command_failed', [], 'message') . ': ' . $e->getMessage());
@@ -110,7 +262,7 @@ class MachineClient
     public function checkOnline(int $machineId, string $lang = 'zh_TW'): array
     {
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->getHttpClient()
                 ->withHeaders([
                     'Accept-Language' => $lang,
                     'X-Admin-Id' => 0,
@@ -157,7 +309,7 @@ class MachineClient
     public function batchCheckOnline(array $machineIds, string $lang = 'zh_TW'): array
     {
         try {
-            $response = Http::timeout($this->timeout)
+            $response = $this->getHttpClient()
                 ->withHeaders([
                     'Accept-Language' => $lang,
                     'X-Admin-Id' => 0,

@@ -34,6 +34,7 @@ return [
     'keeper_cancel_success' => '予約を正常にキャンセルしました',
     'machine_not_found' => 'マシンが見つかりません',
     'machine_open_wash_too_fast' => '操作は5秒間隔で行う必要があります。不正なプログラム操作が見つかった場合、アカウントは凍結されます',
+    'machine_open_uncertain' => '入金操作のステータスが不明です。カスタマーサービスにご確認ください',
     'game_amount_insufficient' => 'ゲームウォレットの残高が不足しています',
     'machine_min_open' => '最低ボーナス額は次のようにする必要があります:',
     'machine_max_open' => 'マシンは最大で次のように分けられます: ',

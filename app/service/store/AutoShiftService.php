@@ -384,9 +384,9 @@ class AutoShiftService
         try {
             // 创建推送API实例
             $api = new Api(
-                env('PUSH_API_URL', 'http://10.140.0.6:3232'),
-                env('PUSH_APP_KEY', '20f94408fc4c52845f162e92a253c7a3'),
-                env('PUSH_APP_SECRET', '3151f8648a6ccd9d4515386f34127e28')
+                config('services.push.api_url'),
+                config('services.push.app_key'),
+                config('services.push.app_secret')
             );
 
             // 店家管理员频道

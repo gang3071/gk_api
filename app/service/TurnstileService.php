@@ -26,7 +26,7 @@ class TurnstileService
      */
     public static function verify(string $token, ?string $remoteIp = null): bool
     {
-        $secretKey = env('TURNSTILE_SECRET_KEY');
+        $secretKey = config('services.turnstile.secret_key');
 
         if (empty($secretKey)) {
             Log::error('Turnstile Secret Key 未配置');
@@ -152,7 +152,7 @@ class TurnstileService
      */
     public static function isEnabled(): bool
     {
-        return (bool) env('TURNSTILE_ENABLED', false);
+        return (bool) config('services.turnstile.enabled', false);
     }
 
     /**
@@ -162,6 +162,6 @@ class TurnstileService
      */
     public static function getSiteKey(): string
     {
-        return env('TURNSTILE_SITE_KEY', '');
+        return config('services.turnstile.site_key', '');
     }
 }

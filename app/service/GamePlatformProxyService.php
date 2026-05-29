@@ -32,7 +32,7 @@ class GamePlatformProxyService
      */
     public static function isEnabled(): bool
     {
-        return env('GAME_PLATFORM_PROXY_ENABLE', true);
+        return config('services.game_platform_proxy.enabled', true);
     }
 
     /**
@@ -62,8 +62,8 @@ class GamePlatformProxyService
                 // 获取玩家失败，继续转发，让 gk_work 处理
             }
 
-            $workerHost = env('GAME_PLATFORM_PROXY_HOST', '10.140.0.10');
-            $workerPort = env('GAME_PLATFORM_PROXY_PORT', '8080');
+            $workerHost = config('services.game_platform_proxy.host');
+            $workerPort = config('services.game_platform_proxy.port');
             $proxyUrl = "http://{$workerHost}:{$workerPort}{$endpoint}";
 
             Log::info('Game platform proxy request', [
@@ -166,9 +166,9 @@ class GamePlatformProxyService
     ): void {
         try {
             // 检查是否启用 Telegram 通知
-            $token = env('TELEGRAM_BOT_TOKEN');
-            $chatId = env('TELEGRAM_CHAT_ID');
-            $enabled = env('GAME_PLATFORM_PROXY_TELEGRAM_NOTIFY', false);
+            $token = config('services.game_platform_proxy.telegram.bot_token');
+            $chatId = config('services.game_platform_proxy.telegram.chat_id');
+            $enabled = config('services.game_platform_proxy.telegram.notify_enabled', false);
 
             if (!$enabled || empty($token) || empty($chatId)) {
                 return;
@@ -293,8 +293,8 @@ class GamePlatformProxyService
     {
         return [
             'enabled' => self::isEnabled(),
-            'host' => env('GAME_PLATFORM_PROXY_HOST', '10.140.0.10'),
-            'port' => env('GAME_PLATFORM_PROXY_PORT', '8788'),
+            'host' => config('services.game_platform_proxy.host'),
+            'port' => config('services.game_platform_proxy.port'),
             'endpoints' => self::PROXY_ENDPOINTS,
         ];
     }

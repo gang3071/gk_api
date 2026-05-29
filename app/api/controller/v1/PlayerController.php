@@ -519,7 +519,7 @@ class PlayerController
             }
             $uploadName = $file->getUploadName();
             $basePath = public_path() . ' / storage / ' . date('Ymd') . DIRECTORY_SEPARATOR;
-            $baseUrl = env('APP_URL', 'http://127.0.0.1:8787') . '/storage/' . date('Ymd') . DIRECTORY_SEPARATOR;
+            $baseUrl = config('services.app.url') . '/storage/' . date('Ymd') . DIRECTORY_SEPARATOR;
             $uniqueId = hash_file('md5', $file->getPathname());
             $saveFilename = $uniqueId . '.' . $file->getUploadExtension();
             $savePath = $basePath . $saveFilename;

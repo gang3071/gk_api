@@ -45,6 +45,15 @@ abstract class AbstractMachineService implements BaseMachine
     /** 操作超时时间（微秒） */
     protected int $expirationTime = 5000000;
 
+    /** 内存缓存的完整数据（避免每次 __set 都查询 Redis） */
+    protected ?array $cachedAllData = null;
+
+    /** 缓存失效时间（秒） */
+    protected int $cacheAllDataTTL = 1;
+
+    /** 上次缓存时间 */
+    protected ?float $lastCacheTime = null;
+
     /**
      * 构造函数
      *
@@ -167,48 +176,119 @@ abstract class AbstractMachineService implements BaseMachine
             return;
         }
 
-        $saveResult = false;
-        try {
-            $saveResult = Cache::set($this->cacheDataKey . '_' . $name, $value);
-            if (!$saveResult) {
-                $saveResult = Cache::set($this->cacheDataKey . '_' . $name, $value);
-            }
-        } catch (Exception $e) {
-            // 捕获异常后重试1次
+        // 保存到 Redis
+        $saveResult = $this->saveToRedis($name, $value);
+
+        // 关键字段保存失败时记录额外日志
+        if (!$saveResult) {
+            $this->handleCriticalFieldSaveFailure($name, $value);
+        }
+
+        // 使内存缓存失效
+        $this->invalidateCache();
+
+        // 推送机台信息更新
+        $this->pushMachineUpdate();
+
+        // 子类特定推送逻辑（模板方法）
+        $this->handleFieldUpdatePush($name, $value);
+    }
+
+    /**
+     * 保存数据到 Redis（带重试逻辑）
+     *
+     * @param string $name 字段名
+     * @param mixed $value 字段值
+     * @return bool 是否保存成功
+     */
+    protected function saveToRedis(string $name, mixed $value): bool
+    {
+        $key = $this->cacheDataKey . '_' . $name;
+        $maxRetries = 1;
+
+        for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
             try {
-                $saveResult = Cache::set($this->cacheDataKey . '_' . $name, $value);
-                Log::warning('Redis缓存保存异常后重试成功', [
-                    'machine_id' => $this->machine->id,
-                    'field' => $name,
-                    'error' => $e->getMessage()
-                ]);
-            } catch (Exception $e2) {
-                $saveResult = false;
-                Log::error('Redis缓存保存异常（重试1次后仍失败）', [
+                $result = Cache::set($key, $value);
+
+                if ($result) {
+                    if ($attempt > 0) {
+                        $this->log->warning('Redis缓存保存重试成功', [
+                            'machine_id' => $this->machine->id,
+                            'field' => $name,
+                            'attempt' => $attempt
+                        ]);
+                    }
+                    return true;
+                }
+
+                // 第一次失败立即重试
+                if ($attempt < $maxRetries) {
+                    continue;
+                }
+
+            } catch (Exception $e) {
+                if ($attempt < $maxRetries) {
+                    $this->log->warning('Redis缓存保存异常，准备重试', [
+                        'machine_id' => $this->machine->id,
+                        'field' => $name,
+                        'attempt' => $attempt,
+                        'error' => $e->getMessage()
+                    ]);
+                    continue;
+                }
+
+                $this->log->error('Redis缓存保存异常（重试后仍失败）', [
                     'machine_id' => $this->machine->id,
                     'machine_code' => $this->machine->code,
                     'field' => $name,
                     'value' => $value,
-                    'error' => $e2->getMessage()
+                    'error' => $e->getMessage()
                 ]);
             }
         }
 
-        // 关键字段保存失败时记录额外日志
-        if (!$saveResult) {
-            $criticalFields = ['gaming', 'gaming_user_id', 'last_play_time', 'point', 'bet', 'keeping'];
-            if (in_array($name, $criticalFields)) {
-                Log::error('关键字段Redis保存失败', [
-                    'machine_id' => $this->machine->id,
-                    'machine_code' => $this->machine->code,
-                    'field' => $name,
-                    'value' => $value
-                ]);
-            }
-        }
+        return false;
+    }
 
-        // 推送机台信息更新（如果需要）
-        $this->pushMachineUpdate();
+    /**
+     * 处理关键字段保存失败
+     *
+     * @param string $name 字段名
+     * @param mixed $value 字段值
+     */
+    protected function handleCriticalFieldSaveFailure(string $name, mixed $value): void
+    {
+        $criticalFields = $this->getCriticalFields();
+
+        if (in_array($name, $criticalFields)) {
+            $this->log->error('关键字段Redis保存失败', [
+                'machine_id' => $this->machine->id,
+                'machine_code' => $this->machine->code,
+                'field' => $name,
+                'value' => $value
+            ]);
+        }
+    }
+
+    /**
+     * 获取关键字段列表（子类可覆盖）
+     *
+     * @return array
+     */
+    protected function getCriticalFields(): array
+    {
+        return ['gaming', 'gaming_user_id', 'last_play_time', 'point', 'bet', 'keeping'];
+    }
+
+    /**
+     * 字段更新后的推送逻辑（子类实现）
+     *
+     * @param string $name 字段名
+     * @param mixed $value 字段值
+     */
+    protected function handleFieldUpdatePush(string $name, mixed $value): void
+    {
+        // 子类可覆盖此方法实现特定推送逻辑
     }
 
     /**
@@ -232,28 +312,41 @@ abstract class AbstractMachineService implements BaseMachine
                 return;
             }
 
+            $channels = [];
+
             // 推送到机台频道
-            sendSocketMessage("machine-{$this->machine->id}", [
+            $machineChannel = "machine-{$this->machine->id}";
+            sendSocketMessage($machineChannel, [
                 'msg_type' => 'machine_status_update',
                 'machine_id' => $this->machine->id,
                 'code' => $this->machine->code,
                 'status' => $machineInfo,
                 'timestamp' => time(),
             ]);
+            $channels[] = $machineChannel;
 
             // 如果有玩家在游戏，也推送给玩家
             if ($this->machine->gaming && $this->machine->gaming_user_id) {
-                sendSocketMessage("player-{$this->machine->gaming_user_id}", [
+                $playerChannel = "player-{$this->machine->gaming_user_id}";
+                sendSocketMessage($playerChannel, [
                     'msg_type' => 'my_machine_status_update',
                     'machine_id' => $this->machine->id,
                     'status' => $machineInfo,
                     'timestamp' => time(),
                 ]);
+                $channels[] = $playerChannel;
             }
-        } catch (Exception $e) {
-            Log::warning('推送机台状态失败', [
+
+            $this->log->debug('[WebSocket] 推送机台状态成功', [
                 'machine_id' => $this->machine->id,
-                'error' => $e->getMessage()
+                'channels' => $channels,
+                'fields_count' => count($machineInfo),
+            ]);
+        } catch (Exception $e) {
+            $this->log->warning('[WebSocket] 推送机台状态失败', [
+                'machine_id' => $this->machine->id,
+                'machine_code' => $this->machine->code,
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -266,7 +359,6 @@ abstract class AbstractMachineService implements BaseMachine
      * @param int $data 指令数据
      * @param string $source 来源 (player/admin)
      * @param int $source_id 来源ID
-     * @param int $isSystem 是否系统调用
      * @return bool
      * @throws Exception
      */
@@ -274,8 +366,7 @@ abstract class AbstractMachineService implements BaseMachine
         string $cmd,
         int $data = 0,
         string $source = 'player',
-        int $source_id = 0,
-        int $isSystem = 0
+        int $source_id = 0
     ): bool {
         try {
             // 使用 MachineClient 调用 gk_work 的机台操作接口
@@ -321,33 +412,46 @@ abstract class AbstractMachineService implements BaseMachine
     }
 
     /**
-     * 获取机台操作描述
-     * 子类应该实现此方法
-     *
-     * @param string $cmd 操作指令
-     * @return string
-     */
-    abstract public function getDescription(string $cmd = ''): string;
-
-    /**
-     * 获取所有缓存数据
+     * 获取所有缓存数据（带内存缓存）
      *
      * @return array
      */
     protected function getAllData(): array
     {
+        $now = microtime(true);
+
+        // 内存缓存有效，直接返回
+        if ($this->cachedAllData !== null
+            && $this->lastCacheTime !== null
+            && ($now - $this->lastCacheTime) < $this->cacheAllDataTTL
+        ) {
+            return $this->cachedAllData;
+        }
+
+        // 缓存失效，重新获取
         try {
-            $data = [];
-            foreach ($this->cacheDataKeyArr as $key) {
-                $data[$key] = Cache::get($key, 0);
-            }
-            return $data;
+            $values = Cache::getMultiple($this->cacheDataKeyArr, 0);
+            $this->cachedAllData = is_array($values) ? $values : [];
+            $this->lastCacheTime = $now;
+
+            return $this->cachedAllData;
         } catch (Exception $e) {
-            Log::error('获取所有缓存数据失败', [
+            $this->log->error('批量获取机台缓存数据失败', [
                 'machine_id' => $this->machine->id,
+                'machine_code' => $this->machine->code,
+                'keys_count' => count($this->cacheDataKeyArr),
                 'error' => $e->getMessage()
             ]);
             return [];
         }
+    }
+
+    /**
+     * 使内存缓存失效
+     */
+    protected function invalidateCache(): void
+    {
+        $this->cachedAllData = null;
+        $this->lastCacheTime = null;
     }
 }

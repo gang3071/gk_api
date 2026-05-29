@@ -44,7 +44,8 @@
     "illuminate/redis": "^8.83",
     "symfony/cache": "^5.4",
     "robmorgan/phinx": "^0.14.0",
-    "ext-curl": "*"
+    "ext-curl": "*",
+    "ext-posix": "*"
   },
   "autoload": {
     "psr-4": {

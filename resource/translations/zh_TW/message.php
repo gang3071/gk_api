@@ -34,6 +34,7 @@ return [
     'keeping_cancel_success' => '取消保留成功',
     'machine_not_found' => '未找到機台',
     'machine_open_wash_too_fast' => '操作洗分需間隔5秒，若發現使用非法程式操作將凍結帳號',
+    'machine_open_uncertain' => '上分操作狀態未知，請聯絡客服核實',
     'game_amount_insufficient' => '您的遊戲錢包馀額不足',
     'machine_min_open' => '最小開分金額需為:',
     'machine_max_open' => '機器最大上分為：',

@@ -69,7 +69,7 @@ class PlayerBank extends Model
                 $path = $parsedUrl['path'];
 
                 // 移除可能的存储桶名称
-                $bucketName = env('GOOGLE_CLOUD_STORAGE_BUCKET', 'yjbfile');
+                $bucketName = config('services.google_cloud_storage.bucket');
                 $bucketPrefix = '/' . $bucketName . '/';
 
                 if (str_starts_with($path, $bucketPrefix)) {

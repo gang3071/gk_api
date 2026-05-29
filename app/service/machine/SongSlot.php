@@ -4,16 +4,20 @@ declare(strict_types=1);
 
 namespace app\service\machine;
 
-use app\model\GameType;
-use app\model\Machine;
 use app\model\Notice;
 use Exception;
-use Illuminate\Support\Str;
 use Psr\Log\LoggerInterface;
 use support\Log;
 
 /**
- * Song 老虎机服务类
+ * SongSlot 老虎机服务类（Song 协议）
+ *
+ * 职责：
+ * - 从 Redis 读取机台状态
+ * - 通过 HTTP 向 gk_work 发送机台指令
+ * - 基于 Redis 状态变化进行实时推送
+ *
+ * 注意：TCP 连接和消息处理已迁移到 gk_work 项目
  *
  * @property int $auto 自动状态
  * @property int $reward_status 开奖状态
@@ -46,42 +50,38 @@ use support\Log;
  */
 class SongSlot extends AbstractMachineService
 {
-    // ==================== 指令常量定义 ====================
+    // ==================== 机台指令常量 ====================
+    // 注意：这些常量定义了Song协议的老虎机指令代码，通过gk_work转发给机台硬件
+    //      实际使用场景见：app/functions.php 和各个Controller
 
-    // 基础指令
-    public const ALL = 'all';
-    public const OPEN_ANY_POINT = 'afca';
-    public const WASH_ZERO = 'afcc';
-    public const TESTING = 'afc0';
-    public const TESTING2 = 'afc6';
+    // 通用指令
+    public const ALL = 'all';                              // 全部数据
 
-    // 读取指令
-    public const READ_SCORE = 'afcbc5';
-    public const READ_WIN = 'afcbc9';
-    public const READ_BET = 'afcbc7';
-    public const READ_STATUS = 'afcbc3';
+    // 操作指令 - 开分/洗分（使用中）
+    public const OPEN_ANY_POINT = 'afca';                  // 任意分数开分（使用中）
+    public const WASH_ZERO = 'afcc';                       // 洗分清零（使用中）
 
-    // 快速读取指令
-    public const GET_SCORE = 'afc5';
-    public const GET_WIN = 'afc9';
-    public const GET_BET = 'afc7';
-    public const GET_STATUS = 'afc3';
+    // 查询指令 - 读取机台状态（使用中）
+    public const READ_SCORE = 'afcbc5';                    // 读取当前得分（使用中）
+    public const READ_WIN = 'afcbc9';                      // 读取总得分
+    public const READ_BET = 'afcbc7';                      // 读取压分（使用中）
 
-    // 控制指令
-    public const REWARD_SWITCH = 'afceb8';
-    public const CHECK = 'afcfb4';
-    public const START = 'afceb2';
-    public const OUT_ON = 'afceb6';
-    public const OUT_OFF = 'afceb2';
-    public const STOP_ONE = 'afceb3';
-    public const STOP_TWO = 'afceb4';
-    public const STOP_THREE = 'afceb5';
-    public const MACHINE_OPEN = 'afcebe';
-    public const MACHINE_CLOSE = 'afcebc';
-    public const ALL_DOWN = 'afcfba';
+    // 控制指令 - 机台操作
+    public const REWARD_SWITCH = 'afceb8';                 // 奖励开关
+    public const CHECK = 'afcfb4';                         // 检查机台状态
+    public const START = 'afceb2';                         // 开始游戏
+    public const OUT_ON = 'afceb6';                        // 开启出分
+    public const OUT_OFF = 'afceb2';                       // 关闭出分（使用中）
+    public const STOP_ONE = 'afceb3';                      // 停止转轴1（使用中）
+    public const STOP_TWO = 'afceb4';                      // 停止转轴2（使用中）
+    public const STOP_THREE = 'afceb5';                    // 停止转轴3（使用中）
+    public const MACHINE_OPEN = 'afcebe';                  // 打开机台
+    public const MACHINE_CLOSE = 'afcebc';                 // 关闭机台
+    public const ALL_DOWN = 'afcfba';                      // 全部下分（使用中）
 
     /**
-     * 初始化缓存 Key 数组
+     * 初始化Redis缓存键名数组
+     * 定义需要从Redis读取/写入的所有老虎机状态字段（Song协议特定）
      */
     protected function initializeCacheKeys(): void
     {
@@ -119,6 +119,7 @@ class SongSlot extends AbstractMachineService
 
     /**
      * 初始化机台信息字段列表
+     * 定义需要通过WebSocket实时推送给前端的字段（Song协议特定）
      */
     protected function initializeMachineInfo(): void
     {
@@ -132,9 +133,9 @@ class SongSlot extends AbstractMachineService
     }
 
     /**
-     * 初始化日志实例
+     * 初始化日志实例 - 使用专用的song_slot_machine日志通道
      *
-     * @return LoggerInterface
+     * @return LoggerInterface 日志记录器实例
      */
     protected function initializeLogger(): LoggerInterface
     {
@@ -143,6 +144,7 @@ class SongSlot extends AbstractMachineService
 
     /**
      * 处理发送指令时的错误
+     * 特定指令失败时设置机台锁并发送异常通知（Song协议特定）
      *
      * @param string $cmd 指令代码
      * @param Exception $e 异常对象
@@ -173,85 +175,5 @@ class SongSlot extends AbstractMachineService
             'error' => $e->getMessage(),
         ]);
     }
-
-    /**
-     * 获取机台操作描述
-     *
-     * @param string $cmd 操作指令（空则返回完整状态）
-     * @param int $data 指令数据（用于某些指令的描述）
-     * @return string
-     */
-    public function getDescription(string $cmd = '', int $data = 0): string
-    {
-        locale(Str::replace('-', '_', $this->lang));
-
-        if (empty($cmd)) {
-            return $this->getFullStatusDescription();
-        }
-
-        return $this->getCommandDescription($cmd, $data);
-    }
-
-    /**
-     * 获取完整状态描述
-     *
-     * @return string
-     */
-    private function getFullStatusDescription(): string
-    {
-        $lines = [];
-
-        $lines[] = trans('machine_auto_status', [], 'machine_action') . $this->formatBoolStatus($this->auto);
-        $lines[] = trans('machine_lottery_status', [], 'machine_action') . $this->formatBoolStatus($this->reward_status);
-        $lines[] = trans('machine_point', [], 'machine_action') . ($this->point ?? 0);
-        $lines[] = trans('machine_bet', [], 'machine_action') . ($this->bet ?? 0);
-        $lines[] = trans('machine_win', [], 'machine_action') . ($this->win ?? 0);
-
-        return implode(PHP_EOL, $lines);
-    }
-
-    /**
-     * 获取指令描述
-     *
-     * @param string $cmd 指令代码
-     * @param int $data 指令数据
-     * @return string
-     */
-    private function getCommandDescription(string $cmd, int $data): string
-    {
-        $description = trans(
-            'function.' . GameType::TYPE_SLOT . '_' . Machine::CONTROL_TYPE_SONG . '.' . $cmd,
-            [],
-            'machine_action'
-        );
-
-        // 根据指令类型附加数据
-        $valueMap = [
-            self::READ_SCORE => $this->point,
-            self::READ_WIN => $this->win,
-            self::READ_BET => $this->bet,
-        ];
-
-        // 特殊指令显示传入的数据
-        if (in_array($cmd, [self::OPEN_ANY_POINT, self::WASH_ZERO])) {
-            $description .= ': ' . $data;
-        } elseif (isset($valueMap[$cmd])) {
-            $description .= ': ' . $valueMap[$cmd];
-        }
-
-        return $description;
-    }
-
-    /**
-     * 格式化布尔状态为翻译文本
-     *
-     * @param int|null $value 状态值
-     * @return string
-     */
-    private function formatBoolStatus(?int $value): string
-    {
-        return $value == 1
-            ? trans('machine_status_yes', [], 'machine_action')
-            : trans('machine_status_no', [], 'machine_action');
-    }
 }
+
