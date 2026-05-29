@@ -414,8 +414,8 @@ function createCode(): string
                 5) . sprintf('%02d', rand(0, 99));
 
         // 使用 for 循环的迭代表达式生成推荐码 (压缩写法,所有逻辑在迭代表达式中)
+        /** @noinspection PhpStatementHasEmptyBodyInspection */
         for ($a = md5($rand, true), $s = '0123456789ABCDEFGHIJKLMNOPQRSTUV', $d = '', $f = 0; $f < 8; $g = ord($a[$f]), $d .= $s[($g ^ ord($a[$f + 8])) - $g & 0x1F], $f++) {
-            // 空循环体: 所有逻辑已在上方迭代表达式中完成
         }
     } while (Player::query()->where('recommend_code', $d)->withTrashed()->exists());
 
