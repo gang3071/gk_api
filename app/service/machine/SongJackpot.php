@@ -60,6 +60,8 @@ class SongJackpot extends AbstractMachineService
     public const ALL = 'all';                          // 全部数据
 
     // 查询指令 - 读取机台状态（使用中）
+    public const TESTING = '46c0';                     // 测试/心跳
+    public const TESTING2 = '46c6';                    // 测试/心跳2
     public const MACHINE_POINT = '46cea2';             // 读取当前分数
     public const MACHINE_SCORE = '46cea5';             // 读取当前珠数
     public const MACHINE_TURN = '46cea6';              // 读取当前转数

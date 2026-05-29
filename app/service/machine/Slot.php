@@ -106,6 +106,14 @@ class Slot extends AbstractMachineService
     public const READ_RB = '26';                               // 读取RB
     public const OPEN_TABLE = '27';                            // 读取开分表
     public const WASH_TABLE = '28';                            // 读取洗分表
+    public const INSERT_COIN_TABLE = '29';                     // 读取投币表
+    public const OUT_COIN_TABLE = '2A';                        // 读取退币表
+    public const READ_STATUS = '2B';                           // 读取状态
+    public const READ_CREDIT = '22';                           // 读取信用 (别名 READ_CREDIT2)
+    public const CHECK = '2F';                                 // 检查/故排
+    public const MACHINE_OPEN = '31';                          // 开机
+    public const MACHINE_CLOSE = '32';                         // 关机
+    public const ALL_UP = '4C';                                // 全部上转
 
     // 自动卡指令 - 控制老虎机自动游戏（使用中）
     public const OUT_ON = 'AA5708000001150D';                  // 开启出分

@@ -62,6 +62,7 @@ class SongSlot extends AbstractMachineService
     public const WASH_ZERO = 'afcc';                       // 洗分清零（使用中）
 
     // 查询指令 - 读取机台状态（使用中）
+    public const READ_STATUS = 'afcbc3';                   // 读取当前状态
     public const READ_SCORE = 'afcbc5';                    // 读取当前得分（使用中）
     public const READ_WIN = 'afcbc9';                      // 读取总得分
     public const READ_BET = 'afcbc7';                      // 读取压分（使用中）
