@@ -82,11 +82,16 @@ class MachineClient
         ?int $playerId = null
     ): array {
         $startTime = microtime(true);
-
-        Log::info('[MachineClient] 发送机台指令', [
+        $requestPayload = [
             'machine_id' => $machineId,
             'cmd' => $cmd,
             'data' => $data,
+            'lang' => $lang,
+        ];
+
+        Log::info('[MachineClient] 发送机台指令 - 请求', [
+            'url' => $this->baseUrl . '/api/admin/machine/send-cmd',
+            'payload' => $requestPayload,
             'player_id' => $playerId,
         ]);
 
@@ -97,23 +102,19 @@ class MachineClient
                     'X-Admin-Id' => 0, // 来自客户端API，使用0表示系统调用
                     'X-Player-Id' => $playerId ?? 0,
                 ])
-                ->post($this->baseUrl . '/api/admin/machine/send-cmd', [
-                    'machine_id' => $machineId,
-                    'cmd' => $cmd,
-                    'data' => $data,
-                    'lang' => $lang,
-                ]);
+                ->post($this->baseUrl . '/api/admin/machine/send-cmd', $requestPayload);
 
             $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
 
             if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
-                Log::info('[MachineClient] 指令执行成功', [
+                Log::info('[MachineClient] 指令执行成功 - 响应', [
                     'machine_id' => $machineId,
                     'cmd' => $cmd,
                     'player_id' => $playerId,
                     'duration_ms' => $duration,
                     'status_code' => $response->status(),
+                    'response_body' => $body,
                 ]);
 
                 return [
@@ -123,13 +124,12 @@ class MachineClient
                 ];
             }
 
-            Log::warning('[MachineClient] 指令执行失败', [
+            Log::warning('[MachineClient] 指令执行失败 - 响应', [
                 'machine_id' => $machineId,
                 'cmd' => $cmd,
                 'status_code' => $response->status(),
                 'duration_ms' => $duration,
-                'response_code' => $body['code'] ?? null,
-                'response_msg' => $body['msg'] ?? null,
+                'response_body' => $body,
             ]);
 
             return [
@@ -176,11 +176,16 @@ class MachineClient
         }
 
         $startTime = microtime(true);
-
-        Log::info('[MachineClient] 批量发送机台指令', [
+        $requestPayload = [
             'machine_id' => $machineId,
+            'commands' => $commands,
+            'lang' => $lang,
+        ];
+
+        Log::info('[MachineClient] 批量发送机台指令 - 请求', [
+            'url' => $this->baseUrl . '/api/admin/machine/batch-send-cmd',
+            'payload' => $requestPayload,
             'commands_count' => count($commands),
-            'commands' => array_column($commands, 'cmd'),
             'player_id' => $playerId,
         ]);
 
@@ -191,11 +196,7 @@ class MachineClient
                     'X-Admin-Id' => 0,
                     'X-Player-Id' => $playerId ?? 0,
                 ])
-                ->post($this->baseUrl . '/api/admin/machine/batch-send-cmd', [
-                    'machine_id' => $machineId,
-                    'commands' => $commands,
-                    'lang' => $lang,
-                ]);
+                ->post($this->baseUrl . '/api/admin/machine/batch-send-cmd', $requestPayload);
 
             $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
@@ -204,13 +205,14 @@ class MachineClient
                 $successCount = $body['data']['success_count'] ?? 0;
                 $failedCount = $body['data']['failed_count'] ?? 0;
 
-                Log::info('[MachineClient] 批量指令执行完成', [
+                Log::info('[MachineClient] 批量指令执行完成 - 响应', [
                     'machine_id' => $machineId,
                     'commands_count' => count($commands),
                     'success_count' => $successCount,
                     'failed_count' => $failedCount,
                     'duration_ms' => $duration,
                     'status_code' => $response->status(),
+                    'response_body' => $body,
                 ]);
 
                 return [
@@ -220,13 +222,12 @@ class MachineClient
                 ];
             }
 
-            Log::warning('[MachineClient] 批量指令执行失败', [
+            Log::warning('[MachineClient] 批量指令执行失败 - 响应', [
                 'machine_id' => $machineId,
                 'commands_count' => count($commands),
                 'duration_ms' => $duration,
                 'status_code' => $response->status(),
-                'response_code' => $body['code'] ?? null,
-                'response_msg' => $body['msg'] ?? null,
+                'response_body' => $body,
             ]);
 
             return [
@@ -261,18 +262,34 @@ class MachineClient
      */
     public function checkOnline(int $machineId, string $lang = 'zh_TW'): array
     {
+        $startTime = microtime(true);
+        $requestPayload = [
+            'machine_id' => $machineId,
+            'lang' => $lang,
+        ];
+
+        Log::info('[MachineClient] 检查机台在线状态 - 请求', [
+            'url' => $this->baseUrl . '/api/admin/machine/check-online',
+            'payload' => $requestPayload,
+        ]);
+
         try {
             $response = $this->getHttpClient()
                 ->withHeaders([
                     'Accept-Language' => $lang,
                     'X-Admin-Id' => 0,
                 ])
-                ->post($this->baseUrl . '/api/admin/machine/check-online', [
-                    'machine_id' => $machineId,
-                    'lang' => $lang,
-                ]);
+                ->post($this->baseUrl . '/api/admin/machine/check-online', $requestPayload);
 
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
+
+            Log::info('[MachineClient] 检查机台在线状态 - 响应', [
+                'machine_id' => $machineId,
+                'duration_ms' => $duration,
+                'status_code' => $response->status(),
+                'response_body' => $body,
+            ]);
 
             if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
                 return [
@@ -289,9 +306,13 @@ class MachineClient
             ];
 
         } catch (RequestException $e) {
-            Log::error('Check machine online HTTP error', [
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('[MachineClient] 检查机台在线状态 - HTTP异常', [
                 'machine_id' => $machineId,
+                'duration_ms' => $duration,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             throw new Exception(trans('check_machine_online_failed', [], 'message') . ': ' . $e->getMessage());
@@ -308,18 +329,35 @@ class MachineClient
      */
     public function batchCheckOnline(array $machineIds, string $lang = 'zh_TW'): array
     {
+        $startTime = microtime(true);
+        $requestPayload = [
+            'machine_ids' => $machineIds,
+            'lang' => $lang,
+        ];
+
+        Log::info('[MachineClient] 批量检查机台在线状态 - 请求', [
+            'url' => $this->baseUrl . '/api/admin/machine/batch-check-online',
+            'payload' => $requestPayload,
+            'machine_count' => count($machineIds),
+        ]);
+
         try {
             $response = $this->getHttpClient()
                 ->withHeaders([
                     'Accept-Language' => $lang,
                     'X-Admin-Id' => 0,
                 ])
-                ->post($this->baseUrl . '/api/admin/machine/batch-check-online', [
-                    'machine_ids' => $machineIds,
-                    'lang' => $lang,
-                ]);
+                ->post($this->baseUrl . '/api/admin/machine/batch-check-online', $requestPayload);
 
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
+
+            Log::info('[MachineClient] 批量检查机台在线状态 - 响应', [
+                'machine_count' => count($machineIds),
+                'duration_ms' => $duration,
+                'status_code' => $response->status(),
+                'response_body' => $body,
+            ]);
 
             if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
                 return [
@@ -336,9 +374,14 @@ class MachineClient
             ];
 
         } catch (RequestException $e) {
-            Log::error('Batch check machine online HTTP error', [
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('[MachineClient] 批量检查机台在线状态 - HTTP异常', [
                 'machine_ids' => $machineIds,
+                'machine_count' => count($machineIds),
+                'duration_ms' => $duration,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             throw new Exception(trans('batch_check_machine_online_failed', [], 'message') . ': ' . $e->getMessage());
