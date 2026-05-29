@@ -209,17 +209,24 @@ class GamePlatformController
                     'is_hot' => $game->is_hot,
                     'platform_id' => $game->platform_id,
                     'is_maintenance' => $game->gamePlatform->is_maintenance ?? 0,
-                    'game_content' => $content
+                    'game_content' => $content,
+                    'enable_big_picture' => $game->enable_big_picture
                 ];
             }
             $enterGameRecord = PlayerEnterGameRecord::query()
                 ->select('game_id', DB::raw('MAX(id) as id'))
                 ->where('player_id', $player->id)
+                ->whereHas('game', function ($query) use ($allowedPlatformIds) {
+                    $query->whereIn('platform_id', $allowedPlatformIds);
+                })
+                ->when(!empty($disabledGameIds), function ($query) use ($disabledGameIds) {
+                    $query->whereNotIn('game_id', $disabledGameIds);
+                })
                 ->groupBy('game_id')
                 ->orderBy('id', 'desc')
                 ->limit(5)
                 ->get();
-            
+
             /** @var PlayerEnterGameRecord $playerEnterGameRecord */
             foreach ($enterGameRecord as $playerEnterGameRecord) {
                 /** @var GameContent $gameContent */
@@ -537,6 +544,12 @@ class GamePlatformController
         $enterGameRecord = PlayerEnterGameRecord::query()
             ->select('game_id', DB::raw('MAX(id) as id'))
             ->where('player_id', $player->id)
+            ->whereHas('game', function ($query) use ($allowedPlatformIds) {
+                $query->whereIn('platform_id', $allowedPlatformIds);
+            })
+            ->when(!empty($disabledGameIds), function ($query) use ($disabledGameIds) {
+                $query->whereNotIn('game_id', $disabledGameIds);
+            })
             ->groupBy('game_id')
             ->orderBy('id', 'desc')
             ->limit(5)
