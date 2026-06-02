@@ -135,7 +135,7 @@ return [
             Slot::ALL_DOWN => 'ログの消去',
             Slot::OPEN_FIVE => '開分5回',
             Slot::OPEN_TESTING => 'スコアカード試験',
-            Slot::READ_SCORE => '読取点数',
+            Slot::MACHINE_POINT => '読取点数',
             Slot::READ_CREDIT2 => '読取スコア',
             Slot::READ_BET => '読み取りBET',
             Slot::READ_WIN => '読取WIN',
@@ -151,7 +151,7 @@ return [
             /** 小淞工控 */
             SongSlot::OPEN_ANY_POINT => '任意点を開く',
             SongSlot::WASH_ZERO => '洗浄&クリア',
-            SongSlot::READ_SCORE => '読取スコア',
+            SongSlot::MACHINE_POINT => '読取スコア',
             SongSlot::READ_WIN => '読取スコア',
             SongSlot::READ_BET => '読み取りBET',
             SongSlot::READ_STATUS => 'マシンステートの読み取り',

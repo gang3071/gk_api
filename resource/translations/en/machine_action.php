@@ -134,7 +134,7 @@ return [
             Slot::ALL_DOWN => 'Clear Log',
             Slot::OPEN_FIVE => 'Split 5 times',
             Slot::OPEN_TESTING => 'Split Card Test',
-            Slot::READ_SCORE => 'Read Score',
+            Slot::MACHINE_POINT => 'Read Score',
             Slot::READ_CREDIT2 => 'Read Score',
             Slot::READ_BET => 'Read BET',
             Slot::READ_WIN => 'Read WIN',
@@ -150,7 +150,7 @@ return [
             /** 小淞工控 */
             SongSlot::OPEN_ANY_POINT => 'Open Any Split',
             SongSlot::WASH_ZERO => 'Wash&Reset',
-            SongSlot::READ_SCORE => 'Read Score',
+            SongSlot::MACHINE_POINT => 'Read Score',
             SongSlot::READ_WIN => 'Read Win',
             SongSlot::READ_BET => 'Read BET',
             SongSlot::READ_STATUS => 'Read machine status',

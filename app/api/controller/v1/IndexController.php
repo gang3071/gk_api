@@ -848,7 +848,8 @@ class IndexController
         if (empty($channel)) {
             return jsonFailResponse(trans('channel_not_found', [], 'message'));
         }
-        if ($channel['status'] == 0 || !empty($channel['deleted_at'])) {
+        // 检查渠道状态（防御性编程：使用 ?? 1 设置默认值）
+        if (($channel['status'] ?? 1) == 0 || !empty($channel['deleted_at'])) {
             return jsonFailResponse(trans('channel_not_found', [], 'message'));
         }
         /** @var SystemSetting $systemSetting */
@@ -917,14 +918,14 @@ class IndexController
             'download_url' => $channel['download_url'] ?? '',
             'line_client_id' => $channel['line_client_id'] ?? '',
             'line_login_status' => ($channel['line_login_status'] == 1 || $channel['line_login_status'] == true),
-            'national_promoter_status' => ($channel['national_promoter_status'] == 1 || $channel['national_promoter_status'] == true),
-            'reverse_water_status' => ($channel['reverse_water_status'] == 1 || $channel['reverse_water_status'] == true),
-            'discussion_group_status' => ($channel['discussion_group_status'] == 1 || $channel['discussion_group_status'] == true),
-            'ranking_status' => ($channel['ranking_status'] == 1 || $channel['ranking_status'] == true),
+            'national_promoter_status' => (($channel['national_promoter_status'] ?? 0) == 1 || $channel['national_promoter_status'] == true),
+            'reverse_water_status' => (($channel['reverse_water_status'] ?? 0) == 1 || $channel['reverse_water_status'] == true),
+            'discussion_group_status' => (($channel['discussion_group_status'] ?? 0) == 1 || $channel['discussion_group_status'] == true),
+            'ranking_status' => (($channel['ranking_status'] ?? 0) == 1 || $channel['ranking_status'] == true),
             'activity_open' => $systemSetting->status ?? 0,
-            'lottery_status' => ($channel['lottery_status'] == 1 || $channel['lottery_status'] == true),
-            'lottery_ticket_enabled' => ($channel['lottery_ticket_enabled'] == 1 || $channel['lottery_ticket_enabled'] == true),
-            'status_machine' => ($channel['status_machine'] == 1 || $channel['status_machine'] == true),
+            'lottery_status' => (($channel['lottery_status'] ?? 0) == 1 || $channel['lottery_status'] == true),
+            'lottery_ticket_enabled' => (($channel['lottery_ticket_enabled'] ?? 0) == 1 || $channel['lottery_ticket_enabled'] == true),
+            'status_machine' => (($channel['status_machine'] ?? 0) == 1 || $channel['status_machine'] == true),
             'machine_media_line' => $channel['machine_media_line'],
             'is_offline' => ($channel['is_offline'] ?? 0) == 1,
             // 安卓APP更新信息（仅线下渠道返回）

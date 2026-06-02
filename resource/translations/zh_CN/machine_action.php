@@ -133,7 +133,7 @@ return [
             Slot::ALL_DOWN => '清除日志',
             Slot::OPEN_FIVE => '开分5次',
             Slot::OPEN_TESTING => '开分卡测试',
-            Slot::READ_SCORE => '读取分数',
+            Slot::MACHINE_POINT => '读取分数',
             Slot::READ_CREDIT2 => '读取得分',
             Slot::READ_BET => '读取BET',
             Slot::READ_WIN => '读取WIN',
@@ -149,7 +149,7 @@ return [
             /** 小淞工控 */
             SongSlot::OPEN_ANY_POINT => '开任意分',
             SongSlot::WASH_ZERO => '洗分&清零',
-            SongSlot::READ_SCORE => '读取分数',
+            SongSlot::MACHINE_POINT => '读取分数',
             SongSlot::READ_WIN => '读取得分',
             SongSlot::READ_BET => '读取BET',
             SongSlot::READ_STATUS => '读取机台状态',
