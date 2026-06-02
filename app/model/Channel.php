@@ -46,6 +46,7 @@ use support\Cache;
  * @property int discussion_group_status 讨论群功能(0:禁用,1:启用)
  * @property int activity_status 活动状态(0:禁用,1:启用)
  * @property int lottery_status 彩金状态(0:禁用,1:启用)
+ * @property int lottery_ticket_enabled 摸奖券功能开关(0:禁用,1:启用)
  * @property int status_machine 实体机台开关 0关闭1-开启
  * @property int line_client_id line client id
  * @property float recharge_amount 官方总充值点数
