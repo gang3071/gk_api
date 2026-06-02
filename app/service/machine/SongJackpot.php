@@ -52,41 +52,42 @@ use support\Log;
  */
 class SongJackpot extends AbstractMachineService
 {
-    // ==================== 机台指令常量 ====================
-    // 注意：这些常量定义了Song协议的机台指令代码，通过gk_work转发给机台硬件
+    // ==================== 机台指令常量 (Song 协议 - 钢珠机) ====================
+    // 注意：这些常量定义了Song协议的钢珠机指令代码，通过gk_work转发给机台硬件
     //      实际使用场景见：app/functions.php 和各个Controller
 
-    // 通用指令
-    public const ALL = 'all';                          // 全部数据
+    // ========== 通用指令 ==========
+    public const ALL = 'all';                          // 获取所有机台数据（用于初始化和全量刷新）
 
-    // 查询指令 - 读取机台状态（使用中）
-    public const TESTING = '46c0';                     // 测试/心跳
-    public const TESTING2 = '46c6';                    // 测试/心跳2
-    public const MACHINE_POINT = '46cea2';             // 读取当前分数
-    public const MACHINE_SCORE = '46cea5';             // 读取当前珠数
-    public const MACHINE_TURN = '46cea6';              // 读取当前转数
-    public const WIN_NUMBER = '46cea9';                // 读取中奖次数
+    // ========== 查询指令 - 读取机台状态 ==========
+    public const TESTING = '46c0';                     // 测试心跳：检测机台连接状态
+    public const MACHINE_POINT = '46cea2';             // 读取当前分数：查询机台当前剩余分数（统一接口）
+    public const MACHINE_SCORE = '46cea5';             // 读取当前珠数：查询当前得分珠数（出珠计数）
+    public const MACHINE_TURN = '46cea6';              // 读取当前转数：查询当前保转数量
+    public const WIN_NUMBER = '46cea9';                // 读取中奖次数：查询累计中奖次数（用于活动统计）
 
-    // 控制指令 - 机台操作
-    public const CHECK = '46cfb4';                     // 检查机台状态
-    public const MACHINE_OPEN = '46cebe';              // 打开机台
-    public const MACHINE_CLOSE = '46cebc';             // 关闭机台
-    public const REWARD_SWITCH = '46ceb8';             // 奖励开关
-    public const PUSH_THREE = '46ceb6';                // PUSH动作3
-    public const PUSH_ONE = '46ceb2';                  // PUSH动作1
+    // ========== 机台控制指令 ==========
+    public const CHECK = '46cfb4';                     // 故障检查：诊断机台是否有硬件故障
+    public const MACHINE_OPEN = '46cebe';              // 开机指令：启动机台电源
+    public const MACHINE_CLOSE = '46cebc';             // 关机指令：关闭机台电源
+    public const REWARD_SWITCH = '46ceb8';             // 奖励开关：查询或切换开奖状态（0=关闭, 1=开启）
 
-    // 控制指令 - 转数/珠数/分数操作（使用中）
-    public const TURN_DOWN_ALL = '46cec9';             // 下所有转数
-    public const TURN_UP_ALL = '46cecb';               // 上所有转数
-    public const SCORE_TO_POINT = '46cec8';            // 珠数转为分数
-    public const TURN_TO_POINT = '46ceca';             // 转数转为分数
-    public const POINT_TO_TURN = '46cec1';             // 分数转为转数
-    public const AUTO_UP_TURN = '46cecd';              // 自动上转
+    // ========== PUSH 推杆控制指令 ==========
+    public const PUSH_THREE = '46ceb6';                // 推杆动作3：执行第3档推杆动作
+    public const PUSH_ONE = '46ceb2';                  // 推杆动作1：执行第1档推杆动作
 
-    // 控制指令 - 开分/洗分（使用中）
-    public const OPEN_ANY_POINT = '46ca';              // 任意分数开分
-    public const WASH_ZERO = '46cc';                   // 洗分清零
-    public const CLEAR_LOG = '46ccba';                 // 清除日志
+    // ========== 转数/珠数/分数转换控制指令 ==========
+    public const TURN_DOWN_ALL = '46cec9';             // 下所有转数：将所有保转下分返还给玩家（离台时调用）
+    public const TURN_UP_ALL = '46cecb';               // 上所有转数：将所有分数转换为保转
+    public const SCORE_TO_POINT = '46cec8';            // 珠数转分数：将得分珠数转换为可用分数（离台前调用）
+    public const TURN_TO_POINT = '46ceca';             // 转数转分数：手动将保转转换为可用分数
+    public const POINT_TO_TURN = '46cec1';             // 分数转转数：手动将分数转换为保转
+    public const AUTO_UP_TURN = '46cecd';              // 自动上转：自动将得分转换为保转（离台时调用）
+
+    // ========== 开分/洗分操作指令 ==========
+    public const OPEN_ANY_POINT = '46ca';              // 任意分数开分：玩家充值上分，指定具体分数
+    public const WASH_ZERO = '46cc';                   // 洗分清零：玩家下分时将机台分数清零，返还给玩家
+    public const CLEAR_LOG = '46ccba';                 // 清除日志：清空机台操作日志记录（离台时调用）
 
     /**
      * 构造函数 - 初始化SongJackpot机台服务实例

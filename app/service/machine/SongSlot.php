@@ -50,35 +50,37 @@ use support\Log;
  */
 class SongSlot extends AbstractMachineService
 {
-    // ==================== 机台指令常量 ====================
+    // ==================== 机台指令常量 (Song 协议) ====================
     // 注意：这些常量定义了Song协议的老虎机指令代码，通过gk_work转发给机台硬件
     //      实际使用场景见：app/functions.php 和各个Controller
 
-    // 通用指令
-    public const ALL = 'all';                              // 全部数据
+    // ========== 通用指令 ==========
+    public const ALL = 'all';                              // 获取所有机台数据（用于初始化和全量刷新）
 
-    // 操作指令 - 开分/洗分（使用中）
-    public const OPEN_ANY_POINT = 'afca';                  // 任意分数开分（使用中）
-    public const WASH_ZERO = 'afcc';                       // 洗分清零（使用中）
+    // ========== 开分/洗分操作指令 ==========
+    public const OPEN_ANY_POINT = 'afca';                  // 任意分数开分：玩家充值上分，指定具体分数
+    public const WASH_ZERO = 'afcc';                       // 洗分清零：玩家下分时将机台分数清零，返还给玩家
 
-    // 查询指令 - 读取机台状态（使用中）
-    public const READ_STATUS = 'afcbc3';                   // 读取当前状态
-    public const READ_SCORE = 'afcbc5';                    // 读取当前得分（使用中）
-    public const READ_WIN = 'afcbc9';                      // 读取总得分
-    public const READ_BET = 'afcbc7';                      // 读取压分（使用中）
+    // ========== 查询指令 - 读取机台状态 ==========
+    public const READ_STATUS = 'afcbc3';                   // 读取机台状态：查询机台当前运行状态（游戏中/空闲等）
+    public const MACHINE_POINT = 'afcbc5';                 // 读取当前分数：查询机台当前剩余分数（统一接口）
+    public const READ_WIN = 'afcbc9';                      // 读取总得分：查询玩家累计赢得的分数
+    public const READ_BET = 'afcbc7';                      // 读取当前压分：查询玩家当前押注金额
 
-    // 控制指令 - 机台操作
-    public const REWARD_SWITCH = 'afceb8';                 // 奖励开关
-    public const CHECK = 'afcfb4';                         // 检查机台状态
-    public const START = 'afceb2';                         // 开始游戏
-    public const OUT_ON = 'afceb6';                        // 开启出分
-    public const OUT_OFF = 'afceb2';                       // 关闭出分（使用中）
-    public const STOP_ONE = 'afceb3';                      // 停止转轴1（使用中）
-    public const STOP_TWO = 'afceb4';                      // 停止转轴2（使用中）
-    public const STOP_THREE = 'afceb5';                    // 停止转轴3（使用中）
-    public const MACHINE_OPEN = 'afcebe';                  // 打开机台
-    public const MACHINE_CLOSE = 'afcebc';                 // 关闭机台
-    public const ALL_DOWN = 'afcfba';                      // 全部下分（使用中）
+    // ========== 奖励状态控制指令 ==========
+    public const REWARD_SWITCH = 'afceb8';                 // 奖励开关：查询或切换开奖状态（0=关闭, 1=开启）
+
+    // ========== 机台控制指令 ==========
+    public const CHECK = 'afcfb4';                         // 故障检查：诊断机台是否有硬件故障
+    public const START = 'afceb2';                         // 开始游戏：启动一次老虎机转轴旋转
+    public const OUT_ON = 'afceb6';                        // 开启出分：启用自动出分功能
+    public const OUT_OFF = 'afceb2';                       // 关闭出分：禁用自动出分（玩家离台时调用）
+    public const STOP_ONE = 'afceb3';                      // 停止转轴1：停止第1个转轴（玩家离台时强制停止）
+    public const STOP_TWO = 'afceb4';                      // 停止转轴2：停止第2个转轴（玩家离台时强制停止）
+    public const STOP_THREE = 'afceb5';                    // 停止转轴3：停止第3个转轴（玩家离台时强制停止）
+    public const MACHINE_OPEN = 'afcebe';                  // 开机指令：启动机台电源
+    public const MACHINE_CLOSE = 'afcebc';                 // 关机指令：关闭机台电源
+    public const ALL_DOWN = 'afcfba';                      // 全部下分：老虎机玩家离开时，将所有剩余分数下分
 
     /**
      * 初始化Redis缓存键名数组

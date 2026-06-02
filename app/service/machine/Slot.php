@@ -54,77 +54,60 @@ use support\Log;
  */
 class Slot extends AbstractMachineService
 {
-    // ==================== 机台指令常量 ====================
+    // ==================== 机台指令常量 (MEI 协议) ====================
     // 注意：这些常量定义了MEI协议的老虎机指令代码，通过gk_work转发给机台硬件
     //      实际使用场景见：app/functions.php 和各个Controller
 
-    // 通用指令
-    public const ALL = 'all';                                  // 全部数据
+    // ========== 通用指令 ==========
+    public const ALL = 'all';                                  // 获取所有机台数据（用于初始化和全量刷新）
 
-    // 操作指令 - 开分/洗分（使用中）
-    public const OPEN_ONE = '41';                              // 单次开分
-    public const OPEN_TEN = '42';                              // 十次开分
-    public const OPEN_FIVE = '49';                             // 开分×5
-    public const OPEN_ANY_POINT = '4A';                        // 任意分数开分
-    public const WASH_ZERO = '43';                             // 洗分清零
-    public const WASH_POINT = '44';                            // 洗分
-    public const ALL_DOWN = '47';                              // 全部下分
-    public const MOVE_POINT_ON = '45';                         // 移分 长ON
-    public const MOVE_POINT_OFF = '46';                        // 关闭移分（使用中）
+    // ========== 开分/洗分操作指令 ==========
+    public const OPEN_ONE = '41';                              // 单次开分：玩家上分时按次数开分（1次）
+    public const OPEN_TEN = '42';                              // 十次开分：玩家上分时按次数开分（10次）
+    public const OPEN_FIVE = '49';                             // 五次开分：玩家上分时按次数开分（5次）
+    public const OPEN_ANY_POINT = '4A';                        // 任意分数开分：玩家充值上分，指定具体分数
+    public const WASH_ZERO = '43';                             // 洗分清零：玩家下分时将机台分数清零，返还给玩家
+    public const WASH_POINT = '44';                            // 洗分指定金额：洗出指定分数
+    public const ALL_DOWN = '47';                              // 全部下分：老虎机玩家离开时，将所有剩余分数下分
 
-    // 操作指令 - 状态控制
-    public const REWARD_SWITCH = '2D';                         // 奖励开关
-    public const REWARD_SWITCH_OPT = '64';                     // 奖励开关选项
+    // ========== 移分控制指令 ==========
+    public const MOVE_POINT_ON = '45';                         // 开启移分：允许机台间分数转移（长按ON状态）
+    public const MOVE_POINT_OFF = '46';                        // 关闭移分：禁止机台间分数转移（玩家离台时调用）
 
-    // 输出控制指令
-    public const OUTPUT = '4B';                                // 输出控制前缀
-    public const ALL_OFF = '00';                               // 全OFF
-    public const U1_ON = '01';                                 // U1 ON
-    public const U2_ON = '02';                                 // U2 ON
-    public const U3_ON = '03';                                 // U3 ON
-    public const U4_ON = '04';                                 // U4 ON
-    public const U5_ON = '05';                                 // U5 ON
-    public const U6_ON = '06';                                 // U6 ON
-    public const U7_ON = '07';                                 // U7 ON
-    public const U8_ON = '08';                                 // U8 ON
-    public const U1_PULSE = '21';                              // U1 PULSE
-    public const U2_PULSE = '22';                              // U2 PULSE
-    public const U3_PULSE = '23';                              // U3 PULSE
-    public const U4_PULSE = '24';                              // U4 PULSE
-    public const U5_PULSE = '25';                              // U5 PULSE
-    public const U6_PULSE = '26';                              // U6 PULSE
-    public const U7_PULSE = '27';                              // U7 PULSE
-    public const U8_PULSE = '28';                              // U8 PULSE
+    // ========== 奖励状态控制指令 ==========
+    public const REWARD_SWITCH = '2D';                         // 奖励开关：查询或切换开奖状态（0=关闭, 1=开启）
+    public const REWARD_SWITCH_OPT = '64';                     // 奖励开关选项：奖励开关的附加选项参数
 
-    // 查询指令 - 读取机台状态（使用中）
-    public const OPEN_TESTING = '20';                          // 开分卡测试
-    public const READ_SCORE = '21';                            // 读取当前得分
-    public const READ_CREDIT2 = '22';                          // 读取信用2
-    public const READ_BET = '23';                              // 读取压分
-    public const READ_WIN = '24';                              // 读取总得分
-    public const READ_BB = '25';                               // 读取BB
-    public const READ_RB = '26';                               // 读取RB
-    public const OPEN_TABLE = '27';                            // 读取开分表
-    public const WASH_TABLE = '28';                            // 读取洗分表
-    public const INSERT_COIN_TABLE = '29';                     // 读取投币表
-    public const OUT_COIN_TABLE = '2A';                        // 读取退币表
-    public const READ_STATUS = '2B';                           // 读取状态
-    public const READ_CREDIT = '22';                           // 读取信用 (别名 READ_CREDIT2)
-    public const CHECK = '2F';                                 // 检查/故排
-    public const MACHINE_OPEN = '31';                          // 开机
-    public const MACHINE_CLOSE = '32';                         // 关机
-    public const ALL_UP = '4C';                                // 全部上转
+    // ========== 输出控制指令 ==========
+    public const OUTPUT = '4B';                                // 输出控制前缀：控制机台外设输出（灯光/音效等）
+    public const U1_PULSE = '21';                              // U1脉冲输出：触发U1端口脉冲信号（常用于彩灯控制）
 
-    // 自动卡指令 - 控制老虎机自动游戏（使用中）
-    public const OUT_ON = 'AA5708000001150D';                  // 开启出分
-    public const OUT_OFF = 'AA5708000002F70D';                 // 关闭出分（使用中）
-    public const PRESSURE = 'AA5708000003A90D';                // 压分
-    public const START = 'AA57080000042A0D';                   // 开始游戏
-    public const STOP_ONE = 'AA5708000005740D';                // 停止转轴1（使用中）
-    public const STOP_TWO = 'AA5708000006960D';                // 停止转轴2（使用中）
-    public const STOP_THREE = 'AA5708000007C80D';              // 停止转轴3（使用中）
-    public const TESTING = 'AA57080000004B0D';                 // 测试/心跳
-    public const GET_AUTO_STATUS = 'AA570800000A5D0D';         // 获取自动状态
+    // ========== 查询指令 - 读取机台状态 ==========
+    public const OPEN_TESTING = '20';                          // 开分卡测试：检测开分卡是否正常工作
+    public const MACHINE_POINT = '21';                         // 读取当前分数：查询机台当前剩余分数（统一接口）
+    public const READ_CREDIT2 = '22';                          // 读取信用额度：查询机台信用值（Credit2字段）
+    public const READ_BET = '23';                              // 读取当前压分：查询玩家当前押注金额
+    public const READ_WIN = '24';                              // 读取总得分：查询玩家累计赢得的分数
+    public const READ_RB = '26';                               // 读取RB次数：查询Regular Bonus触发次数
+    public const OPEN_TABLE = '27';                            // 读取开分表：获取开分记录明细
+    public const WASH_TABLE = '28';                            // 读取洗分表：获取洗分记录明细
+    public const INSERT_COIN_TABLE = '29';                     // 读取投币表：获取投币记录明细
+    public const OUT_COIN_TABLE = '2A';                        // 读取退币表：获取退币记录明细
+    public const READ_STATUS = '2B';                           // 读取机台状态：查询机台当前运行状态（游戏中/空闲等）
+    public const CHECK = '2F';                                 // 故障检查：诊断机台是否有硬件故障
+    public const MACHINE_OPEN = '31';                          // 开机指令：启动机台电源
+    public const MACHINE_CLOSE = '32';                         // 关机指令：关闭机台电源
+
+    // ========== 自动卡指令 - 控制老虎机自动游戏 ==========
+    public const OUT_ON = 'AA5708000001150D';                  // 开启出分：启用自动出分功能
+    public const OUT_OFF = 'AA5708000002F70D';                 // 关闭出分：禁用自动出分（玩家离台时调用）
+    public const PRESSURE = 'AA5708000003A90D';                // 自动压分：设置自动游戏的押注金额
+    public const START = 'AA57080000042A0D';                   // 开始游戏：启动一次老虎机转轴旋转
+    public const STOP_ONE = 'AA5708000005740D';                // 停止转轴1：停止第1个转轴（玩家离台时强制停止）
+    public const STOP_TWO = 'AA5708000006960D';                // 停止转轴2：停止第2个转轴（玩家离台时强制停止）
+    public const STOP_THREE = 'AA5708000007C80D';              // 停止转轴3：停止第3个转轴（玩家离台时强制停止）
+    public const TESTING = 'AA57080000004B0D';                 // 测试心跳：检测自动卡连接状态
+    public const GET_AUTO_STATUS = 'AA570800000A5D0D';         // 获取自动状态：查询自动游戏模式是否开启
 
     /**
      * 初始化Redis缓存键名数组

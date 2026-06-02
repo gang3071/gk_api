@@ -52,48 +52,48 @@ use support\Log;
  */
 class Jackpot extends AbstractMachineService
 {
-    // ==================== 机台指令常量 ====================
-    // 注意：这些常量定义了MEI协议的机台指令代码，通过gk_work转发给机台硬件
+    // ==================== 机台指令常量 (MEI 协议 - 钢珠机) ====================
+    // 注意：这些常量定义了MEI协议的钢珠机指令代码，通过gk_work转发给机台硬件
     //      实际使用场景见：app/functions.php 和各个Controller
 
-    // 通用指令
-    public const ALL = 'all';                          // 全部数据
+    // ========== 通用指令 ==========
+    public const ALL = 'all';                          // 获取所有机台数据（用于初始化和全量刷新）
 
-    // 操作指令 - 开分/洗分
-    public const OPEN_ONE = '41';                      // 单次开分
-    public const OPEN_TEN = '42';                      // 十次开分
-    public const OPEN_ANY_POINT = '4A';                // 任意分数开分
-    public const WASH_ZERO = '43';                     // 洗分清零
-    public const WASH_ZERO_REMAINDER = '44';           // 洗分保留余数
-    public const CLEAR_LOG = '4F';                     // 清除日志
+    // ========== 开分/洗分操作指令 ==========
+    public const OPEN_ONE = '41';                      // 单次开分：玩家上分时按次数开分（1次）
+    public const OPEN_TEN = '42';                      // 十次开分：玩家上分时按次数开分（10次）
+    public const OPEN_ANY_POINT = '4A';                // 任意分数开分：玩家充值上分，指定具体分数
+    public const WASH_ZERO = '43';                     // 洗分清零：玩家下分时将机台分数清零，返还给玩家
+    public const WASH_ZERO_REMAINDER = '44';           // 洗分保留余数：洗分时保留部分余数不下分
+    public const CLEAR_LOG = '4F';                     // 清除日志：清空机台操作日志记录（离台时调用）
 
-    // 操作指令 - 转数/珠数控制
-    public const AUTO_UP_TURN = '45';                  // 自动上转
-    public const RESET_READY_TURN = '46';              // 重置准备转数
-    public const TURN_DOWN_ALL = '47';                 // 下所有转数
-    public const TURN_UP_ALL = '4C';                   // 上所有转数
-    public const TURN_TO_POINT = '48';                 // 转数转为分数
-    public const POINT_TO_TURN = '49';                 // 分数转为转数
-    public const SCORE_TO_POINT = '4B';                // 珠数转为分数
-    public const OP_3 = '4D';                          // 操作3（具体用途待确认）
+    // ========== 转数/珠数/分数转换控制指令 ==========
+    public const AUTO_UP_TURN = '45';                  // 自动上转：自动将得分转换为保转（离台时调用）
+    public const RESET_READY_TURN = '46';              // 重置准备转数：清零准备转数计数器
+    public const TURN_DOWN_ALL = '47';                 // 下所有转数：将所有保转下分返还给玩家（离台时调用）
+    public const TURN_UP_ALL = '4C';                   // 上所有转数：将所有分数转换为保转
+    public const TURN_TO_POINT = '48';                 // 转数转分数：手动将保转转换为可用分数
+    public const POINT_TO_TURN = '49';                 // 分数转转数：手动将分数转换为保转
+    public const SCORE_TO_POINT = '4B';                // 珠数转分数：将得分珠数转换为可用分数（离台前调用）
+    public const OP_3 = '4D';                          // 开启OP_3保转：触发特殊保转模式
 
-    // 查询指令 - 读取机台状态
-    public const TESTING = '20';                       // 测试/心跳
-    public const MACHINE_POINT = '21';                 // 读取当前分数
-    public const MACHINE_SCORE = '22';                 // 读取当前珠数
-    public const MACHINE_TURN = '23';                  // 读取当前转数
-    public const WIN_NUMBER = '24';                    // 读取中奖次数
-    public const READ_OPEN_POINT = '25';               // 读取开分次数
-    public const READ_WASH_POINT = '26';               // 读取洗分次数
-    public const REWARD_SWITCH = '2D';                 // 奖励开关状态
-    public const REWARD_SWITCH_OPT = '64';             // 奖励开关选项
+    // ========== 查询指令 - 读取机台状态 ==========
+    public const TESTING = '20';                       // 测试心跳：检测机台连接状态
+    public const MACHINE_POINT = '21';                 // 读取当前分数：查询机台当前剩余分数（统一接口）
+    public const MACHINE_SCORE = '22';                 // 读取当前珠数：查询当前得分珠数（出珠计数）
+    public const MACHINE_TURN = '23';                  // 读取当前转数：查询当前保转数量
+    public const WIN_NUMBER = '24';                    // 读取中奖次数：查询累计中奖次数（用于活动统计）
+    public const READ_OPEN_POINT = '25';               // 读取开分次数：查询累计开分次数
+    public const READ_WASH_POINT = '26';               // 读取洗分次数：查询累计洗分次数
+    public const REWARD_SWITCH = '2D';                 // 奖励开关：查询或切换开奖状态（0=关闭, 1=开启）
+    public const REWARD_SWITCH_OPT = '64';             // 奖励开关选项：奖励开关的附加选项参数
 
-    // PUSH控制指令 - 控制推杆动作（组合使用：PUSH + 动作代码）
-    public const PUSH = '2E';                          // PUSH基础指令
-    public const PUSH_STOP = '00';                     // 停止推杆
-    public const PUSH_ONE = '01';                      // 推杆动作1
-    public const PUSH_TWO = '02';                      // 推杆动作2
-    public const PUSH_THREE = '03';                    // 推杆动作3
+    // ========== PUSH 推杆控制指令（组合使用：PUSH + 动作代码）==========
+    public const PUSH = '2E';                          // PUSH基础指令：推杆控制前缀，需配合动作代码使用
+    public const PUSH_STOP = '00';                     // 停止推杆：停止推杆动作（离台时强制停止）
+    public const PUSH_ONE = '01';                      // 推杆动作1：执行第1档推杆动作
+    public const PUSH_TWO = '02';                      // 推杆动作2：执行第2档推杆动作
+    public const PUSH_THREE = '03';                    // 推杆动作3：执行第3档推杆动作
 
     /**
      * 构造函数 - 初始化Jackpot机台服务实例

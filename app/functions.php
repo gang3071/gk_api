@@ -1109,7 +1109,7 @@ function isAllowClientGivePoint(Machine $machine, Player $player): bool
             case GameType::TYPE_SLOT:
                 // 批量发送查询指令（优化：1-2次HTTP调用 → 1次）
                 $commands = [
-                    ['cmd' => $services::READ_SCORE, 'data' => 0],
+                    ['cmd' => $services::MACHINE_POINT, 'data' => 0],
                 ];
                 if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
                     $commands[] = ['cmd' => $services::READ_CREDIT2, 'data' => 0];
@@ -2934,7 +2934,7 @@ function machineWash(
                 $slotCommands[] = ['cmd' => $services::STOP_ONE, 'data' => 0];
                 $slotCommands[] = ['cmd' => $services::STOP_TWO, 'data' => 0];
                 $slotCommands[] = ['cmd' => $services::STOP_THREE, 'data' => 0];
-                $slotCommands[] = ['cmd' => $services::READ_SCORE, 'data' => 0];
+                $slotCommands[] = ['cmd' => $services::MACHINE_POINT, 'data' => 0];
 
                 $client = new MachineClient();
                 $result = $client->batchSendCommands($machine->id, $slotCommands, $lang, $player->id);
