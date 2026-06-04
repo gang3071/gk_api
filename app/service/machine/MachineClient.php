@@ -89,23 +89,24 @@ class MachineClient
             'lang' => $lang,
         ];
 
+        // 构建请求headers
+        $headers = [
+            'Accept-Language' => $lang,
+        ];
+
+        // 只在playerId有效时才添加header（避免传递null或0）
+        if ($playerId !== null && $playerId > 0) {
+            $headers['X-Player-Id'] = $playerId;
+        }
+
         Log::info('[MachineClient] 发送机台指令 - 请求', [
             'url' => $this->baseUrl . '/api/v1/machine/send-cmd',
             'payload' => $requestPayload,
+            'headers' => $headers,
             'player_id' => $playerId,
         ]);
 
         try {
-            // 构建请求headers
-            $headers = [
-                'Accept-Language' => $lang,
-            ];
-
-            // 只在playerId有效时才添加header（避免传递null或0）
-            if ($playerId !== null && $playerId > 0) {
-                $headers['X-Player-Id'] = $playerId;
-            }
-
             $response = $this->getHttpClient()
                 ->withHeaders($headers)
                 ->post($this->baseUrl . '/api/v1/machine/send-cmd', $requestPayload);
