@@ -90,24 +90,34 @@ class MachineClient
         ];
 
         Log::info('[MachineClient] 发送机台指令 - 请求', [
-            'url' => $this->baseUrl . '/api/admin/machine/send-cmd',
+            'url' => $this->baseUrl . '/api/v1/machine/send-cmd',
             'payload' => $requestPayload,
             'player_id' => $playerId,
         ]);
 
         try {
+            // 构建请求headers
+            $headers = [
+                'Accept-Language' => $lang,
+            ];
+
+            // 只在playerId有效时才添加header（避免传递null或0）
+            if ($playerId !== null && $playerId > 0) {
+                $headers['X-Player-Id'] = $playerId;
+            }
+
             $response = $this->getHttpClient()
-                ->withHeaders([
-                    'Accept-Language' => $lang,
-                    'X-Admin-Id' => 0, // 来自客户端API，使用0表示系统调用
-                    'X-Player-Id' => $playerId ?? 0,
-                ])
-                ->post($this->baseUrl . '/api/admin/machine/send-cmd', $requestPayload);
+                ->withHeaders($headers)
+                ->post($this->baseUrl . '/api/v1/machine/send-cmd', $requestPayload);
 
             $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
 
-            if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
+            // 改进的成功判断（兼容多种类型）
+            $code = $body['code'] ?? 0;
+            $isCodeOk = ($code === 200 || $code === '200');
+
+            if ($response->successful() && isset($body['code']) && $isCodeOk) {
                 Log::info('[MachineClient] 指令执行成功 - 响应', [
                     'machine_id' => $machineId,
                     'cmd' => $cmd,
@@ -156,7 +166,8 @@ class MachineClient
 
     /**
      * 批量发送机台指令
-     * 一次HTTP调用发送多个指令，减少网络往返次数
+     * 注意：玩家端暂不支持批量发送指令，此方法保留用于未来扩展
+     * 当前实现：逐个发送指令
      *
      * @param int $machineId 机台ID
      * @param array $commands 指令数组 [['cmd' => 'xxx', 'data' => 0], ...]
@@ -176,6 +187,113 @@ class MachineClient
         }
 
         $startTime = microtime(true);
+
+        Log::info('[MachineClient] 批量发送机台指令 - 开始（逐个发送）', [
+            'machine_id' => $machineId,
+            'commands_count' => count($commands),
+            'player_id' => $playerId,
+        ]);
+
+        // 逐个发送指令（因为玩家端暂不支持批量接口）
+        $results = [];
+        $successCount = 0;
+        $failedCount = 0;
+
+        try {
+            foreach ($commands as $index => $command) {
+                try {
+                    $cmd = $command['cmd'] ?? '';
+                    $data = (int)($command['data'] ?? 0);
+
+                    if (empty($cmd)) {
+                        $results[] = [
+                            'index' => $index,
+                            'cmd' => $cmd,
+                            'success' => false,
+                            'message' => '指令不能为空'
+                        ];
+                        $failedCount++;
+                        continue;
+                    }
+
+                    // 调用单个指令发送
+                    $result = $this->sendCommand($machineId, $cmd, $data, $lang, $playerId);
+
+                    $results[] = [
+                        'index' => $index,
+                        'cmd' => $cmd,
+                        'data' => $data,
+                        'success' => $result['success'],
+                        'result' => $result['data'] ?? null
+                    ];
+
+                    if ($result['success']) {
+                        $successCount++;
+                    } else {
+                        $failedCount++;
+                    }
+
+                } catch (Exception $e) {
+                    $results[] = [
+                        'index' => $index,
+                        'cmd' => $command['cmd'] ?? '',
+                        'success' => false,
+                        'message' => $e->getMessage()
+                    ];
+                    $failedCount++;
+                }
+            }
+
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::info('[MachineClient] 批量指令执行完成', [
+                'machine_id' => $machineId,
+                'commands_count' => count($commands),
+                'success_count' => $successCount,
+                'failed_count' => $failedCount,
+                'duration_ms' => $duration,
+            ]);
+
+            return [
+                'success' => true,
+                'data' => [
+                    'total_count' => count($commands),
+                    'success_count' => $successCount,
+                    'failed_count' => $failedCount,
+                    'results' => $results
+                ],
+                'message' => 'success',
+            ];
+
+        } catch (Exception $e) {
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::error('[MachineClient] 批量指令执行异常', [
+                'machine_id' => $machineId,
+                'commands_count' => count($commands),
+                'duration_ms' => $duration,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * 批量发送机台指令（原始实现，暂时保留但不使用）
+     * @deprecated 玩家端暂不支持批量API，使用batchSendCommands逐个发送
+     */
+    private function batchSendCommandsOld(
+        int $machineId,
+        array $commands,
+        string $lang = 'zh_TW',
+        ?int $playerId = null
+    ): array {
+        if (empty($commands)) {
+            throw new Exception('批量指令列表不能为空');
+        }
+
+        $startTime = microtime(true);
         $requestPayload = [
             'machine_id' => $machineId,
             'commands' => $commands,
@@ -183,7 +301,7 @@ class MachineClient
         ];
 
         Log::info('[MachineClient] 批量发送机台指令 - 请求', [
-            'url' => $this->baseUrl . '/api/admin/machine/batch-send-cmd',
+            'url' => $this->baseUrl . '/api/v1/machine/batch-send-cmd',
             'payload' => $requestPayload,
             'commands_count' => count($commands),
             'player_id' => $playerId,
@@ -193,15 +311,18 @@ class MachineClient
             $response = $this->getHttpClient()
                 ->withHeaders([
                     'Accept-Language' => $lang,
-                    'X-Admin-Id' => 0,
-                    'X-Player-Id' => $playerId ?? 0,
+                    'X-Player-Id' => $playerId,
                 ])
-                ->post($this->baseUrl . '/api/admin/machine/batch-send-cmd', $requestPayload);
+                ->post($this->baseUrl . '/api/v1/machine/batch-send-cmd', $requestPayload);
 
             $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
 
-            if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
+            // 改进的成功判断（兼容多种类型）
+            $code = $body['code'] ?? 0;
+            $isCodeOk = ($code === 200 || $code === '200');
+
+            if ($response->successful() && isset($body['code']) && $isCodeOk) {
                 $successCount = $body['data']['success_count'] ?? 0;
                 $failedCount = $body['data']['failed_count'] ?? 0;
 
@@ -271,7 +392,7 @@ class MachineClient
         ];
 
         Log::info('[MachineClient] 检查机台在线状态 - 请求', [
-            'url' => $this->baseUrl . '/api/admin/machine/check-online',
+            'url' => $this->baseUrl . '/api/v1/machine/check-online',
             'payload' => $requestPayload,
         ]);
 
@@ -279,9 +400,9 @@ class MachineClient
             $response = $this->getHttpClient()
                 ->withHeaders([
                     'Accept-Language' => $lang,
-                    'X-Admin-Id' => 0,
+                    'X-Player-Id' => 0, // 检查在线状态不需要特定玩家ID
                 ])
-                ->post($this->baseUrl . '/api/admin/machine/check-online', $requestPayload);
+                ->post($this->baseUrl . '/api/v1/machine/check-online', $requestPayload);
 
             $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
@@ -293,7 +414,11 @@ class MachineClient
                 'response_body' => $body,
             ]);
 
-            if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
+            // 改进的成功判断（兼容多种类型）
+            $code = $body['code'] ?? 0;
+            $isCodeOk = ($code === 200 || $code === '200');
+
+            if ($response->successful() && isset($body['code']) && $isCodeOk) {
                 return [
                     'success' => true,
                     'data' => $body['data'] ?? [],
@@ -340,7 +465,7 @@ class MachineClient
         ];
 
         Log::info('[MachineClient] 批量检查机台在线状态 - 请求', [
-            'url' => $this->baseUrl . '/api/admin/machine/batch-check-online',
+            'url' => $this->baseUrl . '/api/v1/machine/batch-check-online',
             'payload' => $requestPayload,
             'machine_count' => count($machineIds),
         ]);
@@ -349,9 +474,9 @@ class MachineClient
             $response = $this->getHttpClient()
                 ->withHeaders([
                     'Accept-Language' => $lang,
-                    'X-Admin-Id' => 0,
+                    'X-Player-Id' => 0, // 批量检查在线状态不需要特定玩家ID
                 ])
-                ->post($this->baseUrl . '/api/admin/machine/batch-check-online', $requestPayload);
+                ->post($this->baseUrl . '/api/v1/machine/batch-check-online', $requestPayload);
 
             $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
@@ -363,20 +488,22 @@ class MachineClient
                 'response_body' => $body,
             ]);
 
-            if ($response->successful() && isset($body['code']) && $body['code'] === 200) {
+            // 改进的成功判断（兼容多种类型）
+            $code = $body['code'] ?? 0;
+            $isCodeOk = ($code === 200 || $code === '200');
+
+            if ($response->successful() && isset($body['code']) && $isCodeOk) {
                 $rawData = $body['data'] ?? [];
 
                 // 处理返回数据格式，转换为 [机台ID => 状态] 格式
                 $processedData = [];
                 foreach ($rawData as $item) {
                     if (is_array($item) && isset($item['machine_id'])) {
-                        // 新格式：包含 machine_id 的数组
                         $machineId = $item['machine_id'];
-                        $online = !empty($item['online']);  // 直接使用 gk_work 计算的 online 字段
+
+                        // 明确使用布尔值判断（gk_work返回的online字段是bool类型）
+                        $online = isset($item['online']) && $item['online'] === true;
                         $processedData[$machineId] = $online ? 'online' : 'offline';
-                    } elseif (is_string($item)) {
-                        // 兼容旧格式：直接返回 online/offline 字符串
-                        $processedData[$item] = $item;
                     }
                 }
 
