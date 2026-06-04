@@ -2821,7 +2821,7 @@ function machineWash(
     string  $path = 'leave',
     int     $is_system = 0,
     bool    $hasLottery = false
-): bool|PlayerLotteryRecord
+): bool|PlayerLotteryRecord|array
 {
     // 添加分布式锁
     $actionLockerKey = 'machine_wash_lock_' . $machine->id;
