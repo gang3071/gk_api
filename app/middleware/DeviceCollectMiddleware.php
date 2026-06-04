@@ -26,6 +26,7 @@ class DeviceCollectMiddleware implements MiddlewareInterface
         /** @var AdminDevice $device */
         $device = AdminDevice::query()->where('device_no', $deviceCpuId)->whereNull('deleted_at')->first();
 
+
         if (!empty($device)) {
             $player = checkPlayer();
             if ($device->store_admin_id != $player->store_admin_id) {
