@@ -107,7 +107,8 @@ class MachineClient
         ]);
 
         try {
-            $response = $this->getHttpClient()
+            // 修复：每次请求使用新的客户端实例，避免 header 累积
+            $response = Http::timeout($this->timeout)
                 ->withHeaders($headers)
                 ->post($this->baseUrl . '/api/v1/machine/send-cmd', $requestPayload);
 
@@ -309,7 +310,7 @@ class MachineClient
         ]);
 
         try {
-            $response = $this->getHttpClient()
+            $response = Http::timeout($this->timeout)
                 ->withHeaders([
                     'Accept-Language' => $lang,
                     'X-Player-Id' => $playerId,
@@ -398,7 +399,7 @@ class MachineClient
         ]);
 
         try {
-            $response = $this->getHttpClient()
+            $response = Http::timeout($this->timeout)
                 ->withHeaders([
                     'Accept-Language' => $lang,
                     'X-Player-Id' => 0, // 检查在线状态不需要特定玩家ID
@@ -472,7 +473,7 @@ class MachineClient
         ]);
 
         try {
-            $response = $this->getHttpClient()
+            $response = Http::timeout($this->timeout)
                 ->withHeaders([
                     'Accept-Language' => $lang,
                     'X-Player-Id' => 0, // 批量检查在线状态不需要特定玩家ID
