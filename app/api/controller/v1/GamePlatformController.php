@@ -580,9 +580,13 @@ class GamePlatformController
             }
         }
 
+        // 获取客户端维护状态
+        $clientMaintenanceStatus = ClientMaintainService::getMaintenanceStatus();
+
         return jsonSuccessResponse('success', [
             'game_list' => $gameData,
             'recent_games' => $enterGameData,
+            'client_maintenance' => $clientMaintenanceStatus,
             'page' => (int)$data['page'],
             'size' => (int)$data['size']
         ]);
