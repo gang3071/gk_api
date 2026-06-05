@@ -116,7 +116,7 @@ class MachineClient
             }
         }
 
-        Log::info('[MachineClient] 发送机台指令 - 请求', [
+        Log::channel('machine_operations')->info('[MachineClient] 发送机台指令 - 请求', [
             'url' => $this->baseUrl . '/api/v1/machine/send-cmd',
             'payload' => $requestPayload,
             'headers' => $headers,
@@ -138,7 +138,7 @@ class MachineClient
             $isCodeOk = ($code === 200 || $code === '200');
 
             if ($response->successful() && isset($body['code']) && $isCodeOk) {
-                Log::info('[MachineClient] 指令执行成功 - 响应', [
+                Log::channel('machine_operations')->info('[MachineClient] 指令执行成功 - 响应', [
                     'machine_id' => $machineId,
                     'cmd' => $cmd,
                     'player_id' => $playerId,
@@ -154,7 +154,7 @@ class MachineClient
                 ];
             }
 
-            Log::warning('[MachineClient] 指令执行失败 - 响应', [
+            Log::channel('machine_operations')->warning('[MachineClient] 指令执行失败 - 响应', [
                 'machine_id' => $machineId,
                 'cmd' => $cmd,
                 'status_code' => $response->status(),
@@ -171,7 +171,7 @@ class MachineClient
         } catch (RequestException $e) {
             $duration = round((microtime(true) - $startTime) * 1000, 2);
 
-            Log::error('[MachineClient] HTTP请求异常', [
+            Log::channel('machine_operations')->error('[MachineClient] HTTP请求异常', [
                 'machine_id' => $machineId,
                 'cmd' => $cmd,
                 'player_id' => $playerId,
@@ -215,7 +215,7 @@ class MachineClient
             return $cmd['cmd'] ?? 'unknown';
         }, $commands);
 
-        Log::info('[MachineClient-Batch] 批量发送机台指令 - 开始', [
+        Log::channel('machine_operations')->info('[MachineClient-Batch] 批量发送机台指令 - 开始', [
             'batch_id' => $batchId,
             'wash_id' => $washId,
             'machine_id' => $machineId,
@@ -241,7 +241,7 @@ class MachineClient
                     $data = (int)($command['data'] ?? 0);
 
                     if (empty($cmd)) {
-                        Log::warning('[MachineClient-Batch] 指令为空', [
+                        Log::channel('machine_operations')->warning('[MachineClient-Batch] 指令为空', [
                             'batch_id' => $batchId,
                             'index' => $index,
                             'command' => $command,
@@ -257,7 +257,7 @@ class MachineClient
                         continue;
                     }
 
-                    Log::info('[MachineClient-Batch] 发送单个指令', [
+                    Log::channel('machine_operations')->info('[MachineClient-Batch] 发送单个指令', [
                         'batch_id' => $batchId,
                         'index' => $index,
                         'cmd' => $cmd,
@@ -297,7 +297,7 @@ class MachineClient
 
                     if ($result['success']) {
                         $successCount++;
-                        Log::info('[MachineClient-Batch] 指令执行成功', [
+                        Log::channel('machine_operations')->info('[MachineClient-Batch] 指令执行成功', [
                             'batch_id' => $batchId,
                             'index' => $index,
                             'cmd' => $cmd,
@@ -305,7 +305,7 @@ class MachineClient
                         ]);
                     } else {
                         $failedCount++;
-                        Log::warning('[MachineClient-Batch] 指令执行失败', [
+                        Log::channel('machine_operations')->warning('[MachineClient-Batch] 指令执行失败', [
                             'batch_id' => $batchId,
                             'index' => $index,
                             'cmd' => $cmd,
@@ -317,7 +317,7 @@ class MachineClient
                 } catch (Exception $e) {
                     $cmdDuration = round((microtime(true) - $cmdStartTime) * 1000, 2);
 
-                    Log::error('[MachineClient-Batch] 指令执行异常', [
+                    Log::channel('machine_operations')->error('[MachineClient-Batch] 指令执行异常', [
                         'batch_id' => $batchId,
                         'index' => $index,
                         'cmd' => $command['cmd'] ?? '',
@@ -338,7 +338,7 @@ class MachineClient
 
             $totalDuration = round((microtime(true) - $startTime) * 1000, 2);
 
-            Log::info('[MachineClient-Batch] 批量指令执行完成', [
+            Log::channel('machine_operations')->info('[MachineClient-Batch] 批量指令执行完成', [
                 'batch_id' => $batchId,
                 'machine_id' => $machineId,
                 'commands_count' => count($commands),
@@ -358,7 +358,7 @@ class MachineClient
 
             // 性能警告
             if ($totalDuration > 2000) {
-                Log::warning('[MachineClient-Batch] 批量指令耗时过长', [
+                Log::channel('machine_operations')->warning('[MachineClient-Batch] 批量指令耗时过长', [
                     'batch_id' => $batchId,
                     'machine_id' => $machineId,
                     'duration_ms' => $totalDuration,
@@ -381,7 +381,7 @@ class MachineClient
         } catch (Exception $e) {
             $totalDuration = round((microtime(true) - $startTime) * 1000, 2);
 
-            Log::error('[MachineClient-Batch] 批量指令执行异常', [
+            Log::channel('machine_operations')->error('[MachineClient-Batch] 批量指令执行异常', [
                 'batch_id' => $batchId,
                 'machine_id' => $machineId,
                 'commands_count' => count($commands),

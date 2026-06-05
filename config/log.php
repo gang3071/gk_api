@@ -486,6 +486,24 @@ return [
             ]
         ],
     ],
+    // 机台开分/洗分操作专用日志（完整流程追踪）
+    // 包含：1.Redis数据读取 2.指令发送 3.gk_work执行情况 4.机台最终状态
+    'machine_operations' => [
+        'handlers' => [
+            [
+                'class' => Monolog\Handler\RotatingFileHandler::class,
+                'constructor' => [
+                    runtime_path() . '/logs/machine_operations.log',
+                    7, // 保留7天，用于故障诊断
+                    Monolog\Logger::DEBUG,
+                ],
+                'formatter' => [
+                    'class' => Monolog\Formatter\LineFormatter::class,
+                    'constructor' => [null, 'Y-m-d H:i:s', true],
+                ],
+            ]
+        ],
+    ],
     'plugin.webman.redis-queue.default' => [
         'handlers' => [
             [

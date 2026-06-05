@@ -2837,7 +2837,7 @@ function machineWash(
         $washId = uniqid('wash_', true); // 生成唯一洗分ID用于追踪
         $startTime = microtime(true);
 
-        Log::info('[MachineWash] 开始洗分', [
+        Log::channel('machine_operations')->info('[MachineWash] 开始洗分', [
             'wash_id' => $washId,
             'player_id' => $player->id,
             'player_name' => $player->name ?? '',
@@ -2853,7 +2853,7 @@ function machineWash(
         $lang = Str::replace('_', '-', $lang);
         $services = MachineServices::createServices($machine, $lang);
 
-        Log::info('[MachineWash] 机台状态读取', [
+        Log::channel('machine_operations')->info('[MachineWash] 机台状态读取', [
             'wash_id' => $washId,
             'machine_id' => $machine->id,
             'last_point_at' => $services->last_point_at,
@@ -2867,7 +2867,7 @@ function machineWash(
         ]);
 
         if ($services->last_point_at + 5 >= time()) {
-            Log::warning('[MachineWash] 洗分间隔不足5秒', [
+            Log::channel('machine_operations')->warning('[MachineWash] 洗分间隔不足5秒', [
                 'wash_id' => $washId,
                 'machine_id' => $machine->id,
                 'last_point_at' => $services->last_point_at,
@@ -2878,7 +2878,7 @@ function machineWash(
         // 洗分限制（强制退出洗分）
         $giftPoint = getGivePoints($player->id, $machine->id);
 
-        Log::info('[MachineWash] 赠点信息', [
+        Log::channel('machine_operations')->info('[MachineWash] 赠点信息', [
             'wash_id' => $washId,
             'machine_id' => $machine->id,
             'gift_point' => $giftPoint,
@@ -2955,7 +2955,7 @@ function machineWash(
                 }
                 break;
             case GameType::TYPE_SLOT:
-                Log::info('[MachineWash-Slot] 开始准备洗分指令', [
+                Log::channel('machine_operations')->info('[MachineWash-Slot] 开始准备洗分指令', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
                     'control_type' => $machine->control_type,
@@ -2968,11 +2968,11 @@ function machineWash(
 
                 if ($services->move_point == 1 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
                     $slotCommands[] = ['cmd' => $services::MOVE_POINT_OFF, 'data' => 0];
-                    Log::info('[MachineWash-Slot] 添加指令: MOVE_POINT_OFF', ['wash_id' => $washId]);
+                    Log::channel('machine_operations')->info('[MachineWash-Slot] 添加指令: MOVE_POINT_OFF', ['wash_id' => $washId]);
                 }
                 if ($services->auto == 1) {
                     $slotCommands[] = ['cmd' => $services::OUT_OFF, 'data' => 0];
-                    Log::info('[MachineWash-Slot] 添加指令: OUT_OFF', ['wash_id' => $washId]);
+                    Log::channel('machine_operations')->info('[MachineWash-Slot] 添加指令: OUT_OFF', ['wash_id' => $washId]);
                 }
 
                 // 无条件发送的4个停止和读取指令
@@ -2981,7 +2981,7 @@ function machineWash(
                 $slotCommands[] = ['cmd' => $services::STOP_THREE, 'data' => 0];
                 $slotCommands[] = ['cmd' => $services::MACHINE_POINT, 'data' => 0];
 
-                Log::info('[MachineWash-Slot] 准备发送批量指令', [
+                Log::channel('machine_operations')->info('[MachineWash-Slot] 准备发送批量指令', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
                     'commands_count' => count($slotCommands),
@@ -2994,7 +2994,7 @@ function machineWash(
                 $result = $client->batchSendCommands($machine->id, $slotCommands, $lang, $player->id, $washId);
                 $cmdDuration = round((microtime(true) - $cmdStartTime) * 1000, 2);
 
-                Log::info('[MachineWash-Slot] 批量指令执行完成', [
+                Log::channel('machine_operations')->info('[MachineWash-Slot] 批量指令执行完成', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
                     'success' => $result['success'],
@@ -3003,7 +3003,7 @@ function machineWash(
                 ]);
 
                 if (!$result['success']) {
-                    Log::error('[MachineWash-Slot] 批量指令发送失败', [
+                    Log::channel('machine_operations')->error('[MachineWash-Slot] 批量指令发送失败', [
                         'wash_id' => $washId,
                         'machine_id' => $machine->id,
                         'error' => $result['message'] ?? 'Unknown error',
@@ -3021,7 +3021,7 @@ function machineWash(
                 ]);
 
                 // READ_BET单独发送（因为在日志之后）
-                Log::info('[MachineWash-Slot] 发送READ_BET指令', [
+                Log::channel('machine_operations')->info('[MachineWash-Slot] 发送READ_BET指令', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
                     'cmd' => $services::READ_BET,
@@ -3035,7 +3035,7 @@ function machineWash(
                 $gamingScore = bcsub($services->win, $services->player_score);
                 $money = $services->point;
 
-                Log::info('[MachineWash-Slot] 读取机台数据完成', [
+                Log::channel('machine_operations')->info('[MachineWash-Slot] 读取机台数据完成', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
                     'duration_ms' => $readBetDuration,
@@ -3059,7 +3059,7 @@ function machineWash(
                     $originalMoney = $money;
                     if ($money < $giftPoint['open_point'] * $giftPoint['condition']) {
                         $money = max($money - $giftPoint['gift_point'], 0);
-                        Log::info('[MachineWash-Slot] 扣除赠点', [
+                        Log::channel('machine_operations')->info('[MachineWash-Slot] 扣除赠点', [
                             'wash_id' => $washId,
                             'machine_id' => $machine->id,
                             'original_money' => $originalMoney,
@@ -3079,7 +3079,7 @@ function machineWash(
             return $playerLotteryRecord;
         }
     }
-    Log::info('[MachineWash] 开始数据库事务', [
+    Log::channel('machine_operations')->info('[MachineWash] 开始数据库事务', [
         'wash_id' => $washId,
         'machine_id' => $machine->id,
         'money' => $money,
@@ -3097,7 +3097,7 @@ function machineWash(
                 max($gamingScore, 0), max($gamingTurnPoint, 0), $path);
             $dbDuration = round((microtime(true) - $dbStartTime) * 1000, 2);
 
-            Log::info('[MachineWash] machineWashZero完成', [
+            Log::channel('machine_operations')->info('[MachineWash] machineWashZero完成', [
                 'wash_id' => $washId,
                 'machine_id' => $machine->id,
                 'duration_ms' => $dbDuration,
@@ -3131,7 +3131,7 @@ function machineWash(
     }
     DB::commit();
 
-        Log::info('[MachineWash] 数据库事务提交成功', [
+        Log::channel('machine_operations')->info('[MachineWash] 数据库事务提交成功', [
             'wash_id' => $washId,
             'machine_id' => $machine->id,
         ]);
@@ -3140,7 +3140,7 @@ function machineWash(
         $client = new MachineClient();
         switch ($machine->type) {
             case GameType::TYPE_STEEL_BALL:
-                Log::info('[MachineWash-SteelBall] 准备发送清零指令', [
+                Log::channel('machine_operations')->info('[MachineWash-SteelBall] 准备发送清零指令', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
                     'commands' => ['WASH_ZERO', 'CLEAR_LOG'],
@@ -3153,7 +3153,7 @@ function machineWash(
                 ], $lang, $player->id, $washId ?? null);
                 $clearDuration = round((microtime(true) - $clearStartTime) * 1000, 2);
 
-                Log::info('[MachineWash-SteelBall] 清零指令执行完成', [
+                Log::channel('machine_operations')->info('[MachineWash-SteelBall] 清零指令执行完成', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
                     'success' => $result['success'],
@@ -3162,7 +3162,7 @@ function machineWash(
                 ]);
 
                 if (!$result['success']) {
-                    Log::error('[MachineWash-SteelBall] 清零指令发送失败', [
+                    Log::channel('machine_operations')->error('[MachineWash-SteelBall] 清零指令发送失败', [
                         'wash_id' => $washId,
                         'machine_id' => $machine->id,
                         'error' => $result['message'] ?? 'Unknown error',
@@ -3173,7 +3173,7 @@ function machineWash(
                 $services->player_win_number = 0;
                 break;
             case GameType::TYPE_SLOT:
-                Log::info('[MachineWash-Slot] 准备发送清零指令', [
+                Log::channel('machine_operations')->info('[MachineWash-Slot] 准备发送清零指令', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
                     'commands' => ['WASH_ZERO', 'ALL_DOWN'],
@@ -3186,7 +3186,7 @@ function machineWash(
                 ], $lang, $player->id, $washId ?? null);
                 $clearDuration = round((microtime(true) - $clearStartTime) * 1000, 2);
 
-                Log::info('[MachineWash-Slot] 清零指令执行完成', [
+                Log::channel('machine_operations')->info('[MachineWash-Slot] 清零指令执行完成', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
                     'success' => $result['success'],
@@ -3195,7 +3195,7 @@ function machineWash(
                 ]);
 
                 if (!$result['success']) {
-                    Log::error('[MachineWash-Slot] 清零指令发送失败', [
+                    Log::channel('machine_operations')->error('[MachineWash-Slot] 清零指令发送失败', [
                         'wash_id' => $washId,
                         'machine_id' => $machine->id,
                         'error' => $result['message'] ?? 'Unknown error',
@@ -3259,7 +3259,7 @@ function machineWash(
 
         $totalDuration = round((microtime(true) - $startTime) * 1000, 2);
 
-        Log::info('[MachineWash] 洗分完成', [
+        Log::channel('machine_operations')->info('[MachineWash] 洗分完成', [
             'wash_id' => $washId,
             'player_id' => $player->id,
             'player_name' => $player->name ?? '',
@@ -3276,7 +3276,7 @@ function machineWash(
 
         // 性能警告（超过3秒）
         if ($totalDuration > 3000) {
-            Log::warning('[MachineWash] 洗分耗时过长', [
+            Log::channel('machine_operations')->warning('[MachineWash] 洗分耗时过长', [
                 'wash_id' => $washId,
                 'machine_id' => $machine->id,
                 'duration_ms' => $totalDuration,
@@ -3288,7 +3288,7 @@ function machineWash(
     } catch (\Exception $e) {
         $failDuration = round((microtime(true) - $startTime) * 1000, 2);
 
-        Log::error('[MachineWash] 洗分失败', [
+        Log::channel('machine_operations')->error('[MachineWash] 洗分失败', [
             'wash_id' => $washId ?? 'unknown',
             'player_id' => $player->id,
             'player_name' => $player->name ?? '',
@@ -3308,7 +3308,7 @@ function machineWash(
     } finally {
         // 确保锁被释放（只有成功获取锁后才释放）
         if ($lockAcquired) {
-            Log::info('[MachineWash] 释放分布式锁', [
+            Log::channel('machine_operations')->info('[MachineWash] 释放分布式锁', [
                 'wash_id' => $washId ?? 'unknown',
                 'machine_id' => $machine->id,
             ]);
