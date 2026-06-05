@@ -1136,6 +1136,7 @@ class MachineController
             }
             
         } catch (Exception $e) {
+            Log::error('错误了', [$e->getMessage(), $e->getTraceAsString()]);
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
         
