@@ -1,106 +1,72 @@
 <?php
 
+declare(strict_types=1);
+
 use Phinx\Migration\AbstractMigration;
 
 /**
- * 添加渠道后台 VIP 等级管理菜单和节点权限
+ * 添加渠道后台 VIP 等级管理菜单
  */
-class AddChannelVipLevelMenu extends AbstractMigration
+final class AddChannelVipLevelMenu extends AbstractMigration
 {
     /**
-     * 执行迁移
+     * 菜单类型常量
      */
-    public function up()
+    private const TYPE_CHANNEL = 2; // 渠道后台
+
+    /**
+     * Migrate Up.
+     */
+    public function up(): void
     {
-        // 检查 admin_menus 表是否存在
-        if (!$this->hasTable('admin_menus')) {
-            return;
-        }
+        $now = date('Y-m-d H:i:s');
 
         // 检查渠道后台 VIP 等级菜单是否已存在
-        $exists = $this->fetchRow("
-            SELECT `id` FROM `admin_menus`
-            WHERE `name` = 'channel_vip_level'
-            AND `plugin` = 'webman'
-            AND `type` = 2
-            LIMIT 1
-        ");
+        $existingMenu = $this->query(
+            "SELECT id FROM admin_menus WHERE name = 'channel_vip_level' AND type = " . self::TYPE_CHANNEL . " LIMIT 1"
+        )->fetch();
 
-        if ($exists) {
-            return; // 已存在，跳过
-        }
+        if (!$existingMenu) {
+            // 查找渠道后台的父级菜单（VIP管理）
+            $parentMenu = $this->query(
+                "SELECT id FROM admin_menus WHERE name = 'vip' AND type = " . self::TYPE_CHANNEL . " LIMIT 1"
+            )->fetch();
 
-        // 查找渠道后台的父级菜单（VIP管理）
-        $parentMenu = $this->fetchRow("
-            SELECT `id` FROM `admin_menus`
-            WHERE `name` = 'vip'
-            AND `plugin` = 'webman'
-            AND `type` = 2
-            LIMIT 1
-        ");
+            $pid = $parentMenu ? (int)$parentMenu['id'] : 0;
 
-        $pid = $parentMenu ? $parentMenu['id'] : 0;
-
-        // 插入渠道后台 VIP 等级管理菜单
-        // type = 2 表示渠道后台菜单
-        $this->execute("
-            INSERT INTO `admin_menus` (`name`, `icon`, `url`, `plugin`, `pid`, `sort`, `status`, `open`, `type`, `created_at`, `updated_at`)
-            VALUES ('channel_vip_level', 'el-icon-trophy', 'ex-admin/addons-webman-controller-ChannelVipLevelController/index', 'webman', {$pid}, 10, 1, 0, 2, NOW(), NOW())
-        ");
-
-        // 获取新插入的菜单ID
-        $menuId = $this->fetchRow("SELECT LAST_INSERT_ID() as id")['id'];
-
-        // 插入节点权限（CRUD操作）
-        $nodes = [
-            ['name' => '列表', 'node' => 'index', 'sort' => 1],
-            ['name' => '新增', 'node' => 'save', 'sort' => 2],
-            ['name' => '编辑', 'node' => 'update', 'sort' => 3],
-            ['name' => '删除', 'node' => 'delete', 'sort' => 4],
-            ['name' => '反水比例', 'node' => 'cashback', 'sort' => 5],
-        ];
-
-        foreach ($nodes as $node) {
-            $this->execute("
-                INSERT INTO `admin_menus` (`name`, `icon`, `url`, `plugin`, `pid`, `sort`, `status`, `open`, `type`, `created_at`, `updated_at`)
-                VALUES ('{$node['name']}', '', '{$node['node']}', 'webman', {$menuId}, {$node['sort']}, 1, 0, 2, NOW(), NOW())
-            ");
+            // 插入渠道后台 VIP 等级管理菜单
+            $this->table('admin_menus')->insert([
+                'name' => 'channel_vip_level',
+                'icon' => 'el-icon-trophy',
+                'url' => 'ex-admin/addons-webman-controller-ChannelVipLevelController/index',
+                'plugin' => '',
+                'pid' => $pid,
+                'sort' => 10,
+                'status' => 1,
+                'open' => 0,
+                'type' => self::TYPE_CHANNEL,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])->saveData();
         }
     }
 
     /**
-     * 回滚迁移
+     * Migrate Down.
      */
-    public function down()
+    public function down(): void
     {
-        // 检查 admin_menus 表是否存在
-        if (!$this->hasTable('admin_menus')) {
-            return;
-        }
-
-        // 查找渠道后台 VIP 等级菜单
-        $menu = $this->fetchRow("
-            SELECT `id` FROM `admin_menus`
-            WHERE `name` = 'channel_vip_level'
-            AND `plugin` = 'webman'
-            AND `type` = 2
-            LIMIT 1
+        // 删除渠道后台 VIP 等级菜单
+        $this->execute("
+            DELETE FROM admin_menus
+            WHERE name = 'channel_vip_level'
+              AND type = " . self::TYPE_CHANNEL . "
         ");
 
-        if ($menu) {
-            // 删除子节点（权限）
-            $this->execute("
-                DELETE FROM `admin_menus`
-                WHERE `pid` = {$menu['id']}
-                AND `type` = 2
-            ");
-
-            // 删除主菜单
-            $this->execute("
-                DELETE FROM `admin_menus`
-                WHERE `id` = {$menu['id']}
-                AND `type` = 2
-            ");
-        }
+        // 清理关联的角色菜单权限
+        $this->execute("
+            DELETE FROM admin_role_menus
+            WHERE menu_id NOT IN (SELECT id FROM admin_menus)
+        ");
     }
 }
