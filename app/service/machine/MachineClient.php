@@ -79,7 +79,8 @@ class MachineClient
         string $cmd,
         int $data = 0,
         string $lang = 'zh_TW',
-        ?int $playerId = null
+        ?int $playerId = null,
+        ?array $traceContext = null
     ): array {
         $startTime = microtime(true);
         $requestPayload = [
@@ -99,11 +100,28 @@ class MachineClient
             $headers['X-Player-Id'] = $playerId;
         }
 
+        // 添加追踪上下文（用于跨项目日志关联）
+        if ($traceContext !== null) {
+            if (isset($traceContext['batch_id'])) {
+                $headers['X-Batch-Id'] = $traceContext['batch_id'];
+            }
+            if (isset($traceContext['command_index'])) {
+                $headers['X-Command-Index'] = $traceContext['command_index'];
+            }
+            if (isset($traceContext['command_id'])) {
+                $headers['X-Command-Id'] = $traceContext['command_id'];
+            }
+            if (isset($traceContext['wash_id'])) {
+                $headers['X-Wash-Id'] = $traceContext['wash_id'];
+            }
+        }
+
         Log::info('[MachineClient] 发送机台指令 - 请求', [
             'url' => $this->baseUrl . '/api/v1/machine/send-cmd',
             'payload' => $requestPayload,
             'headers' => $headers,
             'player_id' => $playerId,
+            'trace_context' => $traceContext,
         ]);
 
         try {
@@ -182,18 +200,31 @@ class MachineClient
         int $machineId,
         array $commands,
         string $lang = 'zh_TW',
-        ?int $playerId = null
+        ?int $playerId = null,
+        ?string $washId = null
     ): array {
         if (empty($commands)) {
             throw new Exception('批量指令列表不能为空');
         }
 
+        $batchId = uniqid('batch_', true);  // 生成唯一批次ID
         $startTime = microtime(true);
 
-        Log::info('[MachineClient] 批量发送机台指令 - 开始（逐个发送）', [
+        // 提取指令名称列表用于日志
+        $cmdNames = array_map(function($cmd) {
+            return $cmd['cmd'] ?? 'unknown';
+        }, $commands);
+
+        Log::info('[MachineClient-Batch] 批量发送机台指令 - 开始', [
+            'batch_id' => $batchId,
+            'wash_id' => $washId,
             'machine_id' => $machineId,
             'commands_count' => count($commands),
+            'commands_list' => $cmdNames,
+            'commands_detail' => $commands,
             'player_id' => $playerId,
+            'lang' => $lang,
+            'timestamp' => date('Y-m-d H:i:s'),
         ]);
 
         // 逐个发送指令（因为玩家端暂不支持批量接口）
@@ -203,11 +234,19 @@ class MachineClient
 
         try {
             foreach ($commands as $index => $command) {
+                $cmdStartTime = microtime(true);
+
                 try {
                     $cmd = $command['cmd'] ?? '';
                     $data = (int)($command['data'] ?? 0);
 
                     if (empty($cmd)) {
+                        Log::warning('[MachineClient-Batch] 指令为空', [
+                            'batch_id' => $batchId,
+                            'index' => $index,
+                            'command' => $command,
+                        ]);
+
                         $results[] = [
                             'index' => $index,
                             'cmd' => $cmd,
@@ -218,43 +257,115 @@ class MachineClient
                         continue;
                     }
 
-                    // 调用单个指令发送
-                    $result = $this->sendCommand($machineId, $cmd, $data, $lang, $playerId);
+                    Log::info('[MachineClient-Batch] 发送单个指令', [
+                        'batch_id' => $batchId,
+                        'index' => $index,
+                        'cmd' => $cmd,
+                        'data' => $data,
+                        'machine_id' => $machineId,
+                    ]);
+
+                    // 构建追踪上下文（传递给 gk_work）
+                    $traceContext = [
+                        'batch_id' => $batchId,
+                        'command_index' => $index,
+                    ];
+
+                    // 如果有 wash_id，传递给 gk_work
+                    if ($washId !== null) {
+                        $traceContext['wash_id'] = $washId;
+                    }
+
+                    // 如果指令本身带有额外追踪信息，也传递过去
+                    if (isset($command['wash_id'])) {
+                        $traceContext['wash_id'] = $command['wash_id'];
+                    }
+
+                    // 调用单个指令发送（传递追踪上下文）
+                    $result = $this->sendCommand($machineId, $cmd, $data, $lang, $playerId, $traceContext);
+                    $cmdDuration = round((microtime(true) - $cmdStartTime) * 1000, 2);
 
                     $results[] = [
                         'index' => $index,
                         'cmd' => $cmd,
                         'data' => $data,
                         'success' => $result['success'],
-                        'result' => $result['data'] ?? null
+                        'result' => $result['data'] ?? null,
+                        'message' => $result['message'] ?? '',
+                        'duration_ms' => $cmdDuration
                     ];
 
                     if ($result['success']) {
                         $successCount++;
+                        Log::info('[MachineClient-Batch] 指令执行成功', [
+                            'batch_id' => $batchId,
+                            'index' => $index,
+                            'cmd' => $cmd,
+                            'duration_ms' => $cmdDuration,
+                        ]);
                     } else {
                         $failedCount++;
+                        Log::warning('[MachineClient-Batch] 指令执行失败', [
+                            'batch_id' => $batchId,
+                            'index' => $index,
+                            'cmd' => $cmd,
+                            'message' => $result['message'] ?? 'Unknown error',
+                            'duration_ms' => $cmdDuration,
+                        ]);
                     }
 
                 } catch (Exception $e) {
+                    $cmdDuration = round((microtime(true) - $cmdStartTime) * 1000, 2);
+
+                    Log::error('[MachineClient-Batch] 指令执行异常', [
+                        'batch_id' => $batchId,
+                        'index' => $index,
+                        'cmd' => $command['cmd'] ?? '',
+                        'error' => $e->getMessage(),
+                        'duration_ms' => $cmdDuration,
+                    ]);
+
                     $results[] = [
                         'index' => $index,
                         'cmd' => $command['cmd'] ?? '',
                         'success' => false,
-                        'message' => $e->getMessage()
+                        'message' => $e->getMessage(),
+                        'duration_ms' => $cmdDuration
                     ];
                     $failedCount++;
                 }
             }
 
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
+            $totalDuration = round((microtime(true) - $startTime) * 1000, 2);
 
-            Log::info('[MachineClient] 批量指令执行完成', [
+            Log::info('[MachineClient-Batch] 批量指令执行完成', [
+                'batch_id' => $batchId,
                 'machine_id' => $machineId,
                 'commands_count' => count($commands),
                 'success_count' => $successCount,
                 'failed_count' => $failedCount,
-                'duration_ms' => $duration,
+                'total_duration_ms' => $totalDuration,
+                'avg_duration_ms' => count($commands) > 0 ? round($totalDuration / count($commands), 2) : 0,
+                'results_summary' => array_map(function($r) {
+                    return [
+                        'cmd' => $r['cmd'],
+                        'success' => $r['success'],
+                        'duration_ms' => $r['duration_ms'] ?? 0
+                    ];
+                }, $results),
+                'timestamp' => date('Y-m-d H:i:s'),
             ]);
+
+            // 性能警告
+            if ($totalDuration > 2000) {
+                Log::warning('[MachineClient-Batch] 批量指令耗时过长', [
+                    'batch_id' => $batchId,
+                    'machine_id' => $machineId,
+                    'duration_ms' => $totalDuration,
+                    'threshold_ms' => 2000,
+                    'commands_count' => count($commands),
+                ]);
+            }
 
             return [
                 'success' => true,
@@ -268,13 +379,17 @@ class MachineClient
             ];
 
         } catch (Exception $e) {
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
+            $totalDuration = round((microtime(true) - $startTime) * 1000, 2);
 
-            Log::error('[MachineClient] 批量指令执行异常', [
+            Log::error('[MachineClient-Batch] 批量指令执行异常', [
+                'batch_id' => $batchId,
                 'machine_id' => $machineId,
                 'commands_count' => count($commands),
-                'duration_ms' => $duration,
+                'duration_ms' => $totalDuration,
                 'error' => $e->getMessage(),
+                'error_code' => $e->getCode(),
+                'trace' => $e->getTraceAsString(),
+                'timestamp' => date('Y-m-d H:i:s'),
             ]);
 
             throw $e;

@@ -316,7 +316,7 @@ class MachineController
             ->where('status', 1)
             ->whereIn('id', $machineIds)
             ->get();
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
 
         // 批量检查机台在线状态
@@ -465,7 +465,7 @@ class MachineController
         if ($machine->is_use == 1) {
             return jsonFailResponse(trans('machine_gaming', [], 'message'));
         }
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         $services = MachineServices::createServices($machine, $lang);
         $machine->keeping_user_id = $services->keeping_user_id;
@@ -872,7 +872,7 @@ class MachineController
                 }
         }
         
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         
         return [
@@ -1234,7 +1234,7 @@ class MachineController
         if (!$machine) {
             return jsonFailResponse(trans('machine_not_found', [], 'message'));
         }
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         $services = MachineServices::createServices($machine, $lang);
         if ($machine->gaming_user_id == 0) {
@@ -1542,7 +1542,7 @@ class MachineController
         }
         /** @var Machine $machine */
         $machine = Machine::find($data['machine_id']);
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         $services = MachineServices::createServices($machine, $lang);
         if (!$machine) {

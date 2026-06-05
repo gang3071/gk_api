@@ -2,12 +2,12 @@
 
 namespace app\api\controller\v1;
 
+use app\exception\PlayerCheckException;
 use app\model\Activity;
 use app\model\ActivityContent;
 use app\model\Notice;
 use app\model\PlayerActivityPhaseRecord;
 use app\model\SystemSetting;
-use app\exception\PlayerCheckException;
 use Illuminate\Support\Str;
 use Respect\Validation\Exceptions\AllOfException;
 use Respect\Validation\Validator as v;
@@ -53,7 +53,7 @@ class ActivityController
             ->whereNull('deleted_at')
             ->forPage($data['page'] ?? 1, $data['size'] ?? 20)
             ->get();
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         $activityList = [];
         /** @var Activity $activity */
@@ -106,7 +106,7 @@ class ActivityController
         if (empty($activity)) {
             return jsonFailResponse(trans('activity_not_found', [], 'message'));
         }
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         /** @var ActivityContent $activityContent */
         $activityContent = $activity->activity_content->where('lang', $lang)->first();
