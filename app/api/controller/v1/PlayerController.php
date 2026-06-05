@@ -2071,7 +2071,7 @@ class PlayerController
             });
         }
         $machinesList = $favoriteMachine->forPage($data['page'], $data['size'])->get();
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
 
         // 批量检查机台在线状态
@@ -2196,7 +2196,7 @@ class PlayerController
             ->orderBy('id', 'desc')
             ->get();
         $list = [];
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         $ip = request()->getRealIp();
         /** @var Channel $channel */
@@ -3165,7 +3165,7 @@ class PlayerController
     public function bankList(): Response
     {
         $player = checkPlayer();
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         $list = BankContent::query()
             ->where('lang', $lang)

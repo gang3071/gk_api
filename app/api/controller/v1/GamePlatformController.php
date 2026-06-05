@@ -147,7 +147,7 @@ class GamePlatformController
         $gameData = [];
         $enterGameData = [];
         if (!empty($list) && $data['type'] == 2) {
-            $lang = locale();
+            $lang = locale() ?? 'zh_TW';
             $lang = Str::replace('_', '-', $lang);
 
             // 只对线下渠道应用游戏级别权限控制
@@ -245,7 +245,7 @@ class GamePlatformController
             }
         }
         if (!empty($list) && $data['type'] == 1) {
-            $lang = locale();
+            $lang = locale() ?? 'zh_TW';
             $lang = Str::replace('_', '-', $lang);
             /** @var GamePlatform $item */
             foreach ($list as $item) {
@@ -344,7 +344,7 @@ class GamePlatformController
         // 分类平台：电子游戏和真人游戏
         $electronPlatforms = collect();
         $livePlatforms = collect();
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
 
         /** @var GamePlatform $platform */
@@ -483,7 +483,7 @@ class GamePlatformController
                 ->toArray();
         }
 
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
 
         // 查询游戏列表
@@ -712,7 +712,7 @@ class GamePlatformController
         if ($amount > $currentBalance) {
             return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
         }
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         $gameService = GameServiceFactory::createService(strtoupper($gamePlatform->code), $player);
         $balance = $gameService->getBalance(['lang' => $lang]);
@@ -807,7 +807,7 @@ class GamePlatformController
         if ($gamePlatform->status != 1) {
             return jsonFailResponse(trans('game_platform_disable', [], 'message'));
         }
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         try {
             $balance = GameServiceFactory::createService(strtoupper($gamePlatform->code), $player)->getBalance([
@@ -834,7 +834,7 @@ class GamePlatformController
         }
 
         $player = checkPlayer();
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         
         $allBalance = 0;
@@ -900,7 +900,7 @@ class GamePlatformController
             if ($playerGamePlatform->gamePlatform->status != 1) {
                 continue;
             }
-            $lang = locale();
+            $lang = locale() ?? 'zh_TW';
             $lang = Str::replace('_', '-', $lang);
             try {
                 $gameService = GameServiceFactory::createService(strtoupper($playerGamePlatform->gamePlatform->code),
@@ -1006,7 +1006,7 @@ class GamePlatformController
             return jsonFailResponse(trans('game_platform_disable', [], 'message'));
         }
         $amount = $data['amount'] ?? 0;
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         $gameService = GameServiceFactory::createService(strtoupper($gamePlatform->code), $player);
         $balance = $gameService->getBalance(['lang' => $lang]);
@@ -1120,7 +1120,7 @@ class GamePlatformController
         }
         try {
             $player->machine_wallet()->lockForUpdate()->first();
-            $lang = locale();
+            $lang = locale() ?? 'zh_TW';
             $lang = Str::replace('_', '-', $lang);
             $gameService = GameServiceFactory::createService(strtoupper($gamePlatform->code), $player);
             $res = $gameService->lobbyLogin(['lang' => $lang]);
@@ -1150,7 +1150,7 @@ class GamePlatformController
         if (empty($playerGamePlatform)) {
             return jsonSuccessResponse('success');
         }
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         /** @var PlayerGamePlatform $item */
         foreach ($playerGamePlatform as $item) {
@@ -1269,7 +1269,7 @@ class GamePlatformController
         }
 
         try {
-            $lang = locale();
+            $lang = locale() ?? 'zh_TW';
             $lang = Str::replace('_', '-', $lang);
             $playerEnterGameRecord = new PlayerEnterGameRecord();
             $playerEnterGameRecord->player_id = $player->id;
@@ -1353,7 +1353,7 @@ class GamePlatformController
             return jsonSuccessResponse('success', ['list' => []]);
         }
 
-        $lang = locale();
+        $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
 
         // 只对线下渠道应用游戏级别权限控制
