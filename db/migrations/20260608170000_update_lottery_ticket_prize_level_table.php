@@ -39,6 +39,10 @@ class UpdateLotteryTicketPrizeLevelTable extends AbstractMigration
             $table->removeColumn('description');
         }
 
+        if ($table->hasColumn('win_probability')) {
+            $table->removeColumn('win_probability');
+        }
+
         $table->save();
 
         // 更新 prize_amount 字段注释
@@ -87,6 +91,14 @@ class UpdateLotteryTicketPrizeLevelTable extends AbstractMigration
                 'null' => true,
                 'comment' => '奖品描述',
                 'after' => 'status',
+            ])
+            ->addColumn('win_probability', 'decimal', [
+                'precision' => 5,
+                'scale' => 2,
+                'null' => true,
+                'default' => 0.00,
+                'comment' => '中奖概率(%,如5.50表示5.5%)',
+                'after' => 'prize_count',
             ])
             ->save();
     }
