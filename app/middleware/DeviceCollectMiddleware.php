@@ -14,7 +14,7 @@ class DeviceCollectMiddleware implements MiddlewareInterface
     {
         $deviceCpuId = $request->header('DeviceCpuID', '');
         if (empty($deviceCpuId)) {
-            return jsonFailResponse(trans('device_not_found', [], 'message'), [], 403);
+            return $handler($request);
         }
 
         // 未登录请求（如登录接口）跳过设备验证
@@ -23,14 +23,12 @@ class DeviceCollectMiddleware implements MiddlewareInterface
             return $handler($request);
         }
 
-        /** @var AdminDevice $device */
-        $device = AdminDevice::query()->where('device_no', $deviceCpuId)->whereNull('deleted_at')->first();
-
+        $device = AdminDevice::query()->where('device_no', $deviceCpuId)->whereNull('deleted_at')->exists();
+        $player = checkPlayer();
+        $channel = $player->channel;
+        // 设备不存在，检查是否开启自动采集
         $setting = SystemSetting::query()->where('feature', 'device_collect')->where('status', 1)->first();
-        if (!empty($setting)) {
-            $player = checkPlayer();
-            $channel = $player->channel;
-
+        if (!$device && $setting) {
             AdminDevice::query()->create([
                 'channel_id'     => $channel->id ?? 0,
                 'department_id'  => $player->department_id,
