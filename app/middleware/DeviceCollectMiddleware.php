@@ -26,31 +26,22 @@ class DeviceCollectMiddleware implements MiddlewareInterface
         /** @var AdminDevice $device */
         $device = AdminDevice::query()->where('device_no', $deviceCpuId)->whereNull('deleted_at')->first();
 
-
-        if (!empty($device)) {
+        $setting = SystemSetting::query()->where('feature', 'device_collect')->where('status', 1)->first();
+        if (!empty($setting)) {
             $player = checkPlayer();
-            if ($device->store_admin_id != $player->store_admin_id) {
-                return jsonFailResponse(trans('device_store_mismatch', [], 'message'), [], 403);
-            }
-        } else {
-            $setting = SystemSetting::query()->where('feature', 'device_collect')->where('status', 1)->first();
-            if (!empty($setting)) {
-                $player = checkPlayer();
-                $channel = $player->channel;
+            $channel = $player->channel;
 
-                AdminDevice::query()->create([
-                    'channel_id' => $channel->id ?? 0,
-                    'department_id' => $player->department_id,
-                    'agent_admin_id' => $player->agent_admin_id,
-                    'store_admin_id' => $player->store_admin_id,
-                    'device_no' => $deviceCpuId,
-                    'device_model' => $request->header('DeviceModel', ''),
-                    'status' => 1,
-                ]);
-            } else {
-                return jsonFailResponse(trans('device_not_found', [], 'message'), [], 403);
-            }
+            AdminDevice::query()->create([
+                'channel_id'     => $channel->id ?? 0,
+                'department_id'  => $player->department_id,
+                'agent_admin_id' => $player->agent_admin_id,
+                'store_admin_id' => $player->store_admin_id,
+                'device_no'      => $deviceCpuId,
+                'device_model'   => $request->header('DeviceModel', ''),
+                'status'         => 1,
+            ]);
         }
+
 
         return $handler($request);
     }
