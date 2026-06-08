@@ -12,6 +12,7 @@
  * @license   http://www.opensource.org/licenses/mit-license.php MIT License
  */
 
+use app\middleware\DeviceCollectMiddleware;
 use app\middleware\Lang;
 use app\middleware\SiteAuthMiddleware;
 use Wengg\WebmanApiSign\ApiSignMiddleware;
@@ -21,6 +22,7 @@ return [
     'api' => [
         ApiSignMiddleware::class,
         SiteAuthMiddleware::class,
+        DeviceCollectMiddleware::class,
         Lang::class
     ],
     //单一钱包中间件
