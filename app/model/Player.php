@@ -291,6 +291,35 @@ class Player extends Model
     }
 
     /**
+     * 当前VIP等级
+     * @return BelongsTo
+     */
+    public function vipLevel(): BelongsTo
+    {
+        return $this->belongsTo(VipLevel::class, 'vip_level_id');
+    }
+
+    /**
+     * VIP周期记录
+     * @return HasMany
+     */
+    public function vipPeriods(): HasMany
+    {
+        return $this->hasMany(PlayerVipPeriod::class, 'player_id');
+    }
+
+    /**
+     * 当前进行中的VIP周期
+     * @return HasOne
+     */
+    public function currentVipPeriod(): HasOne
+    {
+        return $this->hasOne(PlayerVipPeriod::class, 'player_id')
+            ->where('status', PlayerVipPeriod::STATUS_ONGOING)
+            ->latest('id');
+    }
+
+    /**
      * 模型的 "booted" 方法
      *
      * @return void

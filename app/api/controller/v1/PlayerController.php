@@ -19,6 +19,7 @@ use app\model\PhoneSmsLog;
 use app\model\Player;
 use app\model\PlayerBank;
 use app\model\PlayerDeliveryRecord;
+use app\model\PlayerVipPeriod;
 use app\model\PlayerFavoriteMachine;
 use app\model\PlayerGameRecord;
 use app\model\PlayerLotteryRecord;
@@ -32,6 +33,7 @@ use app\model\PlayGameRecord;
 use app\model\Slider;
 use app\model\StoreSetting;
 use app\model\SystemSetting;
+use app\model\VipLevel;
 use app\service\GameLotteryServices;
 use app\service\LotteryServices;
 use app\service\machine\MachineClient;
@@ -137,6 +139,13 @@ class PlayerController
         // 获取店家配置
         $storeSettings = $this->getStoreSettings($player);
 
+        // 获取VIP等级信息
+        /** @var VipLevel $vipLevel */
+        $vipLevel = $player->vipLevel()->first();
+        /** @var PlayerVipPeriod $currentPeriod */
+        $currentPeriod = $player->currentVipPeriod()->first();
+        $periodBetAmount = $currentPeriod ? $currentPeriod->period_bet_amount : 0;
+
         return jsonSuccessResponse('success', [
             'id' => $player->id,
             'phone' => $player->phone,
@@ -175,6 +184,14 @@ class PlayerController
             'status_game_platform' => $player->status_game_platform,
             'wash_point_config' => self::getWashPointConfig($player->store_admin_id),
             'store_settings' => $storeSettings, // 店家配置
+            'vip_info' => [
+                'vip_level_id' => $player->vip_level_id ?? 0,
+                'vip_level_name' => $vipLevel ? $vipLevel->name : '',
+                'total_bet_amount' => $player->total_bet_amount ?? 0,
+                'period_bet_amount' => $periodBetAmount,
+                'upgrade_bet_amount' => $vipLevel ? $vipLevel->upgrade_bet_amount : 0,
+                'retain_level_bet_amount' => $vipLevel ? $vipLevel->retain_level_bet_amount : 0,
+            ],
         ]);
     }
     
