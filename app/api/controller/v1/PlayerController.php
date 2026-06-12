@@ -146,6 +146,15 @@ class PlayerController
         $currentPeriod = $player->currentVipPeriod()->first();
         $periodBetAmount = $currentPeriod ? $currentPeriod->period_bet_amount : 0;
 
+        // 获取下一VIP等级
+        $nextVipLevel = null;
+        if ($vipLevel) {
+            $nextVipLevel = VipLevel::query()
+                ->where('sort', '>', $vipLevel->sort)
+                ->orderBy('sort', 'asc')
+                ->first();
+        }
+
         return jsonSuccessResponse('success', [
             'id' => $player->id,
             'phone' => $player->phone,
@@ -187,6 +196,7 @@ class PlayerController
             'vip_info' => [
                 'vip_level_id' => $player->vip_level_id ?? 0,
                 'vip_level_name' => $vipLevel ? $vipLevel->name : '',
+                'next_vip_level_name' => $nextVipLevel ? $nextVipLevel->name : '',
                 'total_bet_amount' => $player->total_bet_amount ?? 0,
                 'period_bet_amount' => $periodBetAmount,
                 'upgrade_bet_amount' => $vipLevel ? $vipLevel->upgrade_bet_amount : 0,
