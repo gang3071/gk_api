@@ -170,6 +170,17 @@ Route::group('/api', function () {
         Route::post('/player-delivery-record-portrait', [\app\api\controller\v1\PromoterController::class, 'playerDeliveryRecordPortrait']);
         // 一键领取
         Route::post('/receive-all-lottery', [\app\api\controller\v1\LotteryController::class, 'receiveAllLottery']);
+
+        // ========== 摸奖券系统 ==========
+        // 获取当前活动（含详情、奖品、进度）
+        Route::post('/lottery-ticket/current-activity', [\app\api\controller\v1\LotteryTicketController::class, 'getCurrentActivity']);
+        // 我的奖券
+        Route::post('/lottery-ticket/my-tickets', [\app\api\controller\v1\LotteryTicketController::class, 'myTickets']);
+        // 中奖记录
+        Route::post('/lottery-ticket/winning-records', [\app\api\controller\v1\LotteryTicketController::class, 'winningRecords']);
+        // 打码进度
+        Route::post('/lottery-ticket/bet-progress', [\app\api\controller\v1\LotteryTicketController::class, 'betProgress']);
+
         // line登录
         Route::post('/line-login', [\app\api\controller\v1\IndexController::class, 'lineLogin']);
         // line绑定
