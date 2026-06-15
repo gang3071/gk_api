@@ -74,7 +74,7 @@ class AddAgentLotteryTicketMenus extends AbstractMigration
             VALUES (
                 'agent_lottery_ticket_win_record_list',
                 '',
-                'ex-admin/addons-webman-controller-AgentLotteryTicketWinRecordController/index',
+                'ex-admin/addons-webman-controller-AgentLotteryTicketRecordController/index',
                 'webman',
                 {$parentMenuId},
                 3,
