@@ -146,10 +146,19 @@ class PlayerController
         $currentPeriod = $player->currentVipPeriod()->first();
         $periodBetAmount = $currentPeriod ? $currentPeriod->period_bet_amount : 0;
 
+        // 如果玩家没有VIP等级，获取所属渠道的最低VIP等级作为默认展示
+        if (!$vipLevel) {
+            $vipLevel = VipLevel::query()
+                ->where('department_id', $player->department_id)
+                ->orderBy('sort', 'asc')
+                ->first();
+        }
+
         // 获取下一VIP等级
         $nextVipLevel = null;
         if ($vipLevel) {
             $nextVipLevel = VipLevel::query()
+                ->where('department_id', $player->department_id)
                 ->where('sort', '>', $vipLevel->sort)
                 ->orderBy('sort', 'asc')
                 ->first();
