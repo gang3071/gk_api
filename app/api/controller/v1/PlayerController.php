@@ -143,16 +143,20 @@ class PlayerController
 
         // 计算有效摸奖券数量（使用缓存优化）
         $cacheKey = "player:{$player->id}:valid_ticket_count";
-        $validLotteryTicketCount = Cache::remember($cacheKey, 300, function() use ($player) {
+        $validLotteryTicketCount = Cache::get($cacheKey);
+
+        if ($validLotteryTicketCount === null) {
             // ✅ 修复：使用统一的状态常量，只计算未使用的奖券
-            return LotteryTicket::query()
+            $validLotteryTicketCount = LotteryTicket::query()
                 ->join('lottery_ticket_activity as a', 'lottery_ticket.activity_id', '=', 'a.id')
                 ->where('lottery_ticket.player_id', $player->id)
                 ->where('lottery_ticket.status', LotteryTicket::STATUS_UNUSED)  // 只计算未使用的
                 ->where('lottery_ticket.expired_at', '>', date('Y-m-d H:i:s'))
                 ->where('a.status', '!=', LotteryTicketActivity::STATUS_CLOSED)
                 ->count('lottery_ticket.id');
-        });
+
+            Cache::set($cacheKey, $validLotteryTicketCount, 300);
+        }
 
         // 获取VIP等级信息
         /** @var VipLevel $vipLevel */

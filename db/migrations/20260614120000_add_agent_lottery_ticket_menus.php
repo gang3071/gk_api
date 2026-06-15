@@ -72,7 +72,7 @@ class AddAgentLotteryTicketMenus extends AbstractMigration
         $this->execute("
             INSERT INTO `admin_menus` (`name`, `icon`, `url`, `plugin`, `pid`, `sort`, `status`, `open`, `type`, `created_at`, `updated_at`)
             VALUES (
-                'agent_lottery_ticket_win_record_list',
+                'agent_lottery_ticket_record_list',
                 '',
                 'ex-admin/addons-webman-controller-AgentLotteryTicketRecordController/index',
                 'webman',
@@ -95,7 +95,7 @@ class AddAgentLotteryTicketMenus extends AbstractMigration
         // 删除子菜单（按照插入的逆序删除）
         $this->execute("
             DELETE FROM `admin_menus`
-            WHERE `name` = 'agent_lottery_ticket_win_record_list' AND `plugin` = 'webman'
+            WHERE `name` = 'agent_lottery_ticket_record_list' AND `plugin` = 'webman'
         ");
 
         $this->execute("
