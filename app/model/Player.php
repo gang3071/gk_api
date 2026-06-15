@@ -90,6 +90,10 @@ class Player extends Model
     const PLAYER_TYPE_AGENT = 2; // 代理
     const PLAYER_TYPE_STORE_MACHINE = 3; // 店家
 
+    // 玩家来源常量（✅ 已统一 gk_admin）
+    const PLAYER_SOURCE_ONLINE = 1; // 线上玩家
+    const PLAYER_SOURCE_OFFLINE = 2; // 线下玩家
+
     //数据权限字段
     protected $dataAuth = ['department_id' => 'department_id'];
     //简写省略id，默认后台用户表的id

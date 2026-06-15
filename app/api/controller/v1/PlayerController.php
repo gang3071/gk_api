@@ -12,6 +12,8 @@ use app\model\ChannelRechargeSetting;
 use app\model\Currency;
 use app\model\GameType;
 use app\model\Lottery;
+use app\model\LotteryTicket;
+use app\model\LotteryTicketActivity;
 use app\model\Machine;
 use app\model\Notice;
 use app\model\OpenScoreSetting;
@@ -19,7 +21,6 @@ use app\model\PhoneSmsLog;
 use app\model\Player;
 use app\model\PlayerBank;
 use app\model\PlayerDeliveryRecord;
-use app\model\PlayerVipPeriod;
 use app\model\PlayerFavoriteMachine;
 use app\model\PlayerGameRecord;
 use app\model\PlayerLotteryRecord;
@@ -27,6 +28,7 @@ use app\model\PlayerPlatformCash;
 use app\model\PlayerPresentRecord;
 use app\model\PlayerRechargeRecord;
 use app\model\PlayerReverseWaterDetail;
+use app\model\PlayerVipPeriod;
 use app\model\PlayerWalletTransfer;
 use app\model\PlayerWithdrawRecord;
 use app\model\PlayGameRecord;
@@ -139,6 +141,23 @@ class PlayerController
         // 获取店家配置
         $storeSettings = $this->getStoreSettings($player);
 
+        // 计算有效摸奖券数量（使用缓存优化）
+        $cacheKey = "player:{$player->id}:valid_ticket_count";
+        $validLotteryTicketCount = Cache::get($cacheKey);
+
+        if ($validLotteryTicketCount === null) {
+            // ✅ 修复：使用统一的状态常量，只计算未使用的奖券
+            $validLotteryTicketCount = LotteryTicket::query()
+                ->join('lottery_ticket_activity as a', 'lottery_ticket.activity_id', '=', 'a.id')
+                ->where('lottery_ticket.player_id', $player->id)
+                ->where('lottery_ticket.status', LotteryTicket::STATUS_UNUSED)  // 只计算未使用的
+                ->where('lottery_ticket.expired_at', '>', date('Y-m-d H:i:s'))
+                ->where('a.status', '!=', LotteryTicketActivity::STATUS_CLOSED)
+                ->count('lottery_ticket.id');
+
+            Cache::set($cacheKey, $validLotteryTicketCount, 300);
+        }
+
         // 获取VIP等级信息
         /** @var VipLevel $vipLevel */
         $vipLevel = $player->vipLevel()->first();
@@ -211,6 +230,7 @@ class PlayerController
                 'upgrade_bet_amount' => $vipLevel ? $vipLevel->upgrade_bet_amount : 0,
                 'retain_level_bet_amount' => $vipLevel ? $vipLevel->retain_level_bet_amount : 0,
             ],
+            'valid_lottery_ticket_count' => $validLotteryTicketCount, // 有效摸奖券数量
         ]);
     }
     
