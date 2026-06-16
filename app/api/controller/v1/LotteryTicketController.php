@@ -73,17 +73,7 @@ class LotteryTicketController
                         ->first();
                 }
 
-                if (!$activity) {
-                    // 优先级3: 预热中的活动
-                    $activity = LotteryTicketActivity::query()
-                        ->where('department_id', $departmentId)
-                        ->whereIn('status', [
-                            LotteryTicketActivity::STATUS_PREHEATING,
-                            LotteryTicketActivity::STATUS_BETTING
-                        ])
-                        ->orderBy('start_time', 'asc')
-                        ->first();
-                }
+                // 优先级3已删除：预热期和打码中状态已废弃，统一使用进行中状态
 
                 if (!$activity) {
                     // 优先级4: 即将开始的活动（7天内）
