@@ -227,7 +227,6 @@ class LotteryTicketController
 
         switch ($activity->status) {
             case LotteryTicketActivity::STATUS_NOT_STARTED:
-            case LotteryTicketActivity::STATUS_PREHEATING:
                 // 距离开始时间
                 $targetTime = strtotime($activity->start_time);
                 $diff = $targetTime - $now;
@@ -242,7 +241,6 @@ class LotteryTicketController
                 }
                 break;
 
-            case LotteryTicketActivity::STATUS_BETTING:
             case LotteryTicketActivity::STATUS_ONGOING:
                 // 距离结束时间
                 $targetTime = strtotime($activity->end_time);
@@ -309,8 +307,6 @@ class LotteryTicketController
     {
         return match($status) {
             LotteryTicketActivity::STATUS_NOT_STARTED => '即將開始',
-            LotteryTicketActivity::STATUS_PREHEATING => '活動預熱',
-            LotteryTicketActivity::STATUS_BETTING => '打碼中',
             LotteryTicketActivity::STATUS_ONGOING => '進行中',
             LotteryTicketActivity::STATUS_DRAWING => '開獎中',
             LotteryTicketActivity::STATUS_ENDED => '已結束',
