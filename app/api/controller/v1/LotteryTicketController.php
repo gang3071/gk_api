@@ -129,7 +129,7 @@ class LotteryTicketController
             $prizeLevels = LotteryTicketPrizeLevel::query()
                 ->where('activity_id', $activity->id)
                 ->orderBy('level_rank')
-                ->select(['level_rank', 'level_name', 'prize_type', 'prize_amount', 'prize_count'])
+                ->select(['level_rank', 'level_name', 'prize_amount', 'prize_count'])
                 ->get()
                 ->toArray();
 
@@ -194,16 +194,20 @@ class LotteryTicketController
                 'my_win_count' => $myWinCount,
                 'countdown' => $countdown,
 
-                // ✅ 开奖结果（摇球号码）
-                'ball_result' => $activity->ball_result
-                    ? json_decode($activity->ball_result, true)
-                    : null,
+                // ✅ 开奖状态（线下摇球，无ball_result字段）
+                'has_drawn' => in_array($activity->status, [
+                    LotteryTicketActivity::STATUS_DRAWING,
+                    LotteryTicketActivity::STATUS_ENDED,
+                ]),
 
-                // ✅ 直播地址
+                // ✅ 直播地址（开奖中/已结束时显示）
                 'live_url' => $activity->live_url ?? null,
 
                 // ✅ 中奖总人数（已开奖时显示）
-                'total_winners' => $activity->ball_result
+                'total_winners' => in_array($activity->status, [
+                    LotteryTicketActivity::STATUS_DRAWING,
+                    LotteryTicketActivity::STATUS_ENDED,
+                ])
                     ? LotteryTicketRecord::where('activity_id', $activity->id)->count()
                     : 0,
             ],
