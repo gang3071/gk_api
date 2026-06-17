@@ -136,6 +136,30 @@ class LotteryTicketController
             \support\Cache::set($cacheKey, $prizeLevels, 3600);
         }
 
+        // 优化1.5: VIP配置缓存（1小时，活动期间不变）
+        $vipConfigCacheKey = "lottery_activity:{$activity->id}:vip_configs";
+        $vipConfigs = \support\Cache::get($vipConfigCacheKey);
+
+        if ($vipConfigs === null) {
+            $vipConfigs = \app\model\LotteryTicketVipConfig::query()
+                ->with('vipLevel:id,level') // 关联VIP等级获取名称
+                ->where('activity_id', $activity->id)
+                ->where('status', 1) // 只返回启用的配置
+                ->orderBy('vip_level_id')
+                ->get()
+                ->map(function ($config) {
+                    return [
+                        'vip_level_id' => $config->vip_level_id,
+                        'vip_level_name' => $config->vipLevel ? $config->vipLevel->level : ('VIP' . $config->vip_level_id),
+                        'bet_amount_required' => (float) $config->bet_amount_required,
+                        'ticket_count' => $config->ticket_count,
+                    ];
+                })
+                ->toArray();
+
+            \support\Cache::set($vipConfigCacheKey, $vipConfigs, 3600);
+        }
+
         // 优化2: 合并奖券统计查询（2次COUNT合并为1次）
         $ticketStats = LotteryTicket::query()
             ->selectRaw('
@@ -160,7 +184,7 @@ class LotteryTicketController
         } else {
             $query->whereNull('vip_level_id');
         }
-
+        /** @var LotteryTicketBetProgress $betProgress */
         $betProgress = $query->first();
 
         $progress = null;
@@ -200,8 +224,10 @@ class LotteryTicketController
                     LotteryTicketActivity::STATUS_ENDED,
                 ]),
 
-                // ✅ 直播地址（开奖中/已结束时显示）
+                // ✅ 直播相关
                 'live_url' => $activity->live_url ?? null,
+                'live_status' => $activity->live_status ?? 0,
+                'live_status_text' => $this->getLiveStatusText($activity->live_status ?? 0),
 
                 // ✅ 中奖总人数（已开奖时显示）
                 'total_winners' => in_array($activity->status, [
@@ -212,6 +238,7 @@ class LotteryTicketController
                     : 0,
             ],
             'prize_levels' => $prizeLevels,
+            'vip_configs' => $vipConfigs,
             'bet_progress' => $progress,
         ]);
     }
@@ -312,6 +339,21 @@ class LotteryTicketController
             LotteryTicketActivity::STATUS_ENDED => '已結束',
             LotteryTicketActivity::STATUS_CLOSED => '已關閉',
             default => '未知狀態',
+        };
+    }
+
+    /**
+     * 获取直播状态文本
+     * @param int $status
+     * @return string
+     */
+    private function getLiveStatusText(int $status): string
+    {
+        return match($status) {
+            LotteryTicketActivity::LIVE_STATUS_NOT_STARTED => '未開播',
+            LotteryTicketActivity::LIVE_STATUS_ONGOING => '直播中',
+            LotteryTicketActivity::LIVE_STATUS_ENDED => '已結束',
+            default => '未開播',
         };
     }
 
