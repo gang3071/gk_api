@@ -142,7 +142,7 @@ class LotteryTicketController
 
         if ($vipConfigs === null) {
             $vipConfigs = \app\model\LotteryTicketVipConfig::query()
-                ->with('vipLevel:id,level') // 关联VIP等级获取名称
+                ->with('vipLevel:id,name') // ✅ 修正：使用 name 字段而不是 level
                 ->where('activity_id', $activity->id)
                 ->where('status', 1) // 只返回启用的配置
                 ->orderBy('vip_level_id')
@@ -150,7 +150,7 @@ class LotteryTicketController
                 ->map(function ($config) {
                     return [
                         'vip_level_id' => $config->vip_level_id,
-                        'vip_level_name' => $config->vipLevel ? $config->vipLevel->level : ('VIP' . $config->vip_level_id),
+                        'vip_level_name' => $config->vipLevel ? $config->vipLevel->name : ('VIP' . $config->vip_level_id), // ✅ 修正：使用 name 属性
                         'bet_amount_required' => (float) $config->bet_amount_required,
                         'ticket_count' => $config->ticket_count,
                     ];

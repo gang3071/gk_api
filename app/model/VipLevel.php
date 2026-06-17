@@ -5,7 +5,6 @@ namespace app\model;
 use app\traits\HasDateTimeFormatter;
 use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Class VipLevel
@@ -29,6 +28,14 @@ class VipLevel extends Model
     use HasDateTimeFormatter;
 
     protected $table = 'vip_level';
+
+    /**
+     * 状态常量
+     */
+    const STATUS_DISABLED = 0; // 禁用
+    const STATUS_ENABLED = 1;  // 启用
+
+    protected $guarded = [];
 
     /**
      * 时间转换
