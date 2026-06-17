@@ -173,6 +173,17 @@ class LotteryTicketController
         $myTicketCount = $ticketStats->total_count ?? 0;
         $myWinCount = $ticketStats->win_count ?? 0;
 
+        // ✅ 获取玩家的VIP配置（基础打码量和发券数）
+        $vipConfig = \app\model\LotteryTicketVipConfig::query()
+            ->where('activity_id', $activity->id)
+            ->where('vip_level_id', $player->vip_level_id ?? 0)
+            ->where('status', 1)
+            ->first();
+
+        // 如果没有找到VIP配置，使用默认值
+        $baseBetAmount = $vipConfig ? $vipConfig->bet_amount_required : 0;
+        $baseTicketCount = $vipConfig ? $vipConfig->ticket_count : 0;
+
         // ✅ 获取玩家打码进度（处理vip_level_id可能为null的情况）
         $query = LotteryTicketBetProgress::query()
             ->where('activity_id', $activity->id)
@@ -187,16 +198,27 @@ class LotteryTicketController
         /** @var LotteryTicketBetProgress $betProgress */
         $betProgress = $query->first();
 
-        $progress = null;
+        // 如果有打码进度记录，使用记录中的数据；否则返回基础配置
         if ($betProgress) {
             $progress = [
-                'bet_amount_required' => $betProgress->bet_amount_required,
-                'current_bet_amount' => $betProgress->current_bet_amount,
-                'progress_percent' => $betProgress->progress_percent,
-                'remaining_bet_amount' => $betProgress->remaining_bet_amount,
+                'bet_amount_required' => (float) $betProgress->bet_amount_required,
+                'current_bet_amount' => (float) $betProgress->current_bet_amount,
+                'progress_percent' => (float) $betProgress->progress_percent,
+                'remaining_bet_amount' => (float) $betProgress->remaining_bet_amount,
                 'cycles_completed' => $betProgress->cycles_completed,
                 'total_tickets_issued' => $betProgress->total_tickets_issued,
                 'ticket_count_per_cycle' => $betProgress->ticket_count_per_cycle,
+            ];
+        } else {
+            // 没有打码进度记录，返回初始状态（使用VIP配置的基础值）
+            $progress = [
+                'bet_amount_required' => (float) $baseBetAmount,
+                'current_bet_amount' => 0.00,
+                'progress_percent' => 0.00,
+                'remaining_bet_amount' => (float) $baseBetAmount,
+                'cycles_completed' => 0,
+                'total_tickets_issued' => 0,
+                'ticket_count_per_cycle' => $baseTicketCount,
             ];
         }
 
