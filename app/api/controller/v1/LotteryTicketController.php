@@ -67,14 +67,20 @@ class LotteryTicketController
                     ->first();
 
                 if (!$activity) {
-                    // 优先级2: 进行中的活动（打码中）
+                    // 优先级2: 待开奖的活动（活动已结束，等待开奖）
+                    $activity = LotteryTicketActivity::query()
+                        ->where('department_id', $departmentId)
+                        ->where('status', LotteryTicketActivity::STATUS_PENDING_DRAW)
+                        ->first();
+                }
+
+                if (!$activity) {
+                    // 优先级3: 进行中的活动（打码中）
                     $activity = LotteryTicketActivity::query()
                         ->where('department_id', $departmentId)
                         ->where('status', LotteryTicketActivity::STATUS_ONGOING)
                         ->first();
                 }
-
-                // 优先级3已删除：预热期和打码中状态已废弃，统一使用进行中状态
 
                 if (!$activity) {
                     // 优先级4: 即将开始的活动（7天内）
@@ -306,6 +312,15 @@ class LotteryTicketController
                 }
                 break;
 
+            case LotteryTicketActivity::STATUS_PENDING_DRAW:
+                // ⭐ 待开奖，显示等待开奖提示
+                return [
+                    'type' => 'pending_draw',
+                    'label' => '等待開獎',
+                    'seconds' => 0,
+                    'formatted' => '等待開獎中'
+                ];
+
             case LotteryTicketActivity::STATUS_DRAWING:
                 // 开奖中，无倒计时
                 return [
@@ -358,6 +373,7 @@ class LotteryTicketController
         return match($status) {
             LotteryTicketActivity::STATUS_NOT_STARTED => '即將開始',
             LotteryTicketActivity::STATUS_ONGOING => '進行中',
+            LotteryTicketActivity::STATUS_PENDING_DRAW => '待開獎',  // ⭐ 新增
             LotteryTicketActivity::STATUS_DRAWING => '開獎中',
             LotteryTicketActivity::STATUS_ENDED => '已結束',
             LotteryTicketActivity::STATUS_CLOSED => '已關閉',
