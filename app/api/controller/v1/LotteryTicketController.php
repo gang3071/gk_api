@@ -253,8 +253,9 @@ class LotteryTicketController
                     LotteryTicketActivity::STATUS_ENDED,
                 ]),
 
-                // ✅ 直播相关
-                'live_url' => $activity->live_url ?? null,
+                // ✅ 直播相关（只在直播中时返回播放地址）
+                'stream_name' => $activity->live_url ?? null,  // ⭐ 流名称（备用）
+                'play_urls' => $this->generatePlayUrls($activity->live_url, $activity->live_status ?? 0),  // ⭐ 完整播放地址（仅直播中时生成）
                 'live_status' => $activity->live_status ?? 0,
                 'live_status_text' => $this->getLiveStatusText($activity->live_status ?? 0),
 
@@ -379,6 +380,59 @@ class LotteryTicketController
             LotteryTicketActivity::STATUS_CLOSED => '已關閉',
             default => '未知狀態',
         };
+    }
+
+    /**
+     * 生成完整的直播播放地址（只在直播中时生成）
+     * @param string|null $streamName 流名称
+     * @param int $liveStatus 直播状态
+     * @return array|null
+     */
+    private function generatePlayUrls(?string $streamName, int $liveStatus): ?array
+    {
+        // ✅ 只在直播中（live_status = 1）时才返回播放地址
+        if ($liveStatus !== LotteryTicketActivity::LIVE_STATUS_ONGOING) {
+            return [
+                'webrtc' => '', // 推荐：超低延迟 <1秒
+                'flv' => '',       // 备选：HTTP-FLV
+                'hls' => '',       // 备选：HLS（兼容性好）
+                'expire_time' => '',
+                'expire_timestamp' => '',
+                'region' => '', // CN（大陆）或 Global（全球）
+            ];
+        }
+
+        if (empty($streamName)) {
+            return [
+                'webrtc' => '', // 推荐：超低延迟 <1秒
+                'flv' => '',       // 备选：HTTP-FLV
+                'hls' => '',       // 备选：HLS（兼容性好）
+                'expire_time' => '',
+                'expire_timestamp' => '',
+                'region' => '', // CN（大陆）或 Global（全球）
+            ];
+        }
+
+        try {
+            // 使用固定配置ID=1，生成30天有效期的播放地址
+            $urls = generateLotteryLiveUrls(1, $streamName, 30);
+
+            return [
+                'webrtc' => $urls['webrtc'], // 推荐：超低延迟 <1秒
+                'flv' => $urls['flv'],       // 备选：HTTP-FLV
+                'hls' => $urls['hls'],       // 备选：HLS（兼容性好）
+                'expire_time' => $urls['expire_time'],
+                'expire_timestamp' => $urls['expire_timestamp'],
+                'region' => $urls['region'], // CN（大陆）或 Global（全球）
+            ];
+        } catch (\Exception $e) {
+            // 生成播放地址失败时记录日志
+            \support\Log::warning('生成摸奖券直播播放地址失败', [
+                'stream_name' => $streamName,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 
     /**
