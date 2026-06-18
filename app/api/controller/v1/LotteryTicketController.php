@@ -8,6 +8,7 @@ use app\model\LotteryTicketActivity;
 use app\model\LotteryTicketBetProgress;
 use app\model\LotteryTicketPrizeLevel;
 use app\model\LotteryTicketRecord;
+use app\model\LotteryTicketVipConfig;
 use Respect\Validation\Exceptions\AllOfException;
 use Respect\Validation\Validator as v;
 use support\Request;
@@ -603,20 +604,30 @@ class LotteryTicketController
         /** @var LotteryTicketBetProgress $betProgress */
         $betProgress = $query->first();
 
-        // ✅ 如果没有打码进度记录，返回初始状态（而不是报错）
+        // ✅ 如果没有打码进度记录，返回初始状态（从活动配置获取打码要求）
         if (!$betProgress) {
+            // 获取该玩家 VIP 等级对应的打码配置
+            $vipConfig = LotteryTicketVipConfig::query()
+                ->where('activity_id', $data['activity_id'])
+                ->where('vip_level_id', $player->vip_level_id ?: 0)
+                ->first();
+
+            // 如果没有配置，使用活动默认配置
+            $betAmountRequired = $vipConfig ? $vipConfig->bet_amount_required : $activity->bet_amount_required;
+            $ticketCountPerCycle = $vipConfig ? $vipConfig->tickets_per_round : $activity->tickets_per_round;
+
             return jsonSuccessResponse('success', [
                 'activity_id' => $data['activity_id'],
                 'player_id' => $player->id,
                 'vip_level_id' => $player->vip_level_id,
-                'bet_amount_required' => 0,
+                'bet_amount_required' => $betAmountRequired ?? 0,
                 'current_bet_amount' => 0,
                 'progress_percent' => 0,
-                'remaining_bet_amount' => 0,
+                'remaining_bet_amount' => $betAmountRequired ?? 0,
                 'cycles_completed' => 0,
                 'total_tickets_issued' => 0,
-                'ticket_count_per_cycle' => 0,
-                'status' => 0,
+                'ticket_count_per_cycle' => $ticketCountPerCycle ?? 0,
+                'status' => 0, // 0 = 未开始
                 'updated_at' => null,
             ]);
         }
