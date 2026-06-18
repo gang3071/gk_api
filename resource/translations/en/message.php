@@ -502,4 +502,7 @@ return [
     'ad_position' => 'Ad Position',
     'ad_position_required' => 'Ad position is required',
     'ad_position_invalid' => 'Ad position is invalid',
+
+    // Lottery Ticket
+    'lottery_activity_not_found' => 'Activity not found or access denied',
 ];

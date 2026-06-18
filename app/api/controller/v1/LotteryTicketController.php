@@ -587,7 +587,7 @@ class LotteryTicketController
             ->first();
 
         if (!$activity) {
-            return jsonFailResponse('活动不存在或无权访问');
+            return jsonFailResponse(trans('lottery_activity_not_found', [], 'message'));
         }
 
         // ✅ 处理vip_level_id可能为null的情况
@@ -600,11 +600,25 @@ class LotteryTicketController
         } else {
             $query->whereNull('vip_level_id');
         }
-
+        /** @var LotteryTicketBetProgress $betProgress */
         $betProgress = $query->first();
 
+        // ✅ 如果没有打码进度记录，返回初始状态（而不是报错）
         if (!$betProgress) {
-            return jsonFailResponse('未找到打码进度记录');
+            return jsonSuccessResponse('success', [
+                'activity_id' => $data['activity_id'],
+                'player_id' => $player->id,
+                'vip_level_id' => $player->vip_level_id,
+                'bet_amount_required' => 0,
+                'current_bet_amount' => 0,
+                'progress_percent' => 0,
+                'remaining_bet_amount' => 0,
+                'cycles_completed' => 0,
+                'total_tickets_issued' => 0,
+                'ticket_count_per_cycle' => 0,
+                'status' => 0,
+                'updated_at' => null,
+            ]);
         }
 
         return jsonSuccessResponse('success', [
