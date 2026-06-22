@@ -924,7 +924,7 @@ class IndexController
             'ranking_status' => (($channel['ranking_status'] ?? 0) == 1 || $channel['ranking_status'] == true),
             'activity_open' => $systemSetting->status ?? 0,
             'lottery_status' => (($channel['lottery_status'] ?? 0) == 1 || $channel['lottery_status'] == true),
-            'lottery_ticket_enabled' => (($channel['lottery_ticket_enabled'] ?? 0) == 1 || $channel['lottery_ticket_enabled'] == true),
+            'lottery_ticket_enabled' => (($channel['lottery_ticket_enabled'] ?? 0) == 1),
             'status_machine' => (($channel['status_machine'] ?? 0) == 1 || $channel['status_machine'] == true),
             'machine_media_line' => $channel['machine_media_line'],
             'is_offline' => ($channel['is_offline'] ?? 0) == 1,
