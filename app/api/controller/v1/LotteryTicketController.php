@@ -399,6 +399,8 @@ class LotteryTicketController
                 'expire_time' => '',
                 'expire_timestamp' => '',
                 'region' => '', // CN（大陆）或 Global（全球）
+                'license' => '',
+                'license_key' => '',
             ];
         }
 
@@ -410,6 +412,8 @@ class LotteryTicketController
                 'expire_time' => '',
                 'expire_timestamp' => '',
                 'region' => '', // CN（大陆）或 Global（全球）
+                'license' => '',
+                'license_key' => '',
             ];
         }
 
@@ -424,6 +428,8 @@ class LotteryTicketController
                 'expire_time' => $urls['expire_time'],
                 'expire_timestamp' => $urls['expire_timestamp'],
                 'region' => $urls['region'], // CN（大陆）或 Global（全球）
+                'license' => $urls['license'] ?? '', // 播放器 License URL
+                'license_key' => $urls['license_key'] ?? '', // 播放器 License Key
             ];
         } catch (\Exception $e) {
             // 生成播放地址失败时记录日志

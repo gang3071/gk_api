@@ -3608,6 +3608,8 @@ if (!function_exists('generateLotteryLiveUrls')) {
             'tx_secret' => $txSecret,
             'region' => $region, // 标识使用的区域
             'pull_domain' => $pullDomain, // 实际使用的播放域名
+            'license' => $config->license ?? '', // 播放器 License URL
+            'license_key' => $config->license_key ?? '', // 播放器 License Key
         ];
     }
 }
