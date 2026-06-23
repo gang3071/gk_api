@@ -207,14 +207,22 @@ class LotteryTicketController
 
         // 如果有打码进度记录，使用记录中的数据；否则返回基础配置
         if ($betProgress) {
+            // ✅ 计算当前周期内的打码进度（对基础打码量取模）
+            $currentCycleBetAmount = fmod((float) $betProgress->current_bet_amount, (float) $betProgress->bet_amount_required);
+            $currentCyclePercent = $betProgress->bet_amount_required > 0
+                ? ($currentCycleBetAmount / $betProgress->bet_amount_required) * 100
+                : 0;
+            $currentCycleRemaining = max(0, $betProgress->bet_amount_required - $currentCycleBetAmount);
+
             $progress = [
                 'bet_amount_required' => (float) $betProgress->bet_amount_required,
-                'current_bet_amount' => (float) $betProgress->current_bet_amount,
-                'progress_percent' => (float) $betProgress->progress_percent,
-                'remaining_bet_amount' => (float) $betProgress->remaining_bet_amount,
+                'current_bet_amount' => (float) $currentCycleBetAmount,  // ✅ 当前周期打码量（取模后）
+                'progress_percent' => (float) $currentCyclePercent,      // ✅ 当前周期进度百分比
+                'remaining_bet_amount' => (float) $currentCycleRemaining, // ✅ 当前周期剩余打码量
                 'cycles_completed' => $betProgress->cycles_completed,
                 'total_tickets_issued' => $betProgress->total_tickets_issued,
                 'ticket_count_per_cycle' => $betProgress->ticket_count_per_cycle,
+                'total_bet_amount' => (float) $betProgress->current_bet_amount, // ✅ 累计总打码量
             ];
         } else {
             // 没有打码进度记录，返回初始状态（使用VIP配置的基础值）
@@ -226,6 +234,7 @@ class LotteryTicketController
                 'cycles_completed' => 0,
                 'total_tickets_issued' => 0,
                 'ticket_count_per_cycle' => $baseTicketCount,
+                'total_bet_amount' => 0.00, // ✅ 累计总打码量
             ];
         }
 
@@ -703,22 +712,31 @@ class LotteryTicketController
                 'cycles_completed' => 0,
                 'total_tickets_issued' => 0,
                 'ticket_count_per_cycle' => $ticketCountPerCycle ?? 0,
+                'total_bet_amount' => 0, // ✅ 累计总打码量
                 'status' => 0, // 0 = 未开始
                 'updated_at' => null,
             ]);
         }
+
+        // ✅ 计算当前周期内的打码进度（对基础打码量取模）
+        $currentCycleBetAmount = fmod((float) $betProgress->current_bet_amount, (float) $betProgress->bet_amount_required);
+        $currentCyclePercent = $betProgress->bet_amount_required > 0
+            ? ($currentCycleBetAmount / $betProgress->bet_amount_required) * 100
+            : 0;
+        $currentCycleRemaining = max(0, $betProgress->bet_amount_required - $currentCycleBetAmount);
 
         return jsonSuccessResponse('success', [
             'activity_id' => $betProgress->activity_id,
             'player_id' => $betProgress->player_id,
             'vip_level_id' => $betProgress->vip_level_id,
             'bet_amount_required' => $betProgress->bet_amount_required,
-            'current_bet_amount' => $betProgress->current_bet_amount,
-            'progress_percent' => $betProgress->progress_percent,
-            'remaining_bet_amount' => $betProgress->remaining_bet_amount,
+            'current_bet_amount' => $currentCycleBetAmount,       // ✅ 当前周期打码量（取模后）
+            'progress_percent' => $currentCyclePercent,            // ✅ 当前周期进度百分比
+            'remaining_bet_amount' => $currentCycleRemaining,      // ✅ 当前周期剩余打码量
             'cycles_completed' => $betProgress->cycles_completed,
             'total_tickets_issued' => $betProgress->total_tickets_issued,
             'ticket_count_per_cycle' => $betProgress->ticket_count_per_cycle,
+            'total_bet_amount' => $betProgress->current_bet_amount, // ✅ 累计总打码量
             'status' => $betProgress->status,
             'updated_at' => $betProgress->updated_at,
         ]);
