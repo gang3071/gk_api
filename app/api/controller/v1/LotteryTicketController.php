@@ -110,6 +110,15 @@ class LotteryTicketController
                     ->orderBy('id', 'desc')
                     ->first();
             }
+            // ✅ 优先级5: 已结束的活动（可选展示）
+            if (!$activity && !$skipEnded) {
+                // 默认模式: 刚结束的活动（结束后30分钟内仍然展示）
+                $activity = LotteryTicketActivity::query()
+                    ->where('department_id', $departmentId)
+                    ->where('status', LotteryTicketActivity::STATUS_ENDED)
+                    ->orderBy('id', 'desc')
+                    ->first();
+            }
 
             return $activity;
 
