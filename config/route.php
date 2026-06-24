@@ -181,6 +181,14 @@ Route::group('/api', function () {
         // 打码进度
         Route::post('/lottery-ticket/bet-progress', [\app\api\controller\v1\LotteryTicketController::class, 'betProgress']);
 
+        // ========== 出票系统 ==========
+        // 核销出票
+        Route::post('/ticket/redeem', [\app\api\controller\v1\TicketController::class, 'redeemTicket']);
+        // 扫码开分
+        Route::post('/ticket/scan-open-score', [\app\api\controller\v1\TicketController::class, 'scanOpenScore']);
+        // 查询出票记录
+        Route::post('/ticket/records', [\app\api\controller\v1\TicketController::class, 'ticketRecords']);
+
         // line登录
         Route::post('/line-login', [\app\api\controller\v1\IndexController::class, 'lineLogin']);
         // line绑定
