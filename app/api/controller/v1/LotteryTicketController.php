@@ -64,6 +64,7 @@ class LotteryTicketController
                 $activity = LotteryTicketActivity::query()
                     ->where('department_id', $departmentId)
                     ->where('status', LotteryTicketActivity::STATUS_DRAWING)
+                    ->orderBy('id', 'desc')
                     ->first();
 
                 if (!$activity) {
@@ -71,6 +72,7 @@ class LotteryTicketController
                     $activity = LotteryTicketActivity::query()
                         ->where('department_id', $departmentId)
                         ->where('status', LotteryTicketActivity::STATUS_PENDING_DRAW)
+                        ->orderBy('id', 'desc')
                         ->first();
                 }
 
@@ -79,6 +81,7 @@ class LotteryTicketController
                     $activity = LotteryTicketActivity::query()
                         ->where('department_id', $departmentId)
                         ->where('status', LotteryTicketActivity::STATUS_ONGOING)
+                        ->orderBy('id', 'desc')
                         ->first();
                 }
 
@@ -88,7 +91,7 @@ class LotteryTicketController
                         ->where('department_id', $departmentId)
                         ->where('status', LotteryTicketActivity::STATUS_NOT_STARTED)
                         ->where('start_time', '<=', date('Y-m-d H:i:s', strtotime('+7 days')))
-                        ->orderBy('start_time', 'asc')
+                        ->orderBy('id', 'desc')
                         ->first();
                 }
 
@@ -97,7 +100,7 @@ class LotteryTicketController
                     $activity = LotteryTicketActivity::query()
                         ->where('department_id', $departmentId)
                         ->where('status', LotteryTicketActivity::STATUS_ENDED)
-                        ->orderBy('end_time', 'desc')
+                        ->orderBy('id', 'desc')
                         ->first();
                 }
 
