@@ -53,7 +53,7 @@ class LotteryTicketController
      */
     private function getSmartActivity(int $departmentId): ?LotteryTicketActivity
     {
-        // 使用1分钟缓存
+        // ✅ 使用10秒缓存（缩短缓存时间，解决活动状态变化延迟问题）
         $cacheKey = "lottery_activity:smart:{$departmentId}";
 
         try {
@@ -104,7 +104,8 @@ class LotteryTicketController
                         ->first();
                 }
 
-                \support\Cache::set($cacheKey, $activity ?: false, 60);
+                // ✅ 缩短缓存时间为10秒（解决活动状态变化时延迟问题）
+                \support\Cache::set($cacheKey, $activity ?: false, 10);
             }
 
             return $activity ?: null;
@@ -183,6 +184,13 @@ class LotteryTicketController
         $myTicketCount = $ticketStats->total_count ?? 0;
         $myWinCount = $ticketStats->win_count ?? 0;
 
+        // ✅ 获取玩家在当期活动的总获奖金额（包含未发放的中奖金额）
+        $myTotalPrizeAmount = LotteryTicketRecord::query()
+            ->where('activity_id', $activity->id)
+            ->where('player_id', $player->id)
+            ->where('prize_type', '!=', LotteryTicketRecord::PRIZE_TYPE_EMPTY) // 排除未中奖的记录
+            ->sum('prize_amount');
+
         // ✅ 获取玩家的VIP配置（基础打码量和发券数）
         $vipConfig = \app\model\LotteryTicketVipConfig::query()
             ->where('activity_id', $activity->id)
@@ -257,6 +265,7 @@ class LotteryTicketController
                 'status_text' => $this->getActivityStatusText($activity->status),
                 'my_ticket_count' => $myTicketCount,
                 'my_win_count' => $myWinCount,
+                'my_total_prize_amount' => (float)$myTotalPrizeAmount, // ✅ 我的总获奖金额
                 'countdown' => $countdown,
 
                 // ✅ 开奖状态（线下摇球，无ball_result字段）
