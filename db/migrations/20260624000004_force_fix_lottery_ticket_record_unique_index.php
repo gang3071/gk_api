@@ -16,9 +16,9 @@ class ForceFixLotteryTicketRecordUniqueIndex extends AbstractMigration
         echo "强制修复 lottery_ticket_record 表的唯一索引\n";
         echo "================================================================================\n";
 
-        // 获取完整表名（包含前缀）
-        $table = $this->table('lottery_ticket_record');
-        $tableName = $table->getTable();
+        // 获取表前缀
+        $prefix = $this->getAdapter()->getOption('table_prefix');
+        $tableName = $prefix . 'lottery_ticket_record';
 
         // 1. 删除旧的单字段唯一索引（直接SQL，忽略错误）
         try {
@@ -53,9 +53,9 @@ class ForceFixLotteryTicketRecordUniqueIndex extends AbstractMigration
     {
         echo "回滚操作：恢复原有索引结构\n";
 
-        // 获取完整表名
-        $table = $this->table('lottery_ticket_record');
-        $tableName = $table->getTable();
+        // 获取表前缀
+        $prefix = $this->getAdapter()->getOption('table_prefix');
+        $tableName = $prefix . 'lottery_ticket_record';
 
         // 删除联合索引
         try {
