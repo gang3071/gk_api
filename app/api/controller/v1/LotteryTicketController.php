@@ -535,14 +535,17 @@ class LotteryTicketController
             ]);
 
         $total = $query->count();
-        $tickets = $query->orderBy('created_at', 'desc')
+
+        // ✅ 优化：使用预加载避免N+1查询
+        $tickets = $query->with(['winningRecord']) // 预加载中奖记录关联
+            ->orderBy('created_at', 'desc')
             ->forPage($page, $size)
             ->get();
 
         $list = [];
         foreach ($tickets as $ticket) {
-            // ✅ 修复：通过 LotteryTicketRecord 判断是否中奖
-            $winningRecord = LotteryTicketRecord::where('ticket_id', $ticket->id)->first();
+            // ✅ 优化：直接使用预加载的关联数据，无需再查询
+            $winningRecord = $ticket->winningRecord;
             $isWinning = !empty($winningRecord);
 
             $list[] = [
@@ -552,7 +555,7 @@ class LotteryTicketController
                 'source_text' => $this->getSourceText($ticket->source),
                 'status' => $ticket->status,
                 'status_text' => $this->getStatusText($ticket->status),
-                'is_winning' => $isWinning,  // ✅ 通过中奖记录判断
+                'is_winning' => $isWinning,  // ✅ 通过预加载的中奖记录判断
                 'prize_level' => $winningRecord->prize_level ?? null,
                 'prize_amount' => $winningRecord->prize_amount ?? 0,
                 'issued_at' => $ticket->issued_at,

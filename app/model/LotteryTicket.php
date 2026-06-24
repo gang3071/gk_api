@@ -4,6 +4,7 @@ namespace app\model;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * Class LotteryTicket 摸奖券模型
@@ -52,5 +53,13 @@ class LotteryTicket extends Model
     public function activity(): BelongsTo
     {
         return $this->belongsTo(LotteryTicketActivity::class, 'activity_id');
+    }
+
+    /**
+     * 中奖记录
+     */
+    public function winningRecord(): HasOne
+    {
+        return $this->hasOne(LotteryTicketRecord::class, 'ticket_id');
     }
 }
