@@ -22,6 +22,8 @@ comechat-d5578-b1ad675314bd.json
 *~
 .DS_Store
 
+tests/
+phpunit.xml
 # Windows
 Thumbs.db
 ehthumbs.db
