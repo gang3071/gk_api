@@ -230,6 +230,7 @@ class PlayerController
                 'period_bet_amount' => $periodBetAmount,
                 'upgrade_bet_amount' => $vipLevel ? $vipLevel->upgrade_bet_amount : 0,
                 'retain_level_bet_amount' => $vipLevel ? $vipLevel->retain_level_bet_amount : 0,
+                'sort' => $vipLevel->sort,
             ],
             'valid_lottery_ticket_count' => $validLotteryTicketCount, // 有效摸奖券数量
         ]);
