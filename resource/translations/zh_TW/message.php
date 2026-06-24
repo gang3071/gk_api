@@ -503,4 +503,7 @@ return [
     'ad_position' => '廣告位',
     'ad_position_required' => '廣告位參數不能為空',
     'ad_position_invalid' => '廣告位參數無效',
+
+    // 摸獎券相關
+    'lottery_activity_not_found' => '活動不存在或無權訪問',
 ];

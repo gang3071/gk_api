@@ -57,4 +57,10 @@ return [
     'google_cloud_storage' => [
         'bucket' => env('GOOGLE_CLOUD_STORAGE_BUCKET', 'yjbfile'),
     ],
+
+    // 移动端播放器配置（摸奖券直播）
+    'mobile_player' => [
+        'license' => env('MOBILE_PLAYER_LICENSE', ''),
+        'license_key' => env('MOBILE_PLAYER_LICENSE_KEY', ''),
+    ],
 ];

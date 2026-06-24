@@ -191,6 +191,7 @@ class PlayerController
             'currency' => $player->currency,
             'flag' => $player->flag,
             'uuid' => $player->uuid,
+            'department_id' => $player->department_id,
             'talk_user_id' => $player->talk_user_id,
             'has_set_play_password' => !empty($player->play_password),
             'recommend_code' => $player->recommend_code,

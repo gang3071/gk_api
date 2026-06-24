@@ -499,4 +499,7 @@ return [
     'ad_position' => '広告位置',
     'ad_position_required' => '広告位置パラメータは必須です',
     'ad_position_invalid' => '広告位置パラメータが無効です',
+
+    // 抽選券関連
+    'lottery_activity_not_found' => 'アクティビティが見つからないか、アクセス権限がありません',
 ];

@@ -513,4 +513,7 @@ return [
     'ad_position' => '广告位',
     'ad_position_required' => '广告位参数不能为空',
     'ad_position_invalid' => '广告位参数无效',
+
+    // 摸奖券相关
+    'lottery_activity_not_found' => '活动不存在或无权访问',
 ];

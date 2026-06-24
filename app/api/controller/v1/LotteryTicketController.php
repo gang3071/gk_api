@@ -8,6 +8,7 @@ use app\model\LotteryTicketActivity;
 use app\model\LotteryTicketBetProgress;
 use app\model\LotteryTicketPrizeLevel;
 use app\model\LotteryTicketRecord;
+use app\model\LotteryTicketVipConfig;
 use Respect\Validation\Exceptions\AllOfException;
 use Respect\Validation\Validator as v;
 use support\Request;
@@ -66,14 +67,20 @@ class LotteryTicketController
                     ->first();
 
                 if (!$activity) {
-                    // 优先级2: 进行中的活动（打码中）
+                    // 优先级2: 待开奖的活动（活动已结束，等待开奖）
+                    $activity = LotteryTicketActivity::query()
+                        ->where('department_id', $departmentId)
+                        ->where('status', LotteryTicketActivity::STATUS_PENDING_DRAW)
+                        ->first();
+                }
+
+                if (!$activity) {
+                    // 优先级3: 进行中的活动（打码中）
                     $activity = LotteryTicketActivity::query()
                         ->where('department_id', $departmentId)
                         ->where('status', LotteryTicketActivity::STATUS_ONGOING)
                         ->first();
                 }
-
-                // 优先级3已删除：预热期和打码中状态已废弃，统一使用进行中状态
 
                 if (!$activity) {
                     // 优先级4: 即将开始的活动（7天内）
@@ -200,14 +207,22 @@ class LotteryTicketController
 
         // 如果有打码进度记录，使用记录中的数据；否则返回基础配置
         if ($betProgress) {
+            // ✅ 计算当前周期内的打码进度（对基础打码量取模）
+            $currentCycleBetAmount = fmod((float) $betProgress->current_bet_amount, (float) $betProgress->bet_amount_required);
+            $currentCyclePercent = $betProgress->bet_amount_required > 0
+                ? ($currentCycleBetAmount / $betProgress->bet_amount_required) * 100
+                : 0;
+            $currentCycleRemaining = max(0, $betProgress->bet_amount_required - $currentCycleBetAmount);
+
             $progress = [
                 'bet_amount_required' => (float) $betProgress->bet_amount_required,
-                'current_bet_amount' => (float) $betProgress->current_bet_amount,
-                'progress_percent' => (float) $betProgress->progress_percent,
-                'remaining_bet_amount' => (float) $betProgress->remaining_bet_amount,
+                'current_bet_amount' => (float) $currentCycleBetAmount,  // ✅ 当前周期打码量（取模后）
+                'progress_percent' => (float) $currentCyclePercent,      // ✅ 当前周期进度百分比
+                'remaining_bet_amount' => (float) $currentCycleRemaining, // ✅ 当前周期剩余打码量
                 'cycles_completed' => $betProgress->cycles_completed,
                 'total_tickets_issued' => $betProgress->total_tickets_issued,
                 'ticket_count_per_cycle' => $betProgress->ticket_count_per_cycle,
+                'total_bet_amount' => (float) $betProgress->current_bet_amount, // ✅ 累计总打码量
             ];
         } else {
             // 没有打码进度记录，返回初始状态（使用VIP配置的基础值）
@@ -219,6 +234,7 @@ class LotteryTicketController
                 'cycles_completed' => 0,
                 'total_tickets_issued' => 0,
                 'ticket_count_per_cycle' => $baseTicketCount,
+                'total_bet_amount' => 0.00, // ✅ 累计总打码量
             ];
         }
 
@@ -246,8 +262,9 @@ class LotteryTicketController
                     LotteryTicketActivity::STATUS_ENDED,
                 ]),
 
-                // ✅ 直播相关
-                'live_url' => $activity->live_url ?? null,
+                // ✅ 直播相关（只在直播中时返回播放地址）
+                'stream_name' => $activity->live_url ?? null,  // ⭐ 流名称（备用）
+                'play_urls' => $this->generatePlayUrls($activity->live_url, $activity->live_status ?? 0),  // ⭐ 完整播放地址（仅直播中时生成）
                 'live_status' => $activity->live_status ?? 0,
                 'live_status_text' => $this->getLiveStatusText($activity->live_status ?? 0),
 
@@ -305,6 +322,15 @@ class LotteryTicketController
                 }
                 break;
 
+            case LotteryTicketActivity::STATUS_PENDING_DRAW:
+                // ⭐ 待开奖，显示等待开奖提示
+                return [
+                    'type' => 'pending_draw',
+                    'label' => '等待開獎',
+                    'seconds' => 0,
+                    'formatted' => '等待開獎中'
+                ];
+
             case LotteryTicketActivity::STATUS_DRAWING:
                 // 开奖中，无倒计时
                 return [
@@ -357,11 +383,71 @@ class LotteryTicketController
         return match($status) {
             LotteryTicketActivity::STATUS_NOT_STARTED => '即將開始',
             LotteryTicketActivity::STATUS_ONGOING => '進行中',
+            LotteryTicketActivity::STATUS_PENDING_DRAW => '待開獎',  // ⭐ 新增
             LotteryTicketActivity::STATUS_DRAWING => '開獎中',
             LotteryTicketActivity::STATUS_ENDED => '已結束',
             LotteryTicketActivity::STATUS_CLOSED => '已關閉',
             default => '未知狀態',
         };
+    }
+
+    /**
+     * 生成完整的直播播放地址（只在直播中时生成）
+     * @param string|null $streamName 流名称
+     * @param int $liveStatus 直播状态
+     * @return array|null
+     */
+    private function generatePlayUrls(?string $streamName, int $liveStatus): ?array
+    {
+        // ✅ 只在直播中（live_status = 1）时才返回播放地址
+        if ($liveStatus !== LotteryTicketActivity::LIVE_STATUS_ONGOING) {
+            return [
+                'webrtc' => '', // 推荐：超低延迟 <1秒
+                'flv' => '',       // 备选：HTTP-FLV
+                'hls' => '',       // 备选：HLS（兼容性好）
+                'expire_time' => '',
+                'expire_timestamp' => '',
+                'region' => '', // CN（大陆）或 Global（全球）
+                'license' => '',
+                'license_key' => '',
+            ];
+        }
+
+        if (empty($streamName)) {
+            return [
+                'webrtc' => '', // 推荐：超低延迟 <1秒
+                'flv' => '',       // 备选：HTTP-FLV
+                'hls' => '',       // 备选：HLS（兼容性好）
+                'expire_time' => '',
+                'expire_timestamp' => '',
+                'region' => '', // CN（大陆）或 Global（全球）
+                'license' => '',
+                'license_key' => '',
+            ];
+        }
+
+        try {
+            // 使用固定配置ID=1，生成30天有效期的播放地址
+            $urls = generateLotteryLiveUrls(1, $streamName, 30);
+
+            return [
+                'webrtc' => $urls['webrtc'], // 推荐：超低延迟 <1秒
+                'flv' => $urls['flv'],       // 备选：HTTP-FLV
+                'hls' => $urls['hls'],       // 备选：HLS（兼容性好）
+                'expire_time' => $urls['expire_time'],
+                'expire_timestamp' => $urls['expire_timestamp'],
+                'region' => $urls['region'], // CN（大陆）或 Global（全球）
+                'license' => $urls['license'] ?? '', // 播放器 License URL
+                'license_key' => $urls['license_key'] ?? '', // 播放器 License Key
+            ];
+        } catch (\Exception $e) {
+            // 生成播放地址失败时记录日志
+            \support\Log::warning('生成摸奖券直播播放地址失败', [
+                'stream_name' => $streamName,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 
     /**
@@ -587,7 +673,7 @@ class LotteryTicketController
             ->first();
 
         if (!$activity) {
-            return jsonFailResponse('活动不存在或无权访问');
+            return jsonFailResponse(trans('lottery_activity_not_found', [], 'message'));
         }
 
         // ✅ 处理vip_level_id可能为null的情况
@@ -600,24 +686,57 @@ class LotteryTicketController
         } else {
             $query->whereNull('vip_level_id');
         }
-
+        /** @var LotteryTicketBetProgress $betProgress */
         $betProgress = $query->first();
 
+        // ✅ 如果没有打码进度记录，返回初始状态（从活动配置获取打码要求）
         if (!$betProgress) {
-            return jsonFailResponse('未找到打码进度记录');
+            // 获取该玩家 VIP 等级对应的打码配置
+            $vipConfig = LotteryTicketVipConfig::query()
+                ->where('activity_id', $data['activity_id'])
+                ->where('vip_level_id', $player->vip_level_id ?: 0)
+                ->first();
+
+            // 如果没有配置，使用活动默认配置
+            $betAmountRequired = $vipConfig ? $vipConfig->bet_amount_required : $activity->bet_amount_required;
+            $ticketCountPerCycle = $vipConfig ? $vipConfig->tickets_per_round : $activity->tickets_per_round;
+
+            return jsonSuccessResponse('success', [
+                'activity_id' => $data['activity_id'],
+                'player_id' => $player->id,
+                'vip_level_id' => $player->vip_level_id,
+                'bet_amount_required' => $betAmountRequired ?? 0,
+                'current_bet_amount' => 0,
+                'progress_percent' => 0,
+                'remaining_bet_amount' => $betAmountRequired ?? 0,
+                'cycles_completed' => 0,
+                'total_tickets_issued' => 0,
+                'ticket_count_per_cycle' => $ticketCountPerCycle ?? 0,
+                'total_bet_amount' => 0, // ✅ 累计总打码量
+                'status' => 0, // 0 = 未开始
+                'updated_at' => null,
+            ]);
         }
+
+        // ✅ 计算当前周期内的打码进度（对基础打码量取模）
+        $currentCycleBetAmount = fmod((float) $betProgress->current_bet_amount, (float) $betProgress->bet_amount_required);
+        $currentCyclePercent = $betProgress->bet_amount_required > 0
+            ? ($currentCycleBetAmount / $betProgress->bet_amount_required) * 100
+            : 0;
+        $currentCycleRemaining = max(0, $betProgress->bet_amount_required - $currentCycleBetAmount);
 
         return jsonSuccessResponse('success', [
             'activity_id' => $betProgress->activity_id,
             'player_id' => $betProgress->player_id,
             'vip_level_id' => $betProgress->vip_level_id,
             'bet_amount_required' => $betProgress->bet_amount_required,
-            'current_bet_amount' => $betProgress->current_bet_amount,
-            'progress_percent' => $betProgress->progress_percent,
-            'remaining_bet_amount' => $betProgress->remaining_bet_amount,
+            'current_bet_amount' => $currentCycleBetAmount,       // ✅ 当前周期打码量（取模后）
+            'progress_percent' => $currentCyclePercent,            // ✅ 当前周期进度百分比
+            'remaining_bet_amount' => $currentCycleRemaining,      // ✅ 当前周期剩余打码量
             'cycles_completed' => $betProgress->cycles_completed,
             'total_tickets_issued' => $betProgress->total_tickets_issued,
             'ticket_count_per_cycle' => $betProgress->ticket_count_per_cycle,
+            'total_bet_amount' => $betProgress->current_bet_amount, // ✅ 累计总打码量
             'status' => $betProgress->status,
             'updated_at' => $betProgress->updated_at,
         ]);
