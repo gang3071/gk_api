@@ -65,12 +65,33 @@ class LotteryTicketController
 
             // ✅ 默认模式：优先展示刚结束的活动（30分钟内）
             if (!$skipEnded) {
-                $activity = LotteryTicketActivity::query()
+                // 查找状态为已结束的活动
+                $endedActivities = LotteryTicketActivity::query()
                     ->where('department_id', $departmentId)
                     ->where('status', LotteryTicketActivity::STATUS_ENDED)
-                    ->where('end_time', '>=', date('Y-m-d H:i:s', strtotime('-30 minutes'))) // 结束时间在30分钟内
                     ->orderBy('id', 'desc')
-                    ->first();
+                    ->get();
+
+                // 从 status_history 中找出变为 ENDED 状态在30分钟内的活动
+                $thirtyMinutesAgo = strtotime('-30 minutes');
+                foreach ($endedActivities as $endedActivity) {
+                    $statusHistory = $endedActivity->status_history ?? [];
+
+                    // 找到最后一次变为 STATUS_ENDED 的记录
+                    $endedTime = null;
+                    foreach (array_reverse($statusHistory) as $history) {
+                        if (isset($history['to_status']) && $history['to_status'] == LotteryTicketActivity::STATUS_ENDED) {
+                            $endedTime = strtotime($history['changed_at']);
+                            break;
+                        }
+                    }
+
+                    // 如果在30分钟内结束，使用这个活动
+                    if ($endedTime && $endedTime >= $thirtyMinutesAgo) {
+                        $activity = $endedActivity;
+                        break;
+                    }
+                }
             }
 
             // 如果没有已结束的活动（或跳过模式），按优先级查找下期活动
