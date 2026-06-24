@@ -26,20 +26,24 @@ class AddIndexForLotteryBetScan extends AbstractMigration
     {
         // 1. play_game_record 表 - 电子游戏打码量统计专用索引
         // 覆盖查询条件：department_id, created_at, settlement_status
-        if (!$this->indexExists('play_game_record', 'idx_dept_time_status_for_lottery')) {
-            $this->table('play_game_record')
-                ->addIndex(
-                    ['department_id', 'created_at', 'settlement_status'],
-                    [
-                        'name' => 'idx_dept_time_status_for_lottery',
-                        'unique' => false,
-                    ]
-                )
-                ->save();
+        if ($this->hasTable('play_game_record')) {
+            if (!$this->indexExists('play_game_record', 'idx_dept_time_status_for_lottery')) {
+                $this->table('play_game_record')
+                    ->addIndex(
+                        ['department_id', 'created_at', 'settlement_status'],
+                        [
+                            'name' => 'idx_dept_time_status_for_lottery',
+                            'unique' => false,
+                        ]
+                    )
+                    ->save();
 
-            echo "✅ 已为 play_game_record 添加索引: idx_dept_time_status_for_lottery\n";
+                echo "✅ 已为 play_game_record 添加索引: idx_dept_time_status_for_lottery\n";
+            } else {
+                echo "ℹ️ play_game_record 索引已存在，跳过\n";
+            }
         } else {
-            echo "ℹ️ play_game_record 索引已存在，跳过\n";
+            echo "⚠️ 表 play_game_record 不存在，跳过索引创建\n";
         }
 
         // 2. player_game_log 表 - 机台游戏打码量统计专用索引
@@ -74,6 +78,11 @@ class AddIndexForLotteryBetScan extends AbstractMigration
      */
     private function indexExists($tableName, $indexName)
     {
+        // 先检查表是否存在
+        if (!$this->hasTable($tableName)) {
+            return false;
+        }
+
         $rows = $this->fetchAll("SHOW INDEX FROM yjb_{$tableName} WHERE Key_name = '{$indexName}'");
         return !empty($rows);
     }
