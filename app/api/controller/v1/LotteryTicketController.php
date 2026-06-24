@@ -615,12 +615,15 @@ class LotteryTicketController
                 'activity_id' => $record->activity_id,
                 'activity_name' => $record->activity_name,
                 'ticket_no' => $record->ticket_no,
+                'prize_type' => $record->prize_type,
+                'prize_name' => $record->prize_name,
                 'prize_level' => $record->prize_level,
                 'prize_level_name' => $record->prize_level_name,
-                'prize_amount' => $record->prize_amount,
+                'prize_amount' => (float)$record->prize_amount,
                 'status' => $record->status,
                 'status_text' => $this->getRecordStatusText($record->status),
                 'granted_at' => $record->granted_at,
+                'distributed_at' => $record->distributed_at,
                 'created_at' => $record->created_at,
             ];
         }
@@ -640,8 +643,11 @@ class LotteryTicketController
     {
         return match ($status) {
             LotteryTicketRecord::STATUS_PENDING => '待发放',
-            LotteryTicketRecord::STATUS_GRANTED => '已发放',
+            LotteryTicketRecord::STATUS_CLAIMED => '已发放',
             LotteryTicketRecord::STATUS_EXPIRED => '已过期',
+            LotteryTicketRecord::STATUS_CANCELLED => '已取消',
+            LotteryTicketRecord::STATUS_PROCESSING => '发放中',
+            LotteryTicketRecord::STATUS_FAILED => '发放失败',
             default => '未知',
         };
     }
