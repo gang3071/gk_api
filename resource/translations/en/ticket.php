@@ -27,6 +27,11 @@ return [
     'generate_code_success' => 'Open score code generated successfully',
     'generate_code_failed' => 'Failed to generate code',
 
+    // Delivery record target/source translations
+    'target_ticket' => 'Ticket Record',
+    'source_ticket_redeem' => 'Ticket Redeem',
+    'source_ticket_open_score' => 'Scan Open Score',
+
     // Errors
     'score_must_positive' => 'Ticket amount must be greater than 0',
     'balance_insufficient' => 'Insufficient balance',

@@ -8,7 +8,7 @@ use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\TicketRecord;
 use app\service\WalletService;
-use Illuminate\Database\Capsule\Manager as DB;
+use support\Db;
 use support\Request;
 use support\Response;
 use support\exception\BusinessException;
@@ -28,7 +28,10 @@ class TicketController
      */
     public function redeemTicket(Request $request): Response
     {
-        $player = $this->getAuthPlayer($request);
+        $player = checkPlayer();
+        if (!$player) {
+            return jsonFailResponse('未登录');
+        }
 
         $score = (float) $request->post('score', 0);
         $machineNo = $request->post('machine_no', '');
@@ -39,14 +42,15 @@ class TicketController
             return jsonFailResponse('出票金额必须大于0');
         }
 
-        // 验证玩家余额
-        $balance = WalletService::getBalance($player->id);
-        if ($balance < $score) {
-            return jsonFailResponse('余额不足');
-        }
-
         try {
-            DB::beginTransaction();
+            Db::beginTransaction();
+
+            // 验证玩家余额（在事务内检查，避免竞态条件）
+            $balance = WalletService::getBalance($player->id);
+            if ($balance < $score) {
+                Db::rollBack();
+                return jsonFailResponse('余额不足');
+            }
 
             // 生成订单号
             $orderId = TicketRecord::generateOrderId();
@@ -60,6 +64,10 @@ class TicketController
                 'timestamp' => time(),
             ]);
             $encryptedContent = $this->encrypt($encryptData);
+            if ($encryptedContent === false) {
+                Db::rollBack();
+                return jsonFailResponse('加密失败');
+            }
 
             // 创建出票记录
             $ticket = TicketRecord::create([
@@ -70,7 +78,7 @@ class TicketController
                 'machine_no' => $machineNo,
                 'machine_id' => 0,
                 'player_id' => $player->id,
-                'player_name' => $player->name,
+                'player_name' => $player->name ?? '',
                 'score' => $score,
                 'qr_code' => $encryptedContent,
                 'qr_code_no' => $qrCodeNo,
@@ -81,9 +89,16 @@ class TicketController
                 'print_count' => 0,
             ]);
 
-            // 扣分
+            // 扣分（使用原子操作，检查返回值）
             $previousBalance = WalletService::getBalance($player->id);
-            WalletService::atomicDecrement($player->id, $score * 100);
+            $decrementResult = WalletService::atomicDecrement($player->id, $score);
+
+            // 检查扣分是否成功
+            if (!isset($decrementResult['ok']) || $decrementResult['ok'] != 1) {
+                Db::rollBack();
+                return jsonFailResponse('余额不足，扣分失败');
+            }
+
             $currentBalance = WalletService::getBalance($player->id);
 
             // 记录金流明细
@@ -104,19 +119,19 @@ class TicketController
             // 更新玩家累计统计
             $this->updatePlayerExtend($player->id, 'withdraw', $score);
 
-            DB::commit();
+            Db::commit();
 
-            return jsonSuccessResponse([
+            return jsonSuccessResponse('出票成功', [
                 'order_id' => $orderId,
                 'encrypted_content' => $encryptedContent,
                 'qr_code_no' => $qrCodeNo,
                 'score' => $score,
                 'balance' => $currentBalance,
                 'status' => TicketRecord::STATUS_PENDING,
-            ], '出票成功');
+            ]);
 
         } catch (\Exception $e) {
-            DB::rollBack();
+            Db::rollBack();
             return jsonFailResponse('出票失败: ' . $e->getMessage());
         }
     }
@@ -129,7 +144,10 @@ class TicketController
      */
     public function scanOpenScore(Request $request): Response
     {
-        $player = $this->getAuthPlayer($request);
+        $player = checkPlayer();
+        if (!$player) {
+            return jsonFailResponse('未登录');
+        }
 
         $encryptedContent = $request->post('encrypted_content', '');
         if (empty($encryptedContent)) {
@@ -139,46 +157,56 @@ class TicketController
         try {
             // 解密内容
             $decrypted = $this->decrypt($encryptedContent);
-            $data = json_decode($decrypted, true);
+            if ($decrypted === false || empty($decrypted)) {
+                return jsonFailResponse('解密失败，无效的开分码');
+            }
 
-            if (!$data || !isset($data['ticket_id']) || !isset($data['player_id']) || !isset($data['score'])) {
+            $data = json_decode($decrypted, true);
+            if (!$data || !isset($data['order_id']) || !isset($data['player_id']) || !isset($data['score'])) {
                 return jsonFailResponse('无效的开分码');
             }
 
             // 验证 player_id 匹配
-            if ($data['player_id'] != $player->id) {
+            if ((int)$data['player_id'] !== (int)$player->id) {
                 return jsonFailResponse('此开分码不属于当前玩家');
             }
 
-            // 查找出票记录
-            $ticket = TicketRecord::find($data['ticket_id']);
+            // 通过 order_id 查找出票记录
+            $ticket = TicketRecord::where('order_id', $data['order_id'])->first();
             if (!$ticket) {
                 return jsonFailResponse('开分记录不存在');
             }
 
             // 验证状态
-            if ($ticket->status != TicketRecord::STATUS_NORMAL) {
+            if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
                 return jsonFailResponse('此开分码已使用或已失效');
             }
 
             // 验证金额
-            if ($ticket->score != $data['score']) {
+            if (abs((float)$ticket->score - (float)$data['score']) > 0.01) {
                 return jsonFailResponse('开分金额不匹配');
             }
 
-            DB::beginTransaction();
+            Db::beginTransaction();
 
             // 上分
             $score = (float) $ticket->score;
             $previousBalance = WalletService::getBalance($player->id);
-            WalletService::atomicIncrement($player->id, $score * 100);
+            $incrementResult = WalletService::atomicIncrement($player->id, $score);
+
+            // 检查上分是否成功
+            if (!isset($incrementResult['ok']) || $incrementResult['ok'] != 1) {
+                Db::rollBack();
+                return jsonFailResponse('上分失败');
+            }
+
             $currentBalance = WalletService::getBalance($player->id);
 
             // 更新出票记录状态
             $ticket->update([
                 'status' => TicketRecord::STATUS_USED,
                 'scan_status' => TicketRecord::SCAN_STATUS_SCANNED,
-                'scanned_at' => now(),
+                'scanned_at' => date('Y-m-d H:i:s'),
                 'scanned_by' => 'player_' . $player->id,
             ]);
 
@@ -200,21 +228,23 @@ class TicketController
             // 更新玩家累计统计
             $this->updatePlayerExtend($player->id, 'recharge', $score);
 
-            DB::commit();
+            Db::commit();
 
-            return jsonSuccessResponse([
-                'ticket_id' => $ticket->id,
+            return jsonSuccessResponse('上分成功', [
                 'order_id' => $ticket->order_id,
                 'score' => $score,
                 'balance' => $currentBalance,
-                'message' => '上分成功',
-            ], '上分成功');
+            ]);
 
         } catch (BusinessException $e) {
-            DB::rollBack();
+            if (Db::transactionLevel() > 0) {
+                Db::rollBack();
+            }
             return jsonFailResponse($e->getMessage());
         } catch (\Exception $e) {
-            DB::rollBack();
+            if (Db::transactionLevel() > 0) {
+                Db::rollBack();
+            }
             return jsonFailResponse('上分失败: ' . $e->getMessage());
         }
     }
@@ -227,11 +257,14 @@ class TicketController
      */
     public function ticketRecords(Request $request): Response
     {
-        $player = $this->getAuthPlayer($request);
+        $player = checkPlayer();
+        if (!$player) {
+            return jsonFailResponse('未登录');
+        }
 
         $status = $request->post('status');
-        $page = (int) $request->post('page', 1);
-        $pageSize = (int) $request->post('page_size', 20);
+        $page = max(1, (int) $request->post('page', 1));
+        $pageSize = max(1, min(100, (int) $request->post('page_size', 20)));
 
         $query = TicketRecord::where('player_id', $player->id)
             ->orderBy('created_at', 'desc');
@@ -248,19 +281,19 @@ class TicketController
             ->map(function ($record) {
                 return [
                     'id' => $record->id,
-                    'order_id' => $record->order_id,
-                    'score' => $record->score,
-                    'ticket_type' => $record->ticket_type,
-                    'ticket_type_name' => $record->ticket_type_name,
-                    'status' => $record->status,
-                    'status_name' => $record->status_name,
-                    'scan_status' => $record->scan_status,
-                    'scanned_at' => $record->scanned_at?->toDateTimeString(),
-                    'created_at' => $record->created_at->toDateTimeString(),
+                    'order_id' => $record->order_id ?? '',
+                    'score' => $record->score ?? 0,
+                    'ticket_type' => $record->ticket_type ?? 0,
+                    'ticket_type_name' => $record->ticket_type_name ?? '',
+                    'status' => $record->status ?? 0,
+                    'status_name' => $record->status_name ?? '',
+                    'scan_status' => $record->scan_status ?? 0,
+                    'scanned_at' => $record->scanned_at ? $record->scanned_at->toDateTimeString() : null,
+                    'created_at' => $record->created_at ? $record->created_at->toDateTimeString() : '',
                 ];
             });
 
-        return jsonSuccessResponse([
+        return jsonSuccessResponse('success', [
             'total' => $total,
             'page' => $page,
             'page_size' => $pageSize,
@@ -269,43 +302,32 @@ class TicketController
     }
 
     /**
-     * 获取当前登录玩家
-     *
-     * @param Request $request
-     * @return Player
-     */
-    protected function getAuthPlayer(Request $request): Player
-    {
-        $playerId = $request->get('player_id', 0);
-        if (!$playerId) {
-            throw new BusinessException('未登录');
-        }
-
-        $player = Player::find($playerId);
-        if (!$player) {
-            throw new BusinessException('玩家不存在');
-        }
-
-        return $player;
-    }
-
-    /**
      * AES-256-CBC 加密
      *
      * @param string $value
-     * @return string
+     * @return string|false
      */
-    protected function encrypt(string $value): string
+    protected function encrypt(string $value): string|false
     {
         $key = config('app.key', '');
         if (empty($key)) {
             throw new BusinessException('加密密钥未配置');
         }
 
+        // 处理 base64: 前缀的密钥
+        if (str_starts_with($key, 'base64:')) {
+            $key = base64_decode(substr($key, 7));
+        }
+
         $key = substr($key, 0, 32);
+        // 使用 md5(key) 前16字节作为 IV（与gk_admin一致）
         $iv = substr(md5($key), 0, 16);
 
         $encrypted = openssl_encrypt($value, 'AES-256-CBC', $key, 0, $iv);
+        if ($encrypted === false) {
+            return false;
+        }
+
         return base64_encode($iv . $encrypted);
     }
 
@@ -313,17 +335,26 @@ class TicketController
      * AES-256-CBC 解密
      *
      * @param string $value
-     * @return string
+     * @return string|false
      */
-    protected function decrypt(string $value): string
+    protected function decrypt(string $value): string|false
     {
         $key = config('app.key', '');
         if (empty($key)) {
             throw new BusinessException('加密密钥未配置');
         }
 
+        // 处理 base64: 前缀的密钥
+        if (str_starts_with($key, 'base64:')) {
+            $key = base64_decode(substr($key, 7));
+        }
+
         $key = substr($key, 0, 32);
-        $decoded = base64_decode($value);
+        $decoded = base64_decode($value, true);
+        if ($decoded === false || strlen($decoded) < 16) {
+            return false;
+        }
+
         $iv = substr($decoded, 0, 16);
         $encrypted = substr($decoded, 16);
 

@@ -27,6 +27,11 @@ return [
     'generate_code_success' => '开分码生成成功',
     'generate_code_failed' => '生成失败',
 
+    // 金流明细 target/source 翻译
+    'target_ticket' => '出票记录',
+    'source_ticket_redeem' => '出票核销',
+    'source_ticket_open_score' => '扫码开分',
+
     // 错误
     'score_must_positive' => '出票金额必须大于0',
     'balance_insufficient' => '余额不足',

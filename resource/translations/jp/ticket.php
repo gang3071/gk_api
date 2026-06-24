@@ -27,6 +27,11 @@ return [
     'generate_code_success' => '開分コード生成成功',
     'generate_code_failed' => '生成失敗',
 
+    // 金流明細 target/source 翻訳
+    'target_ticket' => '出票記録',
+    'source_ticket_redeem' => '出票キャンセル',
+    'source_ticket_open_score' => 'スキャン開分',
+
     // エラー
     'score_must_positive' => '出票金額は0より大きくなければなりません',
     'balance_insufficient' => '残高不足',
