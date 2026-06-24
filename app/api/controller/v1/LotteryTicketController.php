@@ -61,12 +61,27 @@ class LotteryTicketController
     private function getSmartActivity(int $departmentId, bool $skipEnded = false): Builder|Model|null
     {
         try {
-            // 优先级1: 开奖中的活动（最高优先级）
-            $activity = LotteryTicketActivity::query()
-                ->where('department_id', $departmentId)
-                ->where('status', LotteryTicketActivity::STATUS_DRAWING)
-                ->orderBy('id', 'desc')
-                ->first();
+            $activity = null;
+
+            // ✅ 默认模式：优先展示刚结束的活动（30分钟内）
+            if (!$skipEnded) {
+                $activity = LotteryTicketActivity::query()
+                    ->where('department_id', $departmentId)
+                    ->where('status', LotteryTicketActivity::STATUS_ENDED)
+                    ->where('end_time', '>=', date('Y-m-d H:i:s', strtotime('-30 minutes'))) // 结束时间在30分钟内
+                    ->orderBy('id', 'desc')
+                    ->first();
+            }
+
+            // 如果没有已结束的活动（或跳过模式），按优先级查找下期活动
+            if (!$activity) {
+                // 优先级1: 开奖中的活动
+                $activity = LotteryTicketActivity::query()
+                    ->where('department_id', $departmentId)
+                    ->where('status', LotteryTicketActivity::STATUS_DRAWING)
+                    ->orderBy('id', 'desc')
+                    ->first();
+            }
 
             if (!$activity) {
                 // 优先级2: 待开奖的活动（活动已结束，等待开奖）
@@ -92,17 +107,6 @@ class LotteryTicketController
                     ->where('department_id', $departmentId)
                     ->where('status', LotteryTicketActivity::STATUS_NOT_STARTED)
                     ->where('start_time', '<=', date('Y-m-d H:i:s', strtotime('+7 days')))
-                    ->orderBy('id', 'desc')
-                    ->first();
-            }
-
-            // ✅ 优先级5: 已结束的活动（可选展示）
-            if (!$activity && !$skipEnded) {
-                // 默认模式: 刚结束的活动（结束后30分钟内仍然展示）
-                $activity = LotteryTicketActivity::query()
-                    ->where('department_id', $departmentId)
-                    ->where('status', LotteryTicketActivity::STATUS_ENDED)
-                    ->where('end_time', '>=', date('Y-m-d H:i:s', strtotime('-30 minutes'))) // 结束时间在30分钟内
                     ->orderBy('id', 'desc')
                     ->first();
             }
