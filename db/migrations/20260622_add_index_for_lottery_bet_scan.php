@@ -84,10 +84,26 @@ class AddIndexForLotteryBetScan extends AbstractMigration
             return false;
         }
 
-        $indexes = $this->table($tableName)->getIndexes();
+        // 使用 SQL 查询检查索引
+        $prefix = 'yjb_';
+        $fullTableName = $prefix . $tableName;
 
-        foreach ($indexes as $index) {
-            if ($index['columns'] === $columns) {
+        $columnList = implode(',', $columns);
+        $rows = $this->fetchAll("SHOW INDEX FROM `{$fullTableName}`");
+
+        // 按索引名分组
+        $indexGroups = [];
+        foreach ($rows as $row) {
+            $indexName = $row['Key_name'];
+            if (!isset($indexGroups[$indexName])) {
+                $indexGroups[$indexName] = [];
+            }
+            $indexGroups[$indexName][] = $row['Column_name'];
+        }
+
+        // 检查是否存在匹配的索引
+        foreach ($indexGroups as $indexColumns) {
+            if ($indexColumns === $columns) {
                 return true;
             }
         }
