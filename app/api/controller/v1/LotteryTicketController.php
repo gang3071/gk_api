@@ -33,8 +33,11 @@ class LotteryTicketController
     {
         $player = checkPlayer();
 
+        // ✅ 获取参数：是否跳过已结束活动（获取最新活动）
+        $skipEnded = (bool) $request->input('skip_ended', false);
+
         // 智能获取活动（按优先级）
-        $activity = $this->getSmartActivity($player->department_id);
+        $activity = $this->getSmartActivity($player->department_id, $skipEnded);
 
         if (!$activity) {
             return jsonSuccessResponse('success', [
@@ -52,9 +55,10 @@ class LotteryTicketController
      * ✅ 去除缓存，保证玩家获取最新活动状态
      * ✅ 增加异常处理，防止数据库异常导致雪崩
      * @param int $departmentId
+     * @param bool $skipEnded 是否跳过已结束活动（获取最新活动）
      * @return Builder|Model|null
      */
-    private function getSmartActivity(int $departmentId): Builder|Model|null
+    private function getSmartActivity(int $departmentId, bool $skipEnded = false): Builder|Model|null
     {
         try {
             // 优先级1: 开奖中的活动（最高优先级）
@@ -92,8 +96,9 @@ class LotteryTicketController
                     ->first();
             }
 
-            if (!$activity) {
-                // 优先级5: 刚结束的活动（结束后30分钟内仍然展示）
+            // ✅ 优先级5: 已结束的活动（可选展示）
+            if (!$activity && !$skipEnded) {
+                // 默认模式: 刚结束的活动（结束后30分钟内仍然展示）
                 $activity = LotteryTicketActivity::query()
                     ->where('department_id', $departmentId)
                     ->where('status', LotteryTicketActivity::STATUS_ENDED)
