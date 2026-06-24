@@ -12,48 +12,29 @@ class FixLotteryTicketRecordUniqueIndex extends AbstractMigration
      */
     public function change()
     {
-        $table = $this->table('yjb_lottery_ticket_record');
+        echo "================================================================================\n";
+        echo "修复 lottery_ticket_record 表的唯一索引\n";
+        echo "================================================================================\n";
 
-        // 检查是否有旧的单字段唯一索引
-        if ($this->hasIndex('yjb_lottery_ticket_record', 'idx_ticket_no_unique')) {
-            $table->removeIndex(['ticket_no'], ['unique' => true, 'name' => 'idx_ticket_no_unique']);
+        $table = $this->table('lottery_ticket_record');
+
+        // 检查并删除旧的单字段唯一索引（如果存在）
+        if ($table->hasIndex('ticket_no')) {
+            echo "✓ 删除旧索引: idx_ticket_no_unique (ticket_no)\n";
+            $table->removeIndexByName('idx_ticket_no_unique');
         }
 
-        // 添加联合唯一索引（如果不存在）
-        if (!$this->hasIndex('yjb_lottery_ticket_record', 'idx_activity_ticket_no_unique')) {
-            $table->addIndex(['activity_id', 'ticket_no'], [
-                'unique' => true,
-                'name' => 'idx_activity_ticket_no_unique'
-            ]);
-        }
+        // 添加联合唯一索引
+        echo "✓ 添加新索引: idx_activity_ticket_no_unique (activity_id, ticket_no)\n";
+        $table->addIndex(['activity_id', 'ticket_no'], [
+            'unique' => true,
+            'name' => 'idx_activity_ticket_no_unique'
+        ]);
 
         $table->update();
-    }
 
-    /**
-     * 回滚操作
-     */
-    public function down()
-    {
-        $table = $this->table('yjb_lottery_ticket_record');
-
-        // 删除联合索引
-        if ($this->hasIndex('yjb_lottery_ticket_record', 'idx_activity_ticket_no_unique')) {
-            $table->removeIndex(['activity_id', 'ticket_no'], [
-                'unique' => true,
-                'name' => 'idx_activity_ticket_no_unique'
-            ]);
-        }
-
-        $table->update();
-    }
-
-    /**
-     * 检查索引是否存在
-     */
-    private function hasIndex($tableName, $indexName)
-    {
-        $rows = $this->fetchAll("SHOW INDEX FROM {$tableName} WHERE Key_name = '{$indexName}'");
-        return !empty($rows);
+        echo "================================================================================\n";
+        echo "迁移完成！现在每个活动的券号独立，互不冲突。\n";
+        echo "================================================================================\n";
     }
 }

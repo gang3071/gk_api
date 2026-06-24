@@ -12,52 +12,29 @@ class FixLotteryTicketUniqueIndex extends AbstractMigration
      */
     public function change()
     {
-        $table = $this->table('yjb_lottery_ticket');
+        echo "================================================================================\n";
+        echo "修复 lottery_ticket 表的唯一索引\n";
+        echo "================================================================================\n";
 
-        // 1. 删除旧的单字段唯一索引
-        if ($this->hasIndex('yjb_lottery_ticket', 'idx_ticket_no_unique')) {
-            $table->removeIndex(['ticket_no'], ['unique' => true, 'name' => 'idx_ticket_no_unique']);
+        $table = $this->table('lottery_ticket');
+
+        // 检查并删除旧的单字段唯一索引
+        if ($table->hasIndex('ticket_no')) {
+            echo "✓ 删除旧索引: idx_ticket_no_unique (ticket_no)\n";
+            $table->removeIndexByName('idx_ticket_no_unique');
         }
 
-        // 2. 添加新的联合唯一索引
+        // 添加新的联合唯一索引
+        echo "✓ 添加新索引: idx_activity_ticket_no_unique (activity_id, ticket_no)\n";
         $table->addIndex(['activity_id', 'ticket_no'], [
             'unique' => true,
             'name' => 'idx_activity_ticket_no_unique'
         ]);
 
         $table->update();
-    }
 
-    /**
-     * 回滚操作
-     */
-    public function down()
-    {
-        $table = $this->table('yjb_lottery_ticket');
-
-        // 删除联合索引
-        if ($this->hasIndex('yjb_lottery_ticket', 'idx_activity_ticket_no_unique')) {
-            $table->removeIndex(['activity_id', 'ticket_no'], [
-                'unique' => true,
-                'name' => 'idx_activity_ticket_no_unique'
-            ]);
-        }
-
-        // 恢复单字段索引（仅在回滚时）
-        $table->addIndex(['ticket_no'], [
-            'unique' => true,
-            'name' => 'idx_ticket_no_unique'
-        ]);
-
-        $table->update();
-    }
-
-    /**
-     * 检查索引是否存在
-     */
-    private function hasIndex($tableName, $indexName)
-    {
-        $rows = $this->fetchAll("SHOW INDEX FROM {$tableName} WHERE Key_name = '{$indexName}'");
-        return !empty($rows);
+        echo "================================================================================\n";
+        echo "迁移完成！现在每个活动的券号独立，互不冲突。\n";
+        echo "================================================================================\n";
     }
 }
