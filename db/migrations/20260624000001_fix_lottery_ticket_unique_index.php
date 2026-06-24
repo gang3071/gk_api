@@ -16,22 +16,28 @@ class FixLotteryTicketUniqueIndex extends AbstractMigration
         echo "修复 lottery_ticket 表的唯一索引\n";
         echo "================================================================================\n";
 
-        $table = $this->table('lottery_ticket');
-
-        // 删除旧的单字段唯一索引（如果存在）
-        if ($this->indexExists('lottery_ticket', 'idx_ticket_no_unique')) {
+        // 直接使用 SQL 删除旧索引（因为 hasIndex 可能检测不准确）
+        try {
+            $this->execute("ALTER TABLE yjb_lottery_ticket DROP INDEX idx_ticket_no_unique");
             echo "✓ 删除旧索引: idx_ticket_no_unique (ticket_no)\n";
-            $table->removeIndexByName('idx_ticket_no_unique');
+        } catch (\Exception $e) {
+            echo "ℹ️ 旧索引不存在或已删除: " . $e->getMessage() . "\n";
         }
 
         // 添加新的联合唯一索引
-        echo "✓ 添加新索引: idx_activity_ticket_no_unique (activity_id, ticket_no)\n";
-        $table->addIndex(['activity_id', 'ticket_no'], [
-            'unique' => true,
-            'name' => 'idx_activity_ticket_no_unique'
-        ]);
+        $table = $this->table('lottery_ticket');
 
-        $table->save();
+        // 检查新索引是否已存在
+        if (!$this->indexExists('lottery_ticket', 'idx_activity_ticket_no_unique')) {
+            echo "✓ 添加新索引: idx_activity_ticket_no_unique (activity_id, ticket_no)\n";
+            $table->addIndex(['activity_id', 'ticket_no'], [
+                'unique' => true,
+                'name' => 'idx_activity_ticket_no_unique'
+            ]);
+            $table->save();
+        } else {
+            echo "ℹ️ 新索引已存在，跳过\n";
+        }
 
         echo "================================================================================\n";
         echo "迁移完成！现在每个活动的券号独立，互不冲突。\n";
