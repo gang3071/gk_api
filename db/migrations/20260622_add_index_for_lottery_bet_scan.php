@@ -83,8 +83,8 @@ class AddIndexForLotteryBetScan extends AbstractMigration
             return false;
         }
 
-        $rows = $this->fetchAll("SHOW INDEX FROM yjb_{$tableName} WHERE Key_name = '{$indexName}'");
-        return !empty($rows);
+        $table = $this->table($tableName);
+        return $table->hasIndex($indexName);
     }
 
     /**

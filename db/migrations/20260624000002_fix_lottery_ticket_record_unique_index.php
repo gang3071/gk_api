@@ -61,7 +61,11 @@ class FixLotteryTicketRecordUniqueIndex extends AbstractMigration
      */
     private function indexExists($tableName, $indexName)
     {
-        $rows = $this->fetchAll("SHOW INDEX FROM yjb_{$tableName} WHERE Key_name = '{$indexName}'");
-        return !empty($rows);
+        if (!$this->hasTable($tableName)) {
+            return false;
+        }
+
+        $table = $this->table($tableName);
+        return $table->hasIndex($indexName);
     }
 }
