@@ -26,17 +26,16 @@ class AddIndexForLotteryBetScan extends AbstractMigration
     {
         // 1. play_game_record 表 - 电子游戏打码量统计专用索引
         // 覆盖查询条件：department_id, created_at, settlement_status
-        $table = $this->table('play_game_record');
-
-        if (!$this->hasIndex('play_game_record', ['department_id', 'created_at', 'settlement_status'])) {
-            $table->addIndex(
-                ['department_id', 'created_at', 'settlement_status'],
-                [
-                    'name' => 'idx_dept_time_status_for_lottery',
-                    'unique' => false,
-                ]
-            );
-            $table->save();
+        if (!$this->indexExists('play_game_record', 'idx_dept_time_status_for_lottery')) {
+            $this->table('play_game_record')
+                ->addIndex(
+                    ['department_id', 'created_at', 'settlement_status'],
+                    [
+                        'name' => 'idx_dept_time_status_for_lottery',
+                        'unique' => false,
+                    ]
+                )
+                ->save();
 
             echo "✅ 已为 play_game_record 添加索引: idx_dept_time_status_for_lottery\n";
         } else {
@@ -46,17 +45,16 @@ class AddIndexForLotteryBetScan extends AbstractMigration
         // 2. player_game_log 表 - 机台游戏打码量统计专用索引
         // 覆盖查询条件：department_id, created_at
         if ($this->hasTable('player_game_log')) {
-            $logTable = $this->table('player_game_log');
-
-            if (!$this->hasIndex('player_game_log', ['department_id', 'created_at'])) {
-                $logTable->addIndex(
-                    ['department_id', 'created_at'],
-                    [
-                        'name' => 'idx_dept_time_for_lottery',
-                        'unique' => false,
-                    ]
-                );
-                $logTable->save();
+            if (!$this->indexExists('player_game_log', 'idx_dept_time_for_lottery')) {
+                $this->table('player_game_log')
+                    ->addIndex(
+                        ['department_id', 'created_at'],
+                        [
+                            'name' => 'idx_dept_time_for_lottery',
+                            'unique' => false,
+                        ]
+                    )
+                    ->save();
 
                 echo "✅ 已为 player_game_log 添加索引: idx_dept_time_for_lottery\n";
             } else {
@@ -66,49 +64,18 @@ class AddIndexForLotteryBetScan extends AbstractMigration
 
         echo "\n索引创建完成！\n";
         echo "建议：\n";
-        echo "1. 检查索引是否生效：SHOW INDEX FROM play_game_record;\n";
+        echo "1. 检查索引是否生效：SHOW INDEX FROM yjb_play_game_record;\n";
         echo "2. 测试查询性能：在 gk_admin 项目运行 php test_scan_task_performance.php\n";
         echo "3. 重启 gk_admin 服务：php windows.php restart\n";
     }
 
     /**
      * 检查索引是否存在
-     *
-     * @param string $tableName
-     * @param array $columns
-     * @return bool
      */
-    protected function hasIndex($tableName, $columns)
+    private function indexExists($tableName, $indexName)
     {
-        if (!$this->hasTable($tableName)) {
-            return false;
-        }
-
-        // 使用 SQL 查询检查索引
-        $prefix = 'yjb_';
-        $fullTableName = $prefix . $tableName;
-
-        $columnList = implode(',', $columns);
-        $rows = $this->fetchAll("SHOW INDEX FROM `{$fullTableName}`");
-
-        // 按索引名分组
-        $indexGroups = [];
-        foreach ($rows as $row) {
-            $indexName = $row['Key_name'];
-            if (!isset($indexGroups[$indexName])) {
-                $indexGroups[$indexName] = [];
-            }
-            $indexGroups[$indexName][] = $row['Column_name'];
-        }
-
-        // 检查是否存在匹配的索引
-        foreach ($indexGroups as $indexColumns) {
-            if ($indexColumns === $columns) {
-                return true;
-            }
-        }
-
-        return false;
+        $rows = $this->fetchAll("SHOW INDEX FROM yjb_{$tableName} WHERE Key_name = '{$indexName}'");
+        return !empty($rows);
     }
 
     /**
@@ -117,7 +84,7 @@ class AddIndexForLotteryBetScan extends AbstractMigration
     public function down()
     {
         // 删除 play_game_record 索引
-        if ($this->hasIndex('play_game_record', ['department_id', 'created_at', 'settlement_status'])) {
+        if ($this->indexExists('play_game_record', 'idx_dept_time_status_for_lottery')) {
             $this->table('play_game_record')
                 ->removeIndexByName('idx_dept_time_status_for_lottery')
                 ->save();
@@ -127,7 +94,7 @@ class AddIndexForLotteryBetScan extends AbstractMigration
 
         // 删除 player_game_log 索引
         if ($this->hasTable('player_game_log') &&
-            $this->hasIndex('player_game_log', ['department_id', 'created_at'])) {
+            $this->indexExists('player_game_log', 'idx_dept_time_for_lottery')) {
             $this->table('player_game_log')
                 ->removeIndexByName('idx_dept_time_for_lottery')
                 ->save();
