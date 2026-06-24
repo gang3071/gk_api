@@ -9,6 +9,8 @@ use app\model\LotteryTicketBetProgress;
 use app\model\LotteryTicketPrizeLevel;
 use app\model\LotteryTicketRecord;
 use app\model\LotteryTicketVipConfig;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Respect\Validation\Exceptions\AllOfException;
 use Respect\Validation\Validator as v;
 use support\Request;
@@ -46,69 +48,60 @@ class LotteryTicketController
     }
 
     /**
-     * 智能获取活动（按优先级）- 使用缓存优化
+     * 智能获取活动（按优先级）
+     * ✅ 去除缓存，保证玩家获取最新活动状态
      * ✅ 增加异常处理，防止数据库异常导致雪崩
      * @param int $departmentId
-     * @return LotteryTicketActivity|null
+     * @return Builder|Model|null
      */
-    private function getSmartActivity(int $departmentId): ?LotteryTicketActivity
+    private function getSmartActivity(int $departmentId): Builder|Model|null
     {
-        // ✅ 使用10秒缓存（缩短缓存时间，解决活动状态变化延迟问题）
-        $cacheKey = "lottery_activity:smart:{$departmentId}";
-
         try {
-            $activity = \support\Cache::get($cacheKey);
+            // 优先级1: 开奖中的活动（最高优先级）
+            $activity = LotteryTicketActivity::query()
+                ->where('department_id', $departmentId)
+                ->where('status', LotteryTicketActivity::STATUS_DRAWING)
+                ->orderBy('id', 'desc')
+                ->first();
 
-            if ($activity === null) {
-                // 优先级1: 开奖中的活动（最高优先级）
+            if (!$activity) {
+                // 优先级2: 待开奖的活动（活动已结束，等待开奖）
                 $activity = LotteryTicketActivity::query()
                     ->where('department_id', $departmentId)
-                    ->where('status', LotteryTicketActivity::STATUS_DRAWING)
+                    ->where('status', LotteryTicketActivity::STATUS_PENDING_DRAW)
                     ->orderBy('id', 'desc')
                     ->first();
-
-                if (!$activity) {
-                    // 优先级2: 待开奖的活动（活动已结束，等待开奖）
-                    $activity = LotteryTicketActivity::query()
-                        ->where('department_id', $departmentId)
-                        ->where('status', LotteryTicketActivity::STATUS_PENDING_DRAW)
-                        ->orderBy('id', 'desc')
-                        ->first();
-                }
-
-                if (!$activity) {
-                    // 优先级3: 进行中的活动（打码中）
-                    $activity = LotteryTicketActivity::query()
-                        ->where('department_id', $departmentId)
-                        ->where('status', LotteryTicketActivity::STATUS_ONGOING)
-                        ->orderBy('id', 'desc')
-                        ->first();
-                }
-
-                if (!$activity) {
-                    // 优先级4: 即将开始的活动（7天内）
-                    $activity = LotteryTicketActivity::query()
-                        ->where('department_id', $departmentId)
-                        ->where('status', LotteryTicketActivity::STATUS_NOT_STARTED)
-                        ->where('start_time', '<=', date('Y-m-d H:i:s', strtotime('+7 days')))
-                        ->orderBy('id', 'desc')
-                        ->first();
-                }
-
-                if (!$activity) {
-                    // 优先级5: 刚结束的活动（如果没有下期活动，仍然展示）
-                    $activity = LotteryTicketActivity::query()
-                        ->where('department_id', $departmentId)
-                        ->where('status', LotteryTicketActivity::STATUS_ENDED)
-                        ->orderBy('id', 'desc')
-                        ->first();
-                }
-
-                // ✅ 缩短缓存时间为10秒（解决活动状态变化时延迟问题）
-                \support\Cache::set($cacheKey, $activity ?: false, 10);
             }
 
-            return $activity ?: null;
+            if (!$activity) {
+                // 优先级3: 进行中的活动（打码中）
+                $activity = LotteryTicketActivity::query()
+                    ->where('department_id', $departmentId)
+                    ->where('status', LotteryTicketActivity::STATUS_ONGOING)
+                    ->orderBy('id', 'desc')
+                    ->first();
+            }
+
+            if (!$activity) {
+                // 优先级4: 即将开始的活动（7天内）
+                $activity = LotteryTicketActivity::query()
+                    ->where('department_id', $departmentId)
+                    ->where('status', LotteryTicketActivity::STATUS_NOT_STARTED)
+                    ->where('start_time', '<=', date('Y-m-d H:i:s', strtotime('+7 days')))
+                    ->orderBy('id', 'desc')
+                    ->first();
+            }
+
+            if (!$activity) {
+                // 优先级5: 刚结束的活动（如果没有下期活动，仍然展示）
+                $activity = LotteryTicketActivity::query()
+                    ->where('department_id', $departmentId)
+                    ->where('status', LotteryTicketActivity::STATUS_ENDED)
+                    ->orderBy('id', 'desc')
+                    ->first();
+            }
+
+            return $activity;
 
         } catch (\Exception $e) {
             // ✅ 异常处理：记录日志，返回null，不影响主流程
