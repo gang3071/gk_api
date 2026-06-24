@@ -93,10 +93,11 @@ class LotteryTicketController
             }
 
             if (!$activity) {
-                // 优先级5: 刚结束的活动（如果没有下期活动，仍然展示）
+                // 优先级5: 刚结束的活动（结束后30分钟内仍然展示）
                 $activity = LotteryTicketActivity::query()
                     ->where('department_id', $departmentId)
                     ->where('status', LotteryTicketActivity::STATUS_ENDED)
+                    ->where('end_time', '>=', date('Y-m-d H:i:s', strtotime('-30 minutes'))) // 结束时间在30分钟内
                     ->orderBy('id', 'desc')
                     ->first();
             }
