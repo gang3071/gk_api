@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $status_history 状态变更历史(JSON)
  * @property string $start_time 活动开始时间
  * @property string $end_time 活动结束时间
+ * @property string|null $ended_at 活动实际结束时间（变为已结束状态的时间）
  * @property string $draw_method 开奖方式：ball=摇球，manual=手动录入
  * @property string|null $draw_completed_at 开奖完成时间
  * @property string|null $prize_distributed_at 奖励发放完成时间
