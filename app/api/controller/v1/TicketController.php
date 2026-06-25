@@ -240,35 +240,92 @@ class TicketController
         }
 
         try {
+            // 🔍 解密前记录日志（截断显示，保护安全）
+            Log::info('scanOpenScore: 开始解密', [
+                'player_id' => $player->id,
+                'encrypted_length' => strlen($encryptedContent),
+                'encrypted_preview' => substr($encryptedContent, 0, 20) . '...',
+            ]);
+
             // 解密内容
             $decrypted = $this->decrypt($encryptedContent);
-            if ($decrypted === false || empty($decrypted)) {
+
+            // 🔍 解密结果详细日志
+            if (empty($decrypted)) {
+                Log::warning('scanOpenScore: 解密失败', [
+                    'player_id' => $player->id,
+                    'encrypted_length' => strlen($encryptedContent),
+                    'encrypted_preview' => substr($encryptedContent, 0, 50) . '...',
+                    'decrypted_result' => $decrypted,
+                    'openssl_error' => openssl_error_string(),
+                    'key_config' => substr(config('app.key', ''), 0, 10) . '...',
+                ]);
                 return jsonFailResponse('解密失败，无效的开分码');
             }
 
+            // 🔍 解密成功，检查内容格式
+            Log::info('scanOpenScore: 解密成功', [
+                'player_id' => $player->id,
+                'decrypted_length' => strlen($decrypted),
+                'decrypted_preview' => substr($decrypted, 0, 100) . '...',
+            ]);
+
             $data = json_decode($decrypted, true);
+
+            // 🔍 JSON 解析结果日志
             if (!$data || !isset($data['order_id']) || !isset($data['player_id']) || !isset($data['score'])) {
+                Log::warning('scanOpenScore: JSON解析失败或字段缺失', [
+                    'player_id' => $player->id,
+                    'json_error' => json_last_error_msg(),
+                    'decrypted_content' => $decrypted,
+                    'parsed_data' => $data,
+                    'has_order_id' => isset($data['order_id']),
+                    'has_player_id' => isset($data['player_id']),
+                    'has_score' => isset($data['score']),
+                ]);
                 return jsonFailResponse('无效的开分码');
             }
 
             // 验证 player_id 匹配
             if ((int)$data['player_id'] !== (int)$player->id) {
+                Log::warning('scanOpenScore: player_id 不匹配', [
+                    'current_player_id' => $player->id,
+                    'data_player_id' => $data['player_id'],
+                    'order_id' => $data['order_id'],
+                ]);
                 return jsonFailResponse('此开分码不属于当前玩家');
             }
 
             // 通过 order_id 查找出票记录
             $ticket = TicketRecord::where('order_id', $data['order_id'])->first();
             if (!$ticket) {
+                Log::warning('scanOpenScore: 出票记录不存在', [
+                    'player_id' => $player->id,
+                    'order_id' => $data['order_id'],
+                ]);
                 return jsonFailResponse('开分记录不存在');
             }
 
             // 验证状态
             if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
+                Log::warning('scanOpenScore: 出票状态异常', [
+                    'player_id' => $player->id,
+                    'order_id' => $data['order_id'],
+                    'ticket_status' => $ticket->status,
+                    'expected_status' => TicketRecord::STATUS_NORMAL,
+                    'status_name' => $ticket->status_name ?? 'unknown',
+                ]);
                 return jsonFailResponse('此开分码已使用或已失效');
             }
 
             // 验证金额
             if (abs((float)$ticket->score - (float)$data['score']) > 0.01) {
+                Log::warning('scanOpenScore: 金额不匹配', [
+                    'player_id' => $player->id,
+                    'order_id' => $data['order_id'],
+                    'ticket_score' => $ticket->score,
+                    'data_score' => $data['score'],
+                ]);
                 return jsonFailResponse('开分金额不匹配');
             }
 
@@ -315,6 +372,15 @@ class TicketController
 
             Db::commit();
 
+            // 🔍 成功日志
+            Log::info('scanOpenScore: 扫码开分成功', [
+                'player_id' => $player->id,
+                'order_id' => $ticket->order_id,
+                'score' => $score,
+                'previous_balance' => $previousBalance,
+                'current_balance' => $currentBalance,
+            ]);
+
             return jsonSuccessResponse('上分成功', [
                 'order_id' => $ticket->order_id,
                 'score' => $score,
@@ -325,11 +391,21 @@ class TicketController
             if (Db::transactionLevel() > 0) {
                 Db::rollBack();
             }
+            Log::error('scanOpenScore: 业务异常', [
+                'player_id' => $player->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return jsonFailResponse($e->getMessage());
         } catch (\Exception $e) {
             if (Db::transactionLevel() > 0) {
                 Db::rollBack();
             }
+            Log::error('scanOpenScore: 系统异常', [
+                'player_id' => $player->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return jsonFailResponse('上分失败: ' . $e->getMessage());
         }
     }
@@ -426,6 +502,7 @@ class TicketController
     {
         $key = config('app.key', '');
         if (empty($key)) {
+            Log::error('decrypt: 加密密钥未配置');
             throw new BusinessException('加密密钥未配置');
         }
 
@@ -436,14 +513,43 @@ class TicketController
 
         $key = substr($key, 0, 32);
         $decoded = base64_decode($value, true);
-        if ($decoded === false || strlen($decoded) < 16) {
+
+        // 🔍 Base64 解码检查
+        if ($decoded === false) {
+            Log::warning('decrypt: Base64解码失败', [
+                'input_length' => strlen($value),
+                'input_preview' => substr($value, 0, 30) . '...',
+                'is_valid_base64' => base64_encode($decoded) === $value,
+            ]);
+            return false;
+        }
+
+        if (strlen($decoded) < 16) {
+            Log::warning('decrypt: 解码后数据长度不足', [
+                'decoded_length' => strlen($decoded),
+                'min_required' => 16,
+                'input_length' => strlen($value),
+            ]);
             return false;
         }
 
         $iv = substr($decoded, 0, 16);
         $encrypted = substr($decoded, 16);
 
-        return openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+        $result = openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+
+        // 🔍 OpenSSL 解密结果检查
+        if ($result === false) {
+            Log::warning('decrypt: OpenSSL解密失败', [
+                'openssl_error' => openssl_error_string(),
+                'decoded_length' => strlen($decoded),
+                'iv_length' => strlen($iv),
+                'encrypted_length' => strlen($encrypted),
+                'key_length' => strlen($key),
+            ]);
+        }
+
+        return $result;
     }
 
     /**
