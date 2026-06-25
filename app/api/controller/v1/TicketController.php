@@ -4,11 +4,17 @@ declare(strict_types=1);
 
 namespace app\api\controller\v1;
 
+use app\model\AdminUser;
+use app\model\Channel;
+use app\model\Currency;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
+use app\model\PlayerWithdrawRecord;
 use app\model\TicketRecord;
 use app\service\WalletService;
+use Exception;
 use support\Db;
+use support\Log;
 use support\Request;
 use support\Response;
 use support\exception\BusinessException;
@@ -29,10 +35,35 @@ class TicketController
     public function redeemTicket(Request $request): Response
     {
         $player = checkPlayer();
-        if (!$player) {
-            return jsonFailResponse('未登录');
+
+        // 基础验证
+        if ($player->is_coin == 1) {
+            return jsonFailResponse(trans('coin_cannot_present', [], 'message'));
         }
 
+        // 爆机检查：玩家不能出票
+        $crashCheck = checkMachineCrash($player);
+        if ($crashCheck['crashed']) {
+            return jsonFailResponse(trans('machine_crashed_cannot_wash_score', [], 'message'));
+        }
+
+        // 渠道和货币验证（先验证，避免扣款后回退）
+        /** @var Channel $channel */
+        $channel = Channel::query()->where('department_id', \request()->department_id)->first();
+        if ($player->status_withdraw != 1) {
+            return jsonFailResponse(trans('player_withdraw_closed', [], 'message'));
+        }
+        if ($channel->withdraw_status == 0) {
+            return jsonFailResponse(trans('self_withdraw_closed', [], 'message'));
+        }
+        /** @var Currency $currency */
+        $currency = Currency::query()->where('identifying', $channel->currency)->where('status',
+            1)->whereNull('deleted_at')->first();
+        if (empty($currency)) {
+            return jsonFailResponse(trans('currency_no_setting', [], 'message'));
+        }
+
+        // 获取出票金额
         $score = (float) $request->post('score', 0);
         $machineNo = $request->post('machine_no', '');
         $storeName = $request->post('store_name', '');
@@ -42,33 +73,55 @@ class TicketController
             return jsonFailResponse('出票金额必须大于0');
         }
 
+        // 🔥 原子性扣分操作
         try {
-            Db::beginTransaction();
-
-            // 验证玩家余额（在事务内检查，避免竞态条件）
-            $balance = WalletService::getBalance($player->id);
-            if ($balance < $score) {
-                Db::rollBack();
-                return jsonFailResponse('余额不足');
-            }
-
-            // 生成订单号
-            $orderId = TicketRecord::generateOrderId();
-            $qrCodeNo = TicketRecord::generateQrCodeNo();
-
-            // 生成加密串
-            $encryptData = json_encode([
-                'order_id' => $orderId,
+            $decrementResult = WalletService::atomicDecrement($player->id, $score);
+        } catch (\Throwable $e) {
+            Log::error('TicketController: Decrement operation failed', [
                 'player_id' => $player->id,
-                'score' => $score,
-                'timestamp' => time(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
-            $encryptedContent = $this->encrypt($encryptData);
-            if ($encryptedContent === false) {
-                Db::rollBack();
-                return jsonFailResponse('加密失败');
-            }
+            return jsonFailResponse(trans('system_error', [], 'message'));
+        }
 
+        if ($decrementResult['ok'] == 0) {
+            // 扣分失败
+            if ($decrementResult['error'] == 'insufficient') {
+                return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
+            } else {
+                return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
+            }
+        }
+
+        // 扣分成功，获取实际金额
+        $beforeGameAmount = $decrementResult['old_balance']; // 扣款前余额
+        $afterGameAmount = $decrementResult['balance'];      // 扣款后余额
+
+        // 计算货币金额
+        $money = bcdiv($score, $currency->ratio, 2);
+
+        // 生成订单号
+        $orderId = TicketRecord::generateOrderId();
+        $qrCodeNo = TicketRecord::generateQrCodeNo();
+
+        // 生成加密串
+        $encryptData = json_encode([
+            'order_id' => $orderId,
+            'player_id' => $player->id,
+            'score' => $score,
+            'timestamp' => time(),
+        ]);
+        $encryptedContent = $this->encrypt($encryptData);
+        if ($encryptedContent === false) {
+            // 加密失败，回退已扣除的余额
+            WalletService::atomicIncrement($player->id, $score);
+            return jsonFailResponse('加密失败');
+        }
+
+        // 开始事务处理
+        DB::beginTransaction();
+        try {
             // 创建出票记录
             $ticket = TicketRecord::create([
                 'order_id' => $orderId,
@@ -89,51 +142,83 @@ class TicketController
                 'print_count' => 0,
             ]);
 
-            // 扣分（使用原子操作，检查返回值）
-            $previousBalance = WalletService::getBalance($player->id);
-            $decrementResult = WalletService::atomicDecrement($player->id, $score);
+            // 生成提现订单
+            $playerWithdrawRecord = new PlayerWithdrawRecord();
+            $playerWithdrawRecord->player_id = $player->id;
+            $playerWithdrawRecord->talk_user_id = $player->talk_user_id;
+            $playerWithdrawRecord->department_id = $player->department_id;
+            $playerWithdrawRecord->tradeno = $orderId;
+            $playerWithdrawRecord->player_name = $player->name ?? '';
+            $playerWithdrawRecord->player_phone = $player->phone ?? '';
+            $playerWithdrawRecord->rate = $currency->ratio;
+            $playerWithdrawRecord->actual_rate = $currency->ratio;
+            $playerWithdrawRecord->money = $money;
+            $playerWithdrawRecord->point = $score;
+            $playerWithdrawRecord->fee = 0;
+            $playerWithdrawRecord->inmoney = bcsub($playerWithdrawRecord->money, $playerWithdrawRecord->fee, 2);
+            $playerWithdrawRecord->currency = $channel->currency;
+            $playerWithdrawRecord->bank_name = '';
+            $playerWithdrawRecord->account = '';
+            $playerWithdrawRecord->account_name = '';
+            $playerWithdrawRecord->wallet_address = '';
+            $playerWithdrawRecord->qr_code = '';
+            $playerWithdrawRecord->type = PlayerWithdrawRecord::TYPE_SELF;
+            $playerWithdrawRecord->status = PlayerWithdrawRecord::STATUS_SUCCESS;
+            $playerWithdrawRecord->bank_type = 4;
+            $playerWithdrawRecord->remark = '出票核销';
+            $playerWithdrawRecord->save();
 
-            // 检查扣分是否成功
-            if (!isset($decrementResult['ok']) || $decrementResult['ok'] != 1) {
-                Db::rollBack();
-                return jsonFailResponse('余额不足，扣分失败');
-            }
+            // 余额已在事务外通过 atomicDecrement 原子性扣除
 
-            $currentBalance = WalletService::getBalance($player->id);
+            // 更新玩家提现统计
+            $player->player_extend->withdraw_amount = bcadd($player->player_extend->withdraw_amount,
+                $score, 2);
+            $player->push();
 
-            // 记录金流明细
-            PlayerDeliveryRecord::create([
+            // 写入金流明细
+            $playerDeliveryRecord = new PlayerDeliveryRecord;
+            $playerDeliveryRecord->player_id = $player->id;
+            $playerDeliveryRecord->department_id = $player->department_id ?? 0;
+            $playerDeliveryRecord->target = $ticket->getTable();
+            $playerDeliveryRecord->target_id = $ticket->id;
+            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_TICKET_REDEEM;
+            $playerDeliveryRecord->withdraw_status = PlayerWithdrawRecord::STATUS_SUCCESS;
+            $playerDeliveryRecord->source = 'ticket_redeem';
+            $playerDeliveryRecord->amount = $score;
+            $playerDeliveryRecord->amount_before = $beforeGameAmount;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
+            $playerDeliveryRecord->tradeno = $orderId;
+            $playerDeliveryRecord->remark = '出票核销';
+            $playerDeliveryRecord->save();
+
+            DB::commit();
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            // 事务失败，回退已扣除的余额
+            WalletService::atomicIncrement($player->id, $score);
+
+            Log::error('redeemTicket failed, balance refunded', [
                 'player_id' => $player->id,
-                'target' => 'ticket',
-                'target_id' => $ticket->id,
-                'department_id' => $player->department_id ?? 0,
-                'type' => PlayerDeliveryRecord::TYPE_TICKET_REDEEM,
-                'source' => 'ticket_redeem',
-                'amount' => -$score,
-                'amount_before' => $previousBalance,
-                'amount_after' => $currentBalance,
-                'tradeno' => $orderId,
-                'remark' => "出票核销: {$score}元",
-            ]);
-
-            // 更新玩家累计统计
-            $this->updatePlayerExtend($player->id, 'withdraw', $score);
-
-            Db::commit();
-
-            return jsonSuccessResponse('出票成功', [
-                'order_id' => $orderId,
-                'encrypted_content' => $encryptedContent,
-                'qr_code_no' => $qrCodeNo,
                 'score' => $score,
-                'balance' => $currentBalance,
-                'status' => TicketRecord::STATUS_PENDING,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTrace()
             ]);
 
-        } catch (\Exception $e) {
-            Db::rollBack();
-            return jsonFailResponse('出票失败: ' . $e->getMessage());
+            return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
+
+        // ✅ 事务提交后更新爆机状态
+        WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
+
+        return jsonSuccessResponse('出票成功', [
+            'order_id' => $orderId,
+            'encrypted_content' => $encryptedContent,
+            'qr_code_no' => $qrCodeNo,
+            'score' => $score,
+            'balance' => $afterGameAmount,
+            'status' => TicketRecord::STATUS_PENDING,
+        ]);
     }
 
     /**
@@ -155,35 +240,92 @@ class TicketController
         }
 
         try {
+            // 🔍 解密前记录日志（截断显示，保护安全）
+            Log::info('scanOpenScore: 开始解密', [
+                'player_id' => $player->id,
+                'encrypted_length' => strlen($encryptedContent),
+                'encrypted_preview' => substr($encryptedContent, 0, 20) . '...',
+            ]);
+
             // 解密内容
             $decrypted = $this->decrypt($encryptedContent);
-            if ($decrypted === false || empty($decrypted)) {
+
+            // 🔍 解密结果详细日志
+            if (empty($decrypted)) {
+                Log::warning('scanOpenScore: 解密失败', [
+                    'player_id' => $player->id,
+                    'encrypted_length' => strlen($encryptedContent),
+                    'encrypted_preview' => substr($encryptedContent, 0, 50) . '...',
+                    'decrypted_result' => $decrypted,
+                    'openssl_error' => openssl_error_string(),
+                    'key_config' => substr(config('app.key', ''), 0, 10) . '...',
+                ]);
                 return jsonFailResponse('解密失败，无效的开分码');
             }
 
+            // 🔍 解密成功，检查内容格式
+            Log::info('scanOpenScore: 解密成功', [
+                'player_id' => $player->id,
+                'decrypted_length' => strlen($decrypted),
+                'decrypted_preview' => substr($decrypted, 0, 100) . '...',
+            ]);
+
             $data = json_decode($decrypted, true);
+
+            // 🔍 JSON 解析结果日志
             if (!$data || !isset($data['order_id']) || !isset($data['player_id']) || !isset($data['score'])) {
+                Log::warning('scanOpenScore: JSON解析失败或字段缺失', [
+                    'player_id' => $player->id,
+                    'json_error' => json_last_error_msg(),
+                    'decrypted_content' => $decrypted,
+                    'parsed_data' => $data,
+                    'has_order_id' => isset($data['order_id']),
+                    'has_player_id' => isset($data['player_id']),
+                    'has_score' => isset($data['score']),
+                ]);
                 return jsonFailResponse('无效的开分码');
             }
 
             // 验证 player_id 匹配
             if ((int)$data['player_id'] !== (int)$player->id) {
+                Log::warning('scanOpenScore: player_id 不匹配', [
+                    'current_player_id' => $player->id,
+                    'data_player_id' => $data['player_id'],
+                    'order_id' => $data['order_id'],
+                ]);
                 return jsonFailResponse('此开分码不属于当前玩家');
             }
 
             // 通过 order_id 查找出票记录
             $ticket = TicketRecord::where('order_id', $data['order_id'])->first();
             if (!$ticket) {
+                Log::warning('scanOpenScore: 出票记录不存在', [
+                    'player_id' => $player->id,
+                    'order_id' => $data['order_id'],
+                ]);
                 return jsonFailResponse('开分记录不存在');
             }
 
             // 验证状态
             if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
+                Log::warning('scanOpenScore: 出票状态异常', [
+                    'player_id' => $player->id,
+                    'order_id' => $data['order_id'],
+                    'ticket_status' => $ticket->status,
+                    'expected_status' => TicketRecord::STATUS_NORMAL,
+                    'status_name' => $ticket->status_name ?? 'unknown',
+                ]);
                 return jsonFailResponse('此开分码已使用或已失效');
             }
 
             // 验证金额
             if (abs((float)$ticket->score - (float)$data['score']) > 0.01) {
+                Log::warning('scanOpenScore: 金额不匹配', [
+                    'player_id' => $player->id,
+                    'order_id' => $data['order_id'],
+                    'ticket_score' => $ticket->score,
+                    'data_score' => $data['score'],
+                ]);
                 return jsonFailResponse('开分金额不匹配');
             }
 
@@ -230,6 +372,15 @@ class TicketController
 
             Db::commit();
 
+            // 🔍 成功日志
+            Log::info('scanOpenScore: 扫码开分成功', [
+                'player_id' => $player->id,
+                'order_id' => $ticket->order_id,
+                'score' => $score,
+                'previous_balance' => $previousBalance,
+                'current_balance' => $currentBalance,
+            ]);
+
             return jsonSuccessResponse('上分成功', [
                 'order_id' => $ticket->order_id,
                 'score' => $score,
@@ -240,11 +391,21 @@ class TicketController
             if (Db::transactionLevel() > 0) {
                 Db::rollBack();
             }
+            Log::error('scanOpenScore: 业务异常', [
+                'player_id' => $player->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return jsonFailResponse($e->getMessage());
         } catch (\Exception $e) {
             if (Db::transactionLevel() > 0) {
                 Db::rollBack();
             }
+            Log::error('scanOpenScore: 系统异常', [
+                'player_id' => $player->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return jsonFailResponse('上分失败: ' . $e->getMessage());
         }
     }
@@ -341,6 +502,7 @@ class TicketController
     {
         $key = config('app.key', '');
         if (empty($key)) {
+            Log::error('decrypt: 加密密钥未配置');
             throw new BusinessException('加密密钥未配置');
         }
 
@@ -351,14 +513,43 @@ class TicketController
 
         $key = substr($key, 0, 32);
         $decoded = base64_decode($value, true);
-        if ($decoded === false || strlen($decoded) < 16) {
+
+        // 🔍 Base64 解码检查
+        if ($decoded === false) {
+            Log::warning('decrypt: Base64解码失败', [
+                'input_length' => strlen($value),
+                'input_preview' => substr($value, 0, 30) . '...',
+                'is_valid_base64' => base64_encode($decoded) === $value,
+            ]);
+            return false;
+        }
+
+        if (strlen($decoded) < 16) {
+            Log::warning('decrypt: 解码后数据长度不足', [
+                'decoded_length' => strlen($decoded),
+                'min_required' => 16,
+                'input_length' => strlen($value),
+            ]);
             return false;
         }
 
         $iv = substr($decoded, 0, 16);
         $encrypted = substr($decoded, 16);
 
-        return openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+        $result = openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
+
+        // 🔍 OpenSSL 解密结果检查
+        if ($result === false) {
+            Log::warning('decrypt: OpenSSL解密失败', [
+                'openssl_error' => openssl_error_string(),
+                'decoded_length' => strlen($decoded),
+                'iv_length' => strlen($iv),
+                'encrypted_length' => strlen($encrypted),
+                'key_length' => strlen($key),
+            ]);
+        }
+
+        return $result;
     }
 
     /**
