@@ -234,12 +234,7 @@ class TicketController
         WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
 
         return jsonSuccessResponse('出票成功', [
-            'order_id' => $orderId,
-            'encrypted_content' => $encryptedContent,
-            'qr_code_no' => $qrCodeNo,
-            'score' => $washAmount,
-            'balance' => $afterGameAmount,
-            'status' => TicketRecord::STATUS_PENDING,
+            'encrypted_content' => $encryptedContent
         ]);
     }
 
