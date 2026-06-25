@@ -618,8 +618,8 @@ class MachineClient
                     if (is_array($item) && isset($item['machine_id'])) {
                         $machineId = $item['machine_id'];
 
-                        // 明确使用布尔值判断（gk_work返回的online字段是bool类型）
-                        $online = isset($item['online']) && $item['online'] === true;
+                        // 宽松判断在线状态（兼容整数1和布尔值true）
+                        $online = !empty($item['online']);
                         $processedData[$machineId] = $online ? 'online' : 'offline';
                     }
                 }

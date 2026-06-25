@@ -328,6 +328,7 @@ class MachineController
             if ($result['success'] && isset($result['data'])) {
                 $onlineStatusMap = $result['data'];
             }
+            Log::info('main_online', [$result]);
         } catch (Exception $e) {
             Log::error('Batch check machine online failed', ['error' => $e->getMessage()]);
         }
