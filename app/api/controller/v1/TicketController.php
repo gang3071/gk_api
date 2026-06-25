@@ -183,7 +183,7 @@ class TicketController
             $playerDeliveryRecord->department_id = $player->department_id ?? 0;
             $playerDeliveryRecord->target = $ticket->getTable();
             $playerDeliveryRecord->target_id = $ticket->id;
-            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_TICKET_REDEEM;
+            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_WITHDRAWAL;
             $playerDeliveryRecord->withdraw_status = PlayerWithdrawRecord::STATUS_SUCCESS;
             $playerDeliveryRecord->source = 'ticket_redeem';
             $playerDeliveryRecord->amount = $washAmount;
