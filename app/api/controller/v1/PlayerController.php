@@ -2207,7 +2207,7 @@ class PlayerController
         checkPlayer();
         $data = $request->post();
         $adPosition = $data['ad_position'] ?? 1;
-        if (!in_array($adPosition, [1, 2, 3])) {
+        if (!in_array($adPosition, [1, 2, 3, 4])) {
             return jsonFailResponse(trans('ad_position_invalid', [], 'message'));
         }
 
