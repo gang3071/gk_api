@@ -64,21 +64,18 @@ class TicketController
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
 
-        // 获取出票金额
-        $score = (float) $request->post('score', 0);
-        $machineNo = $request->post('machine_no', '');
-        $storeName = $request->post('store_name', '');
+        // 🔥 获取后台配置的洗分数值
+        // 从店家后台账号获取 wash_point_config 配置
+        // 如果未配置或配置为0，则使用默认值100
+        $washPointConfig = self::getWashPointConfig($player->store_admin_id);
 
-        // 验证参数
-        if ($score <= 0) {
-            return jsonFailResponse('出票金额必须大于0');
-        }
-
-        // 🔥 原子性扣分操作
+        // 🔥 原子性洗分操作（完全避免 TOCTOU 问题）
+        // 在 Redis 中原子性完成：读取余额 → 根据配置计算洗分金额 → 扣款
         try {
-            $decrementResult = WalletService::atomicDecrement($player->id, $score);
+            $washResult = WalletService::atomicWash($player->id, $washPointConfig);
         } catch (\Throwable $e) {
-            Log::error('TicketController: Decrement operation failed', [
+            // Lua 脚本执行失败或其他异常
+            Log::error('TicketController: Wash operation failed', [
                 'player_id' => $player->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
@@ -86,21 +83,25 @@ class TicketController
             return jsonFailResponse(trans('system_error', [], 'message'));
         }
 
-        if ($decrementResult['ok'] == 0) {
-            // 扣分失败
-            if ($decrementResult['error'] == 'insufficient') {
-                return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
+        if ($washResult['ok'] == 0) {
+            // 洗分失败
+            if ($washResult['error'] == 'insufficient_wash_amount') {
+                // 余额不足：当前余额小于配置的洗分基数
+                return jsonFailResponse(trans('insufficient_balance_wash', [
+                    'min_amount' => number_format($washPointConfig, 2)
+                ], 'message'));
             } else {
                 return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
             }
         }
 
-        // 扣分成功，获取实际金额
-        $beforeGameAmount = $decrementResult['old_balance']; // 扣款前余额
-        $afterGameAmount = $decrementResult['balance'];      // 扣款后余额
+        // 洗分成功，获取实际洗分金额
+        $washAmount = $washResult['wash_amount'];      // 实际洗分金额
+        $beforeGameAmount = $washResult['old_balance']; // 扣款前余额
+        $afterGameAmount = $washResult['balance'];      // 扣款后余额
 
         // 计算货币金额
-        $money = bcdiv((string)$score, (string)$currency->ratio, 2);
+        $money = bcdiv((string)$washAmount, (string)$currency->ratio, 2);
 
         // 生成订单号
         $orderId = TicketRecord::generateOrderId();
@@ -110,13 +111,13 @@ class TicketController
         $encryptData = json_encode([
             'order_id' => $orderId,
             'player_id' => $player->id,
-            'score' => $score,
+            'score' => $washAmount,
             'timestamp' => time(),
         ]);
         $encryptedContent = $this->encrypt($encryptData);
         if ($encryptedContent === false) {
             // 加密失败，回退已扣除的余额
-            WalletService::atomicIncrement($player->id, $score);
+            WalletService::atomicIncrement($player->id, $washAmount);
             return jsonFailResponse('加密失败');
         }
 
@@ -128,12 +129,12 @@ class TicketController
                 'order_id' => $orderId,
                 'department_id' => $player->department_id ?? 0,
                 'store_admin_id' => $player->store_admin_id ?? 0,
-                'store_name' => $storeName,
-                'machine_no' => $machineNo,
+                'store_name' => '',
+                'machine_no' => 0,
                 'machine_id' => 0,
                 'player_id' => $player->id,
                 'player_name' => $player->name ?? '',
-                'score' => $score,
+                'score' => $washAmount,
                 'qr_code' => $encryptedContent,
                 'qr_code_no' => $qrCodeNo,
                 'encrypted_content' => $encryptedContent,
@@ -154,7 +155,7 @@ class TicketController
             $playerWithdrawRecord->rate = $currency->ratio;
             $playerWithdrawRecord->actual_rate = $currency->ratio;
             $playerWithdrawRecord->money = $money;
-            $playerWithdrawRecord->point = $score;
+            $playerWithdrawRecord->point = $washAmount;
             $playerWithdrawRecord->fee = 0;
             $playerWithdrawRecord->inmoney = bcsub((string)$playerWithdrawRecord->money, (string)$playerWithdrawRecord->fee, 2);
             $playerWithdrawRecord->currency = $channel->currency;
@@ -169,11 +170,11 @@ class TicketController
             $playerWithdrawRecord->remark = '出票核销';
             $playerWithdrawRecord->save();
 
-            // 余额已在事务外通过 atomicDecrement 原子性扣除
+            // 余额已在事务外通过 atomicWash 原子性扣除
 
             // 更新玩家提现统计
             $player->player_extend->withdraw_amount = bcadd((string)$player->player_extend->withdraw_amount,
-                (string)$score, 2);
+                (string)$washAmount, 2);
             $player->push();
 
             // 写入金流明细
@@ -185,7 +186,7 @@ class TicketController
             $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_TICKET_REDEEM;
             $playerDeliveryRecord->withdraw_status = PlayerWithdrawRecord::STATUS_SUCCESS;
             $playerDeliveryRecord->source = 'ticket_redeem';
-            $playerDeliveryRecord->amount = $score;
+            $playerDeliveryRecord->amount = $washAmount;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
             $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = $orderId;
@@ -194,19 +195,39 @@ class TicketController
 
             DB::commit();
         } catch (Exception $e) {
-            DB::rollBack();
+            // 确保事务回滚
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
 
             // 事务失败，回退已扣除的余额
-            WalletService::atomicIncrement($player->id, $score);
+            WalletService::atomicIncrement($player->id, $washAmount);
 
             Log::error('redeemTicket failed, balance refunded', [
                 'player_id' => $player->id,
-                'score' => $score,
+                'wash_amount' => $washAmount,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTrace()
             ]);
 
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
+        } catch (\Throwable $e) {
+            // 捕获所有异常，确保事务回滚
+            if (DB::transactionLevel() > 0) {
+                DB::rollBack();
+            }
+
+            // 事务失败，回退已扣除的余额
+            WalletService::atomicIncrement($player->id, $washAmount);
+
+            Log::error('redeemTicket failed (Throwable), balance refunded', [
+                'player_id' => $player->id,
+                'wash_amount' => $washAmount,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return jsonFailResponse(trans('system_error', [], 'message'));
         }
 
         // ✅ 事务提交后更新爆机状态
@@ -216,7 +237,7 @@ class TicketController
             'order_id' => $orderId,
             'encrypted_content' => $encryptedContent,
             'qr_code_no' => $qrCodeNo,
-            'score' => $score,
+            'score' => $washAmount,
             'balance' => $afterGameAmount,
             'status' => TicketRecord::STATUS_PENDING,
         ]);
@@ -391,7 +412,7 @@ class TicketController
                     'target' => 'ticket',
                     'target_id' => $ticket->id,
                     'department_id' => $player->department_id ?? 0,
-                    'type' => PlayerDeliveryRecord::TYPE_TICKET_OPEN_SCORE,
+                    'type' => PlayerDeliveryRecord::TYPE_MACHINE_UP,
                     'source' => 'ticket_open_score',
                     'amount' => $score,
                     'amount_before' => $previousBalance,
@@ -606,5 +627,30 @@ class TicketController
             $field = $type === 'recharge' ? 'recharge_amount' : 'withdraw_amount';
             $playerExtend->increment($field, $amount);
         }
+    }
+
+    /**
+     * 获取洗分配置
+     *
+     * @param int $storeAdminId 店家后台账号ID
+     * @return float 洗分基数
+     */
+    private static function getWashPointConfig(int $storeAdminId): float
+    {
+        $config = AdminUser::query()
+            ->where('id', $storeAdminId)
+            ->value('wash_point_config');
+
+        // 配置为 null、0 或 0.00 时使用默认值100
+        if (empty($config) || $config <= 0) {
+            Log::debug('TicketController: Using default wash point config', [
+                'store_admin_id' => $storeAdminId,
+                'original_config' => $config,
+                'default_value' => 100.00,
+            ]);
+            return 100.00;
+        }
+
+        return floatval($config);
     }
 }
