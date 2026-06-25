@@ -139,8 +139,7 @@ class TicketController
                 'qr_code_no' => $qrCodeNo,
                 'encrypted_content' => $encryptedContent,
                 'ticket_type' => TicketRecord::TYPE_WITHDRAW,
-                'status' => TicketRecord::STATUS_PENDING,
-                'scan_status' => TicketRecord::SCAN_STATUS_PENDING,
+                'status' => TicketRecord::STATUS_PRINTED,
                 'print_count' => 0,
             ]);
 
@@ -396,7 +395,6 @@ class TicketController
                 // 更新出票记录状态
                 $ticket->update([
                     'status' => TicketRecord::STATUS_USED,
-                    'scan_status' => TicketRecord::SCAN_STATUS_SCANNED,
                     'scanned_at' => date('Y-m-d H:i:s'),
                     'scanned_by' => 'player_' . $player->id,
                 ]);
@@ -504,7 +502,6 @@ class TicketController
                     'ticket_type_name' => $record->ticket_type_name ?? '',
                     'status' => $record->status ?? 0,
                     'status_name' => $record->status_name ?? '',
-                    'scan_status' => $record->scan_status ?? 0,
                     'scanned_at' => $record->scanned_at ? $record->scanned_at->toDateTimeString() : null,
                     'created_at' => $record->created_at ? $record->created_at->toDateTimeString() : '',
                 ];

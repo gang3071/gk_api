@@ -25,7 +25,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string $encrypted_content 加密内容
  * @property int $ticket_type 票据类型: 1=开分 2=洗分
  * @property int $status 状态: 0=禁用 1=正常 2=已打印 3=已使用 4=待核销
- * @property int $scan_status 扫码状态: 0=待扫码 1=已扫码
  * @property string|null $scanned_at 扫码时间
  * @property string|null $scanned_by 扫码人
  * @property int $print_count 打印次数
@@ -60,10 +59,6 @@ class TicketRecord extends Model
     const STATUS_PRINTED = 2;    // 已打印
     const STATUS_USED = 3;       // 已使用
     const STATUS_PENDING = 4;    // 待核销
-
-    // 扫码状态常量
-    const SCAN_STATUS_PENDING = 0;  // 待扫码
-    const SCAN_STATUS_SCANNED = 1;  // 已扫码
 
     /**
      * 获取票据类型名称

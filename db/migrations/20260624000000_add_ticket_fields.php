@@ -28,15 +28,6 @@ class AddTicketFields extends AbstractMigration
             'after' => 'qr_code_no',
         ]);
 
-        // 添加扫码状态字段
-        $table->addColumn('scan_status', 'integer', [
-            'limit' => \Phinx\Db\Adapter\MysqlAdapter::INT_TINY,
-            'null' => false,
-            'default' => 0,
-            'comment' => '扫码状态: 0=待扫码 1=已扫码',
-            'after' => 'status',
-        ]);
-
         // 添加扫码时间字段
         $table->addColumn('scanned_at', 'datetime', [
             'null' => true,
