@@ -107,14 +107,8 @@ class TicketController
         $orderId = TicketRecord::generateOrderId();
         $qrCodeNo = TicketRecord::generateQrCodeNo();
 
-        // 生成加密串
-        $encryptData = json_encode([
-            'order_id' => $orderId,
-            'player_id' => $player->id,
-            'score' => $washAmount,
-            'timestamp' => time(),
-        ]);
-        $encryptedContent = $this->encrypt($encryptData);
+        // 生成加密串（只加密 order_id 以缩短二维码长度）
+        $encryptedContent = $this->encrypt($orderId);
         if ($encryptedContent === false) {
             // 加密失败，回退已扣除的余额
             WalletService::atomicIncrement($player->id, $washAmount);
@@ -262,46 +256,26 @@ class TicketController
                 'encrypted_preview' => substr($encryptedContent, 0, 20) . '...',
             ]);
 
-            // 解密内容
-            $decrypted = $this->decrypt($encryptedContent);
+            // 解密内容（新格式：直接是 order_id）
+            $orderId = $this->decrypt($encryptedContent);
 
             // 🔍 解密结果详细日志
-            if (empty($decrypted)) {
+            if (empty($orderId)) {
                 Log::warning('scanOpenScore: 解密失败', [
                     'player_id' => $player->id,
                     'encrypted_length' => strlen($encryptedContent),
                     'encrypted_preview' => substr($encryptedContent, 0, 50) . '...',
-                    'decrypted_result' => $decrypted,
                     'openssl_error' => openssl_error_string(),
                     'key_config' => substr(config('app.key', ''), 0, 10) . '...',
                 ]);
                 return jsonFailResponse('解密失败，无效的开分码');
             }
 
-            // 🔍 解密成功，检查内容格式
+            // 🔍 解密成功
             Log::info('scanOpenScore: 解密成功', [
                 'player_id' => $player->id,
-                'decrypted_length' => strlen($decrypted),
-                'decrypted_preview' => substr($decrypted, 0, 100) . '...',
+                'order_id' => $orderId,
             ]);
-
-            $data = json_decode($decrypted, true);
-
-            // 🔍 JSON 解析结果日志
-            if (!$data || !isset($data['order_id']) || !isset($data['player_id']) || !isset($data['score'])) {
-                Log::warning('scanOpenScore: JSON解析失败或字段缺失', [
-                    'player_id' => $player->id,
-                    'json_error' => json_last_error_msg(),
-                    'decrypted_content' => $decrypted,
-                    'parsed_data' => $data,
-                    'has_order_id' => isset($data['order_id']),
-                    'has_player_id' => isset($data['player_id']),
-                    'has_score' => isset($data['score']),
-                ]);
-                return jsonFailResponse('无效的开分码');
-            }
-
-            $orderId = $data['order_id'];
 
             // 🔒 获取分布式锁，防止同一二维码被并发处理
             $lockKey = 'ticket:scan_lock:' . $orderId;
@@ -318,51 +292,25 @@ class TicketController
             }
 
             try {
-                // 通过 order_id + player_id + score 查找出票记录（三重验证）
-                $ticket = TicketRecord::where('order_id', $orderId)
-                    ->where('player_id', $player->id)
-                    ->where('score', $data['score'])
-                    ->first();
+                // 通过 order_id 查询出票记录
+                $ticket = TicketRecord::where('order_id', $orderId)->first();
 
                 if (!$ticket) {
-                    // 🔍 查询失败，分别检查原因
-                    $ticketByOrder = TicketRecord::where('order_id', $orderId)->first();
-                    if (!$ticketByOrder) {
-                        Log::warning('scanOpenScore: 出票记录不存在', [
-                            'player_id' => $player->id,
-                            'order_id' => $orderId,
-                        ]);
-                        return jsonFailResponse('开分记录不存在');
-                    }
-
-                    // 检查 player_id
-                    if ((int)$ticketByOrder->player_id !== (int)$player->id) {
-                        Log::warning('scanOpenScore: player_id 不匹配', [
-                            'current_player_id' => $player->id,
-                            'ticket_player_id' => $ticketByOrder->player_id,
-                            'order_id' => $orderId,
-                        ]);
-                        return jsonFailResponse('此开分码不属于当前玩家');
-                    }
-
-                    // 检查金额
-                    if (abs((float)$ticketByOrder->score - (float)$data['score']) > 0.01) {
-                        Log::warning('scanOpenScore: 金额不匹配', [
-                            'player_id' => $player->id,
-                            'order_id' => $orderId,
-                            'ticket_score' => $ticketByOrder->score,
-                            'data_score' => $data['score'],
-                        ]);
-                        return jsonFailResponse('开分金额不匹配');
-                    }
-
-                    // 其他原因
-                    Log::warning('scanOpenScore: 出票记录验证失败', [
+                    Log::warning('scanOpenScore: 出票记录不存在', [
                         'player_id' => $player->id,
                         'order_id' => $orderId,
-                        'data_score' => $data['score'],
                     ]);
                     return jsonFailResponse('开分记录不存在');
+                }
+
+                // 验证 player_id（安全检查）
+                if ((int)$ticket->player_id !== (int)$player->id) {
+                    Log::warning('scanOpenScore: player_id 不匹配', [
+                        'current_player_id' => $player->id,
+                        'ticket_player_id' => $ticket->player_id,
+                        'order_id' => $orderId,
+                    ]);
+                    return jsonFailResponse('此开分码不属于当前玩家');
                 }
 
                 // 验证状态
