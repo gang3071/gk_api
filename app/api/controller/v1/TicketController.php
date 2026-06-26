@@ -227,7 +227,8 @@ class TicketController
         WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
 
         return jsonSuccessResponse('出票成功', [
-            'encrypted_content' => $encryptedContent
+            'encrypted_content' => $encryptedContent,
+            'score' => $washAmount,
         ]);
     }
 
