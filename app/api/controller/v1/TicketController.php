@@ -10,6 +10,7 @@ use app\model\Channel;
 use app\model\Currency;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
+use app\model\PlayerRechargeRecord;
 use app\model\PlayerWithdrawRecord;
 use app\model\TicketRecord;
 use app\service\WalletService;
@@ -331,6 +332,34 @@ class TicketController
                 // 上分
                 $score = (float) $ticket->score;
                 $previousBalance = WalletService::getBalance($player->id);
+
+                // 获取渠道和货币信息
+                $channel = Channel::query()->where('department_id', $player->department_id)->first();
+                $currency = $channel ? Currency::query()->where('identifying', $channel->currency)->where('status', 1)->whereNull('deleted_at')->first() : null;
+                $currencyIdentifying = $currency ? $currency->identifying : '';
+                $money = $currency ? bcdiv((string)$score, (string)$currency->ratio, 2) : $score;
+
+                // 生成充值订单
+                $playerRechargeRecord = new PlayerRechargeRecord();
+                $playerRechargeRecord->player_id = $player->id;
+                $playerRechargeRecord->talk_user_id = $player->talk_user_id;
+                $playerRechargeRecord->department_id = $player->department_id;
+                $playerRechargeRecord->tradeno = $ticket->order_id;
+                $playerRechargeRecord->player_name = $player->name ?? '';
+                $playerRechargeRecord->player_phone = $player->phone ?? '';
+                $playerRechargeRecord->money = $money;
+                $playerRechargeRecord->inmoney = $money;
+                $playerRechargeRecord->currency = $currencyIdentifying;
+                $playerRechargeRecord->type = PlayerRechargeRecord::TYPE_ARTIFICIAL;
+                $playerRechargeRecord->point = $score;
+                $playerRechargeRecord->status = PlayerRechargeRecord::STATUS_RECHARGED_SUCCESS;
+                $playerRechargeRecord->remark = "扫码开分: {$score}元";
+                $playerRechargeRecord->finish_time = date('Y-m-d H:i:s');
+                $playerRechargeRecord->user_id = 0;
+                $playerRechargeRecord->user_name = '';
+                $playerRechargeRecord->save();
+
+                // ✅ Lua 原子性加款（自动同步数据库）
                 $incrementResult = WalletService::atomicIncrement($player->id, $score);
 
                 // 检查上分是否成功
@@ -339,7 +368,7 @@ class TicketController
                     return jsonFailResponse('上分失败');
                 }
 
-                $currentBalance = WalletService::getBalance($player->id);
+                $currentBalance = $incrementResult['balance'];
 
                 // 更新出票记录状态
                 $ticket->update([
@@ -348,23 +377,25 @@ class TicketController
                     'scanned_by' => 'player_' . $player->id,
                 ]);
 
-                // 记录金流明细
-                PlayerDeliveryRecord::create([
-                    'player_id' => $player->id,
-                    'target' => 'ticket',
-                    'target_id' => $ticket->id,
-                    'department_id' => $player->department_id ?? 0,
-                    'type' => PlayerDeliveryRecord::TYPE_MACHINE_UP,
-                    'source' => 'ticket_open_score',
-                    'amount' => $score,
-                    'amount_before' => $previousBalance,
-                    'amount_after' => $currentBalance,
-                    'tradeno' => $ticket->order_id,
-                    'remark' => "扫码开分: {$score}元",
-                ]);
+                // 更新玩家充值统计
+                $player->player_extend->recharge_amount = bcadd((string)$player->player_extend->recharge_amount,
+                    (string)$score, 2);
+                $player->push();
 
-                // 更新玩家累计统计
-                $this->updatePlayerExtend($player->id, 'recharge', $score);
+                // 写入金流明细
+                $playerDeliveryRecord = new PlayerDeliveryRecord;
+                $playerDeliveryRecord->player_id = $player->id;
+                $playerDeliveryRecord->department_id = $player->department_id ?? 0;
+                $playerDeliveryRecord->target = $playerRechargeRecord->getTable();
+                $playerDeliveryRecord->target_id = $playerRechargeRecord->id;
+                $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_RECHARGE;
+                $playerDeliveryRecord->source = 'ticket_open_score';
+                $playerDeliveryRecord->amount = $score;
+                $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $previousBalance;
+                $playerDeliveryRecord->amount_after = $currentBalance;
+                $playerDeliveryRecord->tradeno = $ticket->order_id;
+                $playerDeliveryRecord->remark = "扫码开分: {$score}元";
+                $playerDeliveryRecord->save();
 
                 Db::commit();
 
