@@ -505,4 +505,16 @@ return [
 
     // Lottery Ticket
     'lottery_activity_not_found' => 'Activity not found or access denied',
+
+    // Ticket System
+    'ticket_redeem_success' => 'Ticket redeemed successfully',
+    'ticket_redeem_failed' => 'Ticket redemption failed',
+    'ticket_order_id_empty' => 'Order ID cannot be empty',
+    'ticket_processing' => 'This QR code is being processed, please try again later',
+    'ticket_not_found' => 'Ticket record not found',
+    'ticket_already_used' => 'This ticket has already been used or expired',
+    'ticket_bound_other_player' => 'This ticket is bound to another player',
+    'ticket_open_score_success' => 'Score added successfully',
+    'ticket_open_score_failed' => 'Failed to add score',
+    'ticket_scan_success' => 'QR code scanned and score added successfully',
 ];

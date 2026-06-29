@@ -506,4 +506,16 @@ return [
 
     // 摸獎券相關
     'lottery_activity_not_found' => '活動不存在或無權訪問',
+
+    // 出票系統相關
+    'ticket_redeem_success' => '出票成功',
+    'ticket_redeem_failed' => '出票失敗',
+    'ticket_order_id_empty' => '訂單號不能為空',
+    'ticket_processing' => '該二維碼正在處理中，請稍後再試',
+    'ticket_not_found' => '開分記錄不存在',
+    'ticket_already_used' => '此開分碼已使用或已失效',
+    'ticket_bound_other_player' => '此開分碼已綁定其他玩家',
+    'ticket_open_score_success' => '上分成功',
+    'ticket_open_score_failed' => '上分失敗',
+    'ticket_scan_success' => '掃碼開分成功',
 ];

@@ -225,7 +225,7 @@ class TicketController
         // ✅ 事务提交后更新爆机状态
         WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
 
-        return jsonSuccessResponse('出票成功', [
+        return jsonSuccessResponse(trans('ticket_redeem_success', [], 'message'), [
             'order_id' => $orderId,
             'encrypted_content' => $orderId,
             'score' => $washAmount,
@@ -247,7 +247,7 @@ class TicketController
 
         $orderId = $request->post('order_id', '');
         if (empty($orderId)) {
-            return jsonFailResponse('订单号不能为空');
+            return jsonFailResponse(trans('ticket_order_id_empty', [], 'message'));
         }
 
         try {
@@ -267,7 +267,7 @@ class TicketController
                     'order_id' => $orderId,
                     'lock_key' => $lockKey,
                 ]);
-                return jsonFailResponse('该二维码正在处理中，请稍后再试');
+                return jsonFailResponse(trans('ticket_processing', [], 'message'));
             }
 
             try {
@@ -279,7 +279,7 @@ class TicketController
                         'player_id' => $player->id,
                         'order_id' => $orderId,
                     ]);
-                    return jsonFailResponse('开分记录不存在');
+                    return jsonFailResponse(trans('ticket_not_found', [], 'message'));
                 }
 
                 // 验证状态（已打印或待核销状态才能扫码）
@@ -288,10 +288,10 @@ class TicketController
                         'player_id' => $player->id,
                         'order_id' => $orderId,
                         'ticket_status' => $ticket->status,
-                        'expected_status' => 'STATUS_PRINTED or STATUS_PENDING',
+                        'expected_status' => 'STATUS_NORMAL',
                         'status_name' => $ticket->status_name ?? 'unknown',
                     ]);
-                    return jsonFailResponse('此开分码已使用或已失效');
+                    return jsonFailResponse(trans('ticket_already_used', [], 'message'));
                 }
 
                 // 验证玩家绑定关系
@@ -303,7 +303,7 @@ class TicketController
                         'ticket_player_id' => $ticket->player_id,
                         'order_id' => $orderId,
                     ]);
-                    return jsonFailResponse('此开分码已绑定其他玩家');
+                    return jsonFailResponse(trans('ticket_bound_other_player', [], 'message'));
                 }
 
                 Db::beginTransaction();
@@ -344,7 +344,7 @@ class TicketController
                 // 检查上分是否成功
                 if (!isset($incrementResult['ok']) || $incrementResult['ok'] != 1) {
                     Db::rollBack();
-                    return jsonFailResponse('上分失败');
+                    return jsonFailResponse(trans('ticket_open_score_failed', [], 'message'));
                 }
 
                 $currentBalance = $incrementResult['balance'];
@@ -387,7 +387,7 @@ class TicketController
                     'current_balance' => $currentBalance,
                 ]);
 
-                return jsonSuccessResponse('上分成功', [
+                return jsonSuccessResponse(trans('ticket_open_score_success', [], 'message'), [
                     'order_id' => $ticket->order_id,
                     'score' => $score,
                     'balance' => $currentBalance,
@@ -421,7 +421,7 @@ class TicketController
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            return jsonFailResponse('上分失败: ' . $e->getMessage());
+            return jsonFailResponse(trans('ticket_open_score_failed', [], 'message') . ': ' . $e->getMessage());
         }
     }
 

@@ -502,4 +502,16 @@ return [
 
     // 抽選券関連
     'lottery_activity_not_found' => 'アクティビティが見つからないか、アクセス権限がありません',
+
+    // チケットシステム関連
+    'ticket_redeem_success' => 'チケット交換成功',
+    'ticket_redeem_failed' => 'チケット交換失敗',
+    'ticket_order_id_empty' => '注文IDは空にできません',
+    'ticket_processing' => 'このQRコードは処理中です。後でもう一度お試しください',
+    'ticket_not_found' => 'チケット記録が見つかりません',
+    'ticket_already_used' => 'このチケットは既に使用されているか、期限切れです',
+    'ticket_bound_other_player' => 'このチケットは他のプレイヤーにバインドされています',
+    'ticket_open_score_success' => 'スコア追加成功',
+    'ticket_open_score_failed' => 'スコア追加失敗',
+    'ticket_scan_success' => 'QRコードスキャン成功',
 ];

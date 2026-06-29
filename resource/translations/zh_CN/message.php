@@ -516,4 +516,16 @@ return [
 
     // 摸奖券相关
     'lottery_activity_not_found' => '活动不存在或无权访问',
+
+    // 出票系统相关
+    'ticket_redeem_success' => '出票成功',
+    'ticket_redeem_failed' => '出票失败',
+    'ticket_order_id_empty' => '订单号不能为空',
+    'ticket_processing' => '该二维码正在处理中，请稍后再试',
+    'ticket_not_found' => '开分记录不存在',
+    'ticket_already_used' => '此开分码已使用或已失效',
+    'ticket_bound_other_player' => '此开分码已绑定其他玩家',
+    'ticket_open_score_success' => '上分成功',
+    'ticket_open_score_failed' => '上分失败',
+    'ticket_scan_success' => '扫码开分成功',
 ];
