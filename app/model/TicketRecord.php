@@ -113,10 +113,11 @@ class TicketRecord extends Model
 
     /**
      * 生成订单号
+     * 格式：TK + 6位日期(YYMMDD) + 6位时间(HHMMSS) + 2位随机数 = 16字符
      */
     public static function generateOrderId(): string
     {
-        return 'TK' . date('YmdHis') . str_pad((string) mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
+        return 'TK' . date('ymdHis') . str_pad((string) mt_rand(1, 99), 2, '0', STR_PAD_LEFT);
     }
 
     /**

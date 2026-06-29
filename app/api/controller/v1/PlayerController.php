@@ -141,6 +141,12 @@ class PlayerController
         // 获取店家配置
         $storeSettings = $this->getStoreSettings($player);
 
+        // 获取店家名称
+        $storeName = '';
+        if ($player->storeAdmin) {
+            $storeName = $player->storeAdmin->nickname ?? $player->storeAdmin->username ?? '';
+        }
+
         // 计算有效摸奖券数量（使用缓存优化）
         $cacheKey = "player:{$player->id}:valid_ticket_count";
         $validLotteryTicketCount = Cache::get($cacheKey);
@@ -221,6 +227,7 @@ class PlayerController
             'status_offline_open' => $player->status_offline_open,
             'status_game_platform' => $player->status_game_platform,
             'wash_point_config' => self::getWashPointConfig($player->store_admin_id),
+            'store_name' => $storeName, // 店家名称
             'store_settings' => $storeSettings, // 店家配置
             'vip_info' => [
                 'vip_level_id' => $player->vip_level_id ?? 0,
