@@ -108,31 +108,29 @@ class TicketController
         $orderId = TicketRecord::generateOrderId();
         $qrCodeNo = TicketRecord::generateQrCodeNo();
 
-        // 生成加密串（只加密 order_id 以缩短二维码长度）
-        $encryptedContent = $this->encrypt($orderId);
-        if ($encryptedContent === false) {
-            // 加密失败，回退已扣除的余额
-            WalletService::atomicIncrement($player->id, $washAmount);
-            return jsonFailResponse('加密失败');
-        }
-
         // 开始事务处理
         DB::beginTransaction();
         try {
             // 创建出票记录
+            // 获取店家名称
+            $storeName = '';
+            if ($player->storeAdmin) {
+                $storeName = $player->storeAdmin->nickname ?? $player->storeAdmin->username ?? '';
+            }
+
             $ticket = TicketRecord::create([
                 'order_id' => $orderId,
                 'department_id' => $player->department_id ?? 0,
                 'store_admin_id' => $player->store_admin_id ?? 0,
-                'store_name' => '',
+                'store_name' => $storeName,
                 'machine_no' => 0,
                 'machine_id' => 0,
                 'player_id' => $player->id,
                 'player_name' => $player->name ?? '',
                 'score' => $washAmount,
-                'qr_code' => $encryptedContent,
+                'qr_code' => $orderId,
                 'qr_code_no' => $qrCodeNo,
-                'encrypted_content' => $encryptedContent,
+                'encrypted_content' => $orderId,
                 'ticket_type' => TicketRecord::TYPE_WITHDRAW,
                 'status' => TicketRecord::STATUS_PRINTED,
                 'print_count' => 0,
@@ -228,8 +226,10 @@ class TicketController
         WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
 
         return jsonSuccessResponse('出票成功', [
-            'encrypted_content' => $encryptedContent,
+            'order_id' => $orderId,
+            'encrypted_content' => $orderId,
             'score' => $washAmount,
+            'store_name' => $storeName,
         ]);
     }
 
@@ -245,36 +245,13 @@ class TicketController
     {
         $player = checkPlayer();
 
-        $encryptedContent = $request->post('encrypted_content', '');
-        if (empty($encryptedContent)) {
-            return jsonFailResponse('加密内容不能为空');
+        $orderId = $request->post('order_id', '');
+        if (empty($orderId)) {
+            return jsonFailResponse('订单号不能为空');
         }
 
         try {
-            // 🔍 解密前记录日志（截断显示，保护安全）
-            Log::info('scanOpenScore: 开始解密', [
-                'player_id' => $player->id,
-                'encrypted_length' => strlen($encryptedContent),
-                'encrypted_preview' => substr($encryptedContent, 0, 20) . '...',
-            ]);
-
-            // 解密内容（新格式：直接是 order_id）
-            $orderId = $this->decrypt($encryptedContent);
-
-            // 🔍 解密结果详细日志
-            if (empty($orderId)) {
-                Log::warning('scanOpenScore: 解密失败', [
-                    'player_id' => $player->id,
-                    'encrypted_length' => strlen($encryptedContent),
-                    'encrypted_preview' => substr($encryptedContent, 0, 50) . '...',
-                    'openssl_error' => openssl_error_string(),
-                    'key_config' => substr(config('app.key', ''), 0, 10) . '...',
-                ]);
-                return jsonFailResponse('解密失败，无效的开分码');
-            }
-
-            // 🔍 解密成功
-            Log::info('scanOpenScore: 解密成功', [
+            Log::info('scanOpenScore: 开始处理', [
                 'player_id' => $player->id,
                 'order_id' => $orderId,
             ]);
@@ -305,26 +282,28 @@ class TicketController
                     return jsonFailResponse('开分记录不存在');
                 }
 
-                // 验证 player_id（安全检查）
-                if ((int)$ticket->player_id !== (int)$player->id) {
-                    Log::warning('scanOpenScore: player_id 不匹配', [
-                        'current_player_id' => $player->id,
-                        'ticket_player_id' => $ticket->player_id,
-                        'order_id' => $orderId,
-                    ]);
-                    return jsonFailResponse('此开分码不属于当前玩家');
-                }
-
-                // 验证状态
-                if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
+                // 验证状态（已打印或待核销状态才能扫码）
+                if ((int)$ticket->status !== TicketRecord::STATUS_PRINTED && (int)$ticket->status !== TicketRecord::STATUS_PENDING) {
                     Log::warning('scanOpenScore: 出票状态异常', [
                         'player_id' => $player->id,
                         'order_id' => $orderId,
                         'ticket_status' => $ticket->status,
-                        'expected_status' => TicketRecord::STATUS_NORMAL,
+                        'expected_status' => 'STATUS_PRINTED or STATUS_PENDING',
                         'status_name' => $ticket->status_name ?? 'unknown',
                     ]);
                     return jsonFailResponse('此开分码已使用或已失效');
+                }
+
+                // 验证玩家绑定关系
+                // player_id = 0: 未绑定，任何人都能扫码
+                // player_id > 0: 已绑定，只有绑定玩家能扫码
+                if ((int)$ticket->player_id > 0 && (int)$ticket->player_id !== (int)$player->id) {
+                    Log::warning('scanOpenScore: 玩家绑定验证失败', [
+                        'current_player_id' => $player->id,
+                        'ticket_player_id' => $ticket->player_id,
+                        'order_id' => $orderId,
+                    ]);
+                    return jsonFailResponse('此开分码已绑定其他玩家');
                 }
 
                 Db::beginTransaction();
@@ -493,95 +472,6 @@ class TicketController
             'page_size' => $pageSize,
             'records' => $records,
         ]);
-    }
-
-    /**
-     * AES-256-CBC 加密
-     *
-     * @param string $value
-     * @return string|false
-     */
-    protected function encrypt(string $value): string|false
-    {
-        $key = config('app.key', '');
-        if (empty($key)) {
-            throw new BusinessException('加密密钥未配置');
-        }
-
-        // 处理 base64: 前缀的密钥
-        if (str_starts_with($key, 'base64:')) {
-            $key = base64_decode(substr($key, 7));
-        }
-
-        $key = substr($key, 0, 32);
-        // 使用 md5(key) 前16字节作为 IV（与gk_admin一致）
-        $iv = substr(md5($key), 0, 16);
-
-        $encrypted = openssl_encrypt($value, 'AES-256-CBC', $key, 0, $iv);
-        if ($encrypted === false) {
-            return false;
-        }
-
-        return base64_encode($iv . $encrypted);
-    }
-
-    /**
-     * AES-256-CBC 解密
-     *
-     * @param string $value
-     * @return string|false
-     */
-    protected function decrypt(string $value): string|false
-    {
-        $key = config('app.key', '');
-        if (empty($key)) {
-            Log::error('decrypt: 加密密钥未配置');
-            throw new BusinessException('加密密钥未配置');
-        }
-
-        // 处理 base64: 前缀的密钥
-        if (str_starts_with($key, 'base64:')) {
-            $key = base64_decode(substr($key, 7));
-        }
-
-        $key = substr($key, 0, 32);
-        $decoded = base64_decode($value, true);
-
-        // 🔍 Base64 解码检查
-        if ($decoded === false) {
-            Log::warning('decrypt: Base64解码失败', [
-                'input_length' => strlen($value),
-                'input_preview' => substr($value, 0, 30) . '...',
-            ]);
-            return false;
-        }
-
-        if (strlen($decoded) < 16) {
-            Log::warning('decrypt: 解码后数据长度不足', [
-                'decoded_length' => strlen($decoded),
-                'min_required' => 16,
-                'input_length' => strlen($value),
-            ]);
-            return false;
-        }
-
-        $iv = substr($decoded, 0, 16);
-        $encrypted = substr($decoded, 16);
-
-        $result = openssl_decrypt($encrypted, 'AES-256-CBC', $key, 0, $iv);
-
-        // 🔍 OpenSSL 解密结果检查
-        if ($result === false) {
-            Log::warning('decrypt: OpenSSL解密失败', [
-                'openssl_error' => openssl_error_string(),
-                'decoded_length' => strlen($decoded),
-                'iv_length' => strlen($iv),
-                'encrypted_length' => strlen($encrypted),
-                'key_length' => strlen($key),
-            ]);
-        }
-
-        return $result;
     }
 
     /**
