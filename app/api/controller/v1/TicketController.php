@@ -132,7 +132,7 @@ class TicketController
                 'qr_code_no' => $qrCodeNo,
                 'encrypted_content' => $orderId,
                 'ticket_type' => TicketRecord::TYPE_WITHDRAW,
-                'status' => TicketRecord::STATUS_PRINTED,
+                'status' => TicketRecord::STATUS_NORMAL,
                 'print_count' => 0,
             ]);
 
@@ -283,7 +283,7 @@ class TicketController
                 }
 
                 // 验证状态（已打印或待核销状态才能扫码）
-                if ((int)$ticket->status !== TicketRecord::STATUS_PRINTED && (int)$ticket->status !== TicketRecord::STATUS_PENDING) {
+                if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
                     Log::warning('scanOpenScore: 出票状态异常', [
                         'player_id' => $player->id,
                         'order_id' => $orderId,

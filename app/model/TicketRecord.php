@@ -80,7 +80,6 @@ class TicketRecord extends Model
         return match ($this->status) {
             self::STATUS_DISABLED => '禁用',
             self::STATUS_NORMAL => '正常',
-            self::STATUS_PRINTED => '已打印',
             self::STATUS_USED => '已使用',
             self::STATUS_PENDING => '待核销',
             default => '未知',
