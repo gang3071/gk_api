@@ -738,26 +738,26 @@ class MachineController
                 case 'reward_switch': // 看表
                     if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
                         $services->sendCmd($services::REWARD_SWITCH . $services::REWARD_SWITCH_OPT, 0, 'player',
-                            $player->id, 1);
+                            $player->id);
                     } else {
-                        $services->sendCmd($services::REWARD_SWITCH, 0, 'player', $player->id, 1);
+                        $services->sendCmd($services::REWARD_SWITCH, 0, 'player', $player->id);
                     }
                     break;
                 case 'plc_start_or_stop': // 自动开始/暂停
-                    $services->sendCmd($services::AUTO_UP_TURN, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::AUTO_UP_TURN, 0, 'player', $player->id);
                     break;
                 case 'plc_push_5hz': // push auto
                     if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        $services->sendCmd($services::PUSH . $services::PUSH_THREE, 0, 'player', $player->id, 1);
+                        $services->sendCmd($services::PUSH . $services::PUSH_THREE, 0, 'player', $player->id);
                     } else {
-                        $services->sendCmd($services::PUSH_THREE, 0, 'player', $player->id, 1);
+                        $services->sendCmd($services::PUSH_THREE, 0, 'player', $player->id);
                     }
                     break;
                 case 'plc_push_stop': // push stop
                     if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        $services->sendCmd($services::PUSH . $services::PUSH_STOP, 0, 'player', $player->id, 1);
+                        $services->sendCmd($services::PUSH . $services::PUSH_STOP, 0, 'player', $player->id);
                     } else {
-                        $services->sendCmd($services::PUSH_ONE, 0, 'player', $player->id, 1);
+                        $services->sendCmd($services::PUSH_ONE, 0, 'player', $player->id);
                     }
                     break;
                 case 'plc_down_turn': // 下转
@@ -771,7 +771,7 @@ class MachineController
                                 'message'));
                         }
                     }
-                    $services->sendCmd($services::TURN_TO_POINT, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::TURN_TO_POINT, 0, 'player', $player->id);
                     break;
                 case 'all_down_turn': // 下转all
                     if ($services->reward_status == 1) {
@@ -784,7 +784,7 @@ class MachineController
                                 'message'));
                         }
                     }
-                    $services->sendCmd($services::TURN_DOWN_ALL, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::TURN_DOWN_ALL, 0, 'player', $player->id);
                     break;
                 case 'plc_up_turn_100':// 上转
                     if ($services->reward_status == 1) {
@@ -794,7 +794,7 @@ class MachineController
                     if ($services->point <= 0) {
                         return jsonFailResponse(trans('point_zero_not_up', [], 'message'));
                     }
-                    $services->sendCmd($services::POINT_TO_TURN, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::POINT_TO_TURN, 0, 'player', $player->id);
                     break;
                 case 'all_up_turn': // 上转all
                     if ($services->reward_status == 1) {
@@ -804,7 +804,7 @@ class MachineController
                     if ($services->point <= 0) {
                         return jsonFailResponse(trans('point_zero_not_up', [], 'message'));
                     }
-                    $services->sendCmd($services::TURN_UP_ALL, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::TURN_UP_ALL, 0, 'player', $player->id);
                     break;
                 case 'leave': // 下分弃台
                 case 'down': // 下分
@@ -1004,12 +1004,12 @@ class MachineController
                         return jsonFailResponse(trans('slot_machine_must_stop_auto', [], 'message'));
                     }
                     if ($services->move_point == 0 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        $services->sendCmd($services::MOVE_POINT_ON, 0, 'player', $player->id, 1);
+                        $services->sendCmd($services::MOVE_POINT_ON, 0, 'player', $player->id);
                     }
                     if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        $services->sendCmd($services::PRESSURE, 0, 'player', $player->id, 1);
+                        $services->sendCmd($services::PRESSURE, 0, 'player', $player->id);
                     }
-                    $services->sendCmd($services::START, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::START, 0, 'player', $player->id);
                     break;
                 case 'auto':
                     if ($machine->gaming_user_id == 0) {
@@ -1019,7 +1019,7 @@ class MachineController
                         return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
                     }
                     if ($services->move_point == 0 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        $services->sendCmd($services::MOVE_POINT_ON, 0, 'player', $player->id, 1);
+                        $services->sendCmd($services::MOVE_POINT_ON, 0, 'player', $player->id);
                     }
                     if ($machine->is_special == 1) {
                         $actionLockerKey = 'machine_special' . $machine->id;
@@ -1028,7 +1028,7 @@ class MachineController
                             throw new Exception(trans('busy_operations', [], 'message'));
                         }
                     }
-                    $services->sendCmd($services::OUT_ON, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::OUT_ON, 0, 'player', $player->id);
                     break;
                 case 'stop_auto':
                     if ($machine->gaming_user_id == 0) {
@@ -1044,16 +1044,16 @@ class MachineController
                             throw new Exception(trans('busy_operations', [], 'message'));
                         }
                     }
-                    $services->sendCmd($services::OUT_OFF, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::OUT_OFF, 0, 'player', $player->id);
                     break;
                 case 'out_1_pulse':
                     if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
                         return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
                     }
                     if ($machine->control_type == Machine::CONTROL_TYPE_SONG) {
-                        $services->sendCmd($services::REWARD_SWITCH, 0, 'player', $player->id, 1);
+                        $services->sendCmd($services::REWARD_SWITCH, 0, 'player', $player->id);
                     } else {
-                        $services->sendCmd($services::OUTPUT . $services::U1_PULSE, 0, 'player', $player->id, 1);
+                        $services->sendCmd($services::OUTPUT . $services::U1_PULSE, 0, 'player', $player->id);
                     }
                     break;
                 case 'stop_1':
@@ -1066,7 +1066,7 @@ class MachineController
                     if ($services->auto == 1 && $machine->is_special == 1) {
                         return jsonFailResponse(trans('slot_machine_must_stop_auto', [], 'message'));
                     }
-                    $services->sendCmd($services::STOP_ONE, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::STOP_ONE, 0, 'player', $player->id);
                     break;
                 case 'stop_2':
                     if ($machine->gaming_user_id == 0) {
@@ -1078,7 +1078,7 @@ class MachineController
                     if ($services->auto == 1 && $machine->is_special == 1) {
                         return jsonFailResponse(trans('slot_machine_must_stop_auto', [], 'message'));
                     }
-                    $services->sendCmd($services::STOP_TWO, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::STOP_TWO, 0, 'player', $player->id);
                     break;
                 case 'stop_3':
                     if ($machine->gaming_user_id == 0) {
@@ -1090,7 +1090,7 @@ class MachineController
                     if ($services->auto == 1 && $machine->is_special == 1) {
                         return jsonFailResponse(trans('slot_machine_must_stop_auto', [], 'message'));
                     }
-                    $services->sendCmd($services::STOP_THREE, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::STOP_THREE, 0, 'player', $player->id);
                     break;
                 case 'pressure_score':
                     if ($machine->gaming_user_id == 0) {
@@ -1108,8 +1108,8 @@ class MachineController
                         ->selectRaw('sum(pressure) as total_pressure,sum(score) as total_score')
                         ->first()
                         ->toArray();
-                    $services->sendCmd($services::READ_BET, 0, 'player', $player->id, 1);
-                    $services->sendCmd($services::READ_WIN, 0, 'player', $player->id, 1);
+                    $services->sendCmd($services::READ_BET, 0, 'player', $player->id);
+                    $services->sendCmd($services::READ_WIN, 0, 'player', $player->id);
                     // 玩家当局游戏压分
                     $gamingPressure = $services->bet - $services->player_pressure + (!empty($playerGameLog['total_pressure']) ? $playerGameLog['total_pressure'] : 0);
                     if ($gamingPressure <= 0 || $machine->gaming_user_id == 0) {
