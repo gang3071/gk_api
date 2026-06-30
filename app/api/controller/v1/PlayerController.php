@@ -503,7 +503,7 @@ class PlayerController
                 'game_id' => $item->game_id,
                 'machine_id' => $item->machine_id,
                 'machine_name' => $item->machine->name,
-                'type' => $item->machine_id,
+                'type' => $item->type,
                 'open_point' => $item->open_point,
                 'wash_point' => $item->wash_point,
                 'open_amount' => $item->open_amount,
