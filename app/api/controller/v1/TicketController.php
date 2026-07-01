@@ -393,6 +393,9 @@ class TicketController
                     'current_balance' => $currentBalance,
                 ]);
 
+                // ✅ 事务提交后更新爆机状态
+                \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $playerDeliveryRecord->amount_after, $playerDeliveryRecord->amount_before);
+
                 return jsonSuccessResponse(trans('ticket_open_score_success', [], 'message'), [
                     'order_id' => $ticket->order_id,
                     'score' => $score,
@@ -402,8 +405,7 @@ class TicketController
             } finally {
                 // 🔓 释放锁
                 \support\Redis::del($lockKey);
-                // ✅ 事务提交后更新爆机状态
-                \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $playerDeliveryRecord->amount_after, $playerDeliveryRecord->amount_before);
+
                 // ✅ 事务提交后更新爆机状态
                 Log::info('scanOpenScore: 锁已释放', [
                     'order_id' => $orderId,
