@@ -4,7 +4,6 @@ namespace app\api\controller\v1;
 
 use app\exception\GameException;
 use app\exception\PlayerCheckException;
-use app\model\AdminConfig;
 use app\model\ChannelPlatformReverseWater;
 use app\model\Game;
 use app\model\GameContent;
@@ -341,33 +340,6 @@ class GamePlatformController
                     $platform->picture = json_decode($platform->picture, true)[$lang]['picture'] ?? '';
                     $livePlatforms->push($platform);
                 }
-            }
-        }
-
-        // 根据 enable_physical_machine 配置添加实体机台平台到电子游戏平台列表
-        if ($player->status_game_platform == 1) {
-            $enablePhysicalMachine = $this->checkEnablePhysicalMachine($player);
-
-            if ($enablePhysicalMachine) {
-                // 获取 web_name 和 web_logo
-                $webName = AdminConfig::query()->where('name', 'web_name')->value('value') ?? '实体机台';
-                $webLogo = AdminConfig::query()->where('name', 'web_logo')->value('value') ?? '';
-
-                // 创建虚拟的实体机台平台对象（使用 stdClass 避免 fillable 问题）
-                $physicalMachinePlatform = (object)[
-                    'id' => 9999, // 使用一个特殊的ID，避免与真实平台冲突
-                    'code' => 'physical_machine',
-                    'name' => $webName,
-                    'logo' => $webLogo,
-                    'cate_id' => json_encode([GameType::CATE_COMPUTER_GAME]),
-                    'picture' => '',
-                    'display_mode' => GamePlatform::DISPLAY_MODE_PORTRAIT, // 实体机台支持全部展示模式
-                    'has_lobby' => 1, // 实体机台不进入大厅
-                    'is_maintenance' => 0, // 实体机台不维护
-                ];
-
-                // 添加到电子游戏平台列表开头
-                $electronPlatforms->prepend($physicalMachinePlatform);
             }
         }
 
