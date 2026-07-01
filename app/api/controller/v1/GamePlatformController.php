@@ -210,7 +210,8 @@ class GamePlatformController
                     'platform_id' => $game->platform_id,
                     'is_maintenance' => $game->gamePlatform->is_maintenance ?? 0,
                     'game_content' => $content,
-                    'enable_big_picture' => $game->enable_big_picture
+                    'enable_big_picture' => $game->enable_big_picture,
+                    'code' => $game->gamePlatform->code
                 ];
             }
             $enterGameRecord = PlayerEnterGameRecord::query()
