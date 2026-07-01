@@ -184,7 +184,12 @@ function checkMachineCrash(Player $player): array
 
         if ($cached !== null && $cached !== false) {
             // 缓存命中，解析缓存数据
-            return json_decode($cached, true);
+            $result = json_decode($cached, true);
+            Log::info('checkMachineCrash: 缓存命中', [
+                'player_id' => $player->id,
+                'result' => $result,
+            ]);
+            return $result;
         }
     } catch (\Exception $e) {
         // Redis 故障时降级到数据库查询
@@ -198,14 +203,7 @@ function checkMachineCrash(Player $player): array
     // ✅ Redis 作为余额的"唯一实时标准"
     $currentAmount = \app\service\WalletService::getBalance($player->id);
 
-    // 仅从数据库读取爆机状态标记
-    $wallet = PlayerPlatformCash::where('player_id', $player->id)
-        ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
-        ->first(['is_crashed']);
-
-    $isCrashed = $wallet && $wallet->is_crashed == 1;
-
-    // 获取爆机金额配置（用于返回信息）
+    // 获取爆机金额配置
     $crashAmount = null;
     $adminUserId = $player->store_admin_id ?? null;
 
@@ -219,15 +217,48 @@ function checkMachineCrash(Player $player): array
         $crashAmount = ($crashSetting && $crashSetting->status == 1) ? ($crashSetting->num ?? 0) : null;
     }
 
+    // ✅ 关键修复: 实时判断余额是否超过暴机金额，而不是依赖数据库字段
+    // 这样即使数据库字段没有正确更新，也能正确判断暴机状态
+    $isCrashed = false;
+    if ($crashAmount !== null && $crashAmount > 0) {
+        $isCrashed = $currentAmount >= $crashAmount;
+    }
+
+    // 同时检查数据库字段（用于兼容其他逻辑）
+    $wallet = PlayerPlatformCash::where('player_id', $player->id)
+        ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
+        ->first(['is_crashed']);
+
+    $dbIsCrashed = $wallet && $wallet->is_crashed == 1;
+
+    // 如果实时判断和数据库不一致，记录日志
+    if ($isCrashed !== $dbIsCrashed) {
+        Log::warning('checkMachineCrash: 实时判断与数据库不一致', [
+            'player_id' => $player->id,
+            'current_amount' => $currentAmount,
+            'crash_amount' => $crashAmount,
+            'realtime_is_crashed' => $isCrashed,
+            'db_is_crashed' => $dbIsCrashed,
+        ]);
+    }
+
     $result = [
-        'crashed' => $isCrashed,
+        'crashed' => $isCrashed,  // 使用实时判断结果
         'crash_amount' => $crashAmount,
         'current_amount' => $currentAmount,
     ];
 
+    Log::info('checkMachineCrash: 检查结果', [
+        'player_id' => $player->id,
+        'current_amount' => $currentAmount,
+        'crash_amount' => $crashAmount,
+        'is_crashed' => $isCrashed,
+        'db_is_crashed' => $dbIsCrashed,
+    ]);
+
     // 🚀 优化 #2: 根据爆机状态设置不同的缓存过期时间
     try {
-        $ttl = $isCrashed ? 3600 : 600;  // 爆机1小时，未爆机10分钟
+        $ttl = $isCrashed ? 60 : 600;  // 爆机1分钟（便于快速恢复），未爆机10分钟
         \support\Redis::setex($cacheKey, $ttl, json_encode($result));
     } catch (\Exception $e) {
         // 缓存写入失败不影响业务

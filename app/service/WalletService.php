@@ -564,7 +564,7 @@ class WalletService
             }
 
             // 检查爆机状态变化
-            $wasCrashed = $previousBalance !== null ? $previousBalance >= $crashAmount : false;
+            $wasCrashed = $previousBalance !== null && $previousBalance >= $crashAmount;
             $isCrashed = $currentBalance >= $crashAmount;
 
             \support\Log::info('WalletService: checkMachineCrash 状态判断', [
@@ -577,8 +577,43 @@ class WalletService
                 'status_changed' => $wasCrashed !== $isCrashed,
             ]);
 
-            // 状态没有变化，不处理
+            // 检查数据库的 is_crashed 字段是否正确
+            $dbWallet = \support\Db::table('player_platform_cash')
+                ->where('player_id', $playerId)
+                ->where('platform_id', 1)
+                ->first(['is_crashed']);
+
+            $dbIsCrashed = $dbWallet && $dbWallet->is_crashed == 1;
+
+            \support\Log::info('WalletService: checkMachineCrash 数据库状态', [
+                'player_id' => $playerId,
+                'db_is_crashed' => $dbIsCrashed,
+                'realtime_is_crashed' => $isCrashed,
+                'need_fix' => $dbIsCrashed !== $isCrashed,
+            ]);
+
+            // 状态没有变化，但需要检查数据库是否正确
             if ($wasCrashed === $isCrashed) {
+                // 如果数据库状态不正确，修复它
+                if ($dbIsCrashed !== $isCrashed) {
+                    \support\Log::warning('WalletService: checkMachineCrash 修复数据库状态', [
+                        'player_id' => $playerId,
+                        'db_is_crashed' => $dbIsCrashed,
+                        'correct_is_crashed' => $isCrashed,
+                    ]);
+
+                    $updateResult = \support\Db::table('player_platform_cash')
+                        ->where('player_id', $playerId)
+                        ->where('platform_id', 1)
+                        ->update(['is_crashed' => $isCrashed ? 1 : 0]);
+
+                    clearMachineCrashCache($playerId);
+
+                    \support\Log::info('WalletService: checkMachineCrash 数据库修复完成', [
+                        'player_id' => $playerId,
+                        'update_result' => $updateResult,
+                    ]);
+                }
                 return;
             }
 
