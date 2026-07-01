@@ -256,6 +256,12 @@ class TicketController
                 'order_id' => $orderId,
             ]);
 
+            // 爆机检查：玩家不能开分
+            $crashCheck = checkMachineCrash($player);
+            if ($crashCheck['crashed']) {
+                return jsonFailResponse(trans('machine_crashed_cannot_open_score', [], 'message'));
+            }
+
             // 🔒 获取分布式锁，防止同一二维码被并发处理
             $lockKey = 'ticket:scan_lock:' . $orderId;
             $lockTtl = 10; // 锁超时时间（秒）
