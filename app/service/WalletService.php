@@ -505,15 +505,28 @@ class WalletService
     public static function checkMachineCrashAfterTransaction(int $playerId, float $currentBalance, ?float $previousBalance = null): void
     {
         try {
+            \support\Log::info('WalletService: checkMachineCrash 开始检查', [
+                'player_id' => $playerId,
+                'current_balance' => $currentBalance,
+                'previous_balance' => $previousBalance,
+            ]);
+
             // 获取玩家信息
             $player = \app\model\Player::find($playerId);
             if (!$player) {
+                \support\Log::warning('WalletService: checkMachineCrash 玩家不存在', [
+                    'player_id' => $playerId,
+                ]);
                 return;
             }
 
             // 获取爆机配置
             $adminUserId = $player->store_admin_id ?? null;
             if (!$adminUserId) {
+                \support\Log::warning('WalletService: checkMachineCrash 玩家无store_admin_id', [
+                    'player_id' => $playerId,
+                    'store_admin_id' => $adminUserId,
+                ]);
                 return;
             }
 
@@ -524,13 +537,29 @@ class WalletService
                 $adminUserId
             );
 
+            \support\Log::info('WalletService: checkMachineCrash 获取爆机配置', [
+                'player_id' => $playerId,
+                'admin_user_id' => $adminUserId,
+                'department_id' => $player->department_id,
+                'crash_setting' => $crashSetting ? (array)$crashSetting : null,
+            ]);
+
             // 如果没有配置或配置被禁用，不处理
             if (!$crashSetting || $crashSetting->status != 1) {
+                \support\Log::info('WalletService: checkMachineCrash 爆机配置未启用或不存在', [
+                    'player_id' => $playerId,
+                    'setting_exists' => !!$crashSetting,
+                    'setting_status' => $crashSetting->status ?? null,
+                ]);
                 return;
             }
 
             $crashAmount = $crashSetting->num ?? 0;
             if ($crashAmount <= 0) {
+                \support\Log::info('WalletService: checkMachineCrash 爆机金额配置为0', [
+                    'player_id' => $playerId,
+                    'crash_amount' => $crashAmount,
+                ]);
                 return;
             }
 
@@ -538,16 +567,32 @@ class WalletService
             $wasCrashed = $previousBalance !== null ? $previousBalance >= $crashAmount : false;
             $isCrashed = $currentBalance >= $crashAmount;
 
+            \support\Log::info('WalletService: checkMachineCrash 状态判断', [
+                'player_id' => $playerId,
+                'current_balance' => $currentBalance,
+                'previous_balance' => $previousBalance,
+                'crash_amount' => $crashAmount,
+                'was_crashed' => $wasCrashed,
+                'is_crashed' => $isCrashed,
+                'status_changed' => $wasCrashed !== $isCrashed,
+            ]);
+
             // 状态没有变化，不处理
             if ($wasCrashed === $isCrashed) {
                 return;
             }
 
             // 更新爆机状态字段
-            \support\Db::table('player_platform_cash')
+            $updateResult = \support\Db::table('player_platform_cash')
                 ->where('player_id', $playerId)
                 ->where('platform_id', 1) // 实体机平台
                 ->update(['is_crashed' => $isCrashed ? 1 : 0]);
+
+            \support\Log::info('WalletService: checkMachineCrash 更新数据库', [
+                'player_id' => $playerId,
+                'is_crashed_value' => $isCrashed ? 1 : 0,
+                'update_result' => $updateResult,
+            ]);
 
             // 清除爆机状态缓存
             clearMachineCrashCache($playerId);
@@ -557,11 +602,18 @@ class WalletService
                 'old_status' => $wasCrashed ? '已爆机' : '未爆机',
                 'new_status' => $isCrashed ? '已爆机' : '未爆机',
                 'current_balance' => $currentBalance,
+                'previous_balance' => $previousBalance,
                 'crash_amount' => $crashAmount,
             ]);
 
             // 从未爆机变为爆机 -> 发送爆机通知
             if (!$wasCrashed && $isCrashed) {
+                \support\Log::info('WalletService: checkMachineCrash 触发爆机通知', [
+                    'player_id' => $playerId,
+                    'player_name' => $player->name ?? '',
+                    'current_balance' => $currentBalance,
+                    'crash_amount' => $crashAmount,
+                ]);
                 $crashInfo = [
                     'crashed' => true,
                     'crash_amount' => $crashAmount,
@@ -572,6 +624,13 @@ class WalletService
 
             // 从爆机变为未爆机 -> 发送解锁通知
             if ($wasCrashed && !$isCrashed) {
+                \support\Log::info('WalletService: checkMachineCrash 触发解锁通知', [
+                    'player_id' => $playerId,
+                    'player_name' => $player->name ?? '',
+                    'previous_balance' => $previousBalance,
+                    'current_balance' => $currentBalance,
+                    'crash_amount' => $crashAmount,
+                ]);
                 checkAndNotifyCrashUnlock($player, $previousBalance);
             }
         } catch (\Throwable $e) {
