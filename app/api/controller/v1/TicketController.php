@@ -355,9 +355,9 @@ class TicketController
 
                 $currentBalance = $incrementResult['balance'];
 
-                // 更新出票记录状态
+                // 更新出票记录状态（机台使用）
                 $ticket->update([
-                    'status' => TicketRecord::STATUS_USED,
+                    'status' => TicketRecord::STATUS_MACHINE_USED,
                     'scanned_at' => date('Y-m-d H:i:s'),
                     'scanned_by' => 'player_' . $player->id,
                 ]);

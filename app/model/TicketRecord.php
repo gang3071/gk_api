@@ -54,11 +54,10 @@ class TicketRecord extends Model
     const TYPE_WITHDRAW = 2;   // 洗分
 
     // 状态常量
-    const STATUS_DISABLED = 0;   // 禁用
-    const STATUS_NORMAL = 1;     // 正常
-    const STATUS_PRINTED = 2;    // 已打印
-    const STATUS_USED = 3;       // 已使用
-    const STATUS_PENDING = 4;    // 待核销
+    const STATUS_DISABLED = 0;       // 禁用
+    const STATUS_NORMAL = 1;         // 正常
+    const STATUS_BACKEND_USED = 2;   // 后台使用
+    const STATUS_MACHINE_USED = 3;   // 机台使用
 
     /**
      * 获取票据类型名称
@@ -80,8 +79,8 @@ class TicketRecord extends Model
         return match ($this->status) {
             self::STATUS_DISABLED => '禁用',
             self::STATUS_NORMAL => '正常',
-            self::STATUS_USED => '已使用',
-            self::STATUS_PENDING => '待核销',
+            self::STATUS_BACKEND_USED => '后台使用',
+            self::STATUS_MACHINE_USED => '机台使用',
             default => '未知',
         };
     }
