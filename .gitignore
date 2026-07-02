@@ -84,3 +84,4 @@ database_*.md
 被清理的配置表清单.md
 设备爆机功能实现总结.md
 需要修改的API控制器列表.md
+/.env.release
