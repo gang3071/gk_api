@@ -26,7 +26,7 @@ return [
 
     // GK Work 服务配置
     'gk_work' => [
-        'url' => env('GK_WORK_URL', 'http://127.0.0.1:8788'),
+        'url' => env('GK_WORK_API_URL', 'http://127.0.0.1:8788'),
     ],
 
     // 钱包服务配置
