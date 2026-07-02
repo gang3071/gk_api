@@ -3770,10 +3770,12 @@ class PlayerController
     {
         $player = checkPlayer();
         $data = $request->all();
+        $lang = $request->header('Lang') ?? 'zh_TW';
 
-        // 构建查询
+        // 构建查询 - 只查询 source 为 1（实体机台）和 2（电子游戏）
         $query = PlayerLotteryRecord::query()
             ->where('player_id', $player->id)
+            ->whereIn('source', [PlayerLotteryRecord::SOURCE_MACHINE, PlayerLotteryRecord::SOURCE_GAME])
             ->orderBy('id', 'desc');
 
         // 按状态筛选
@@ -3781,13 +3783,43 @@ class PlayerController
             $query->where('status', $data['status']);
         }
 
-        // 按来源筛选
+        // 按来源筛选（覆盖上面的默认筛选）
         if (isset($data['source']) && $data['source'] !== '') {
             $query->where('source', $data['source']);
         }
 
-        // 分页查询
-        $records = $query->forPage($data['page'] ?? 1, $data['size'] ?? 10)->get();
+        // 分页查询，预加载电子游戏记录
+        $records = $query->with(['play_game_record' => function ($q) {
+            $q->select('id', 'game_code');
+        }])->forPage($data['page'] ?? 1, $data['size'] ?? 10)->get();
+
+        // 收集 source=2 的 game_code，批量查询游戏名称（避免 N+1）
+        $gameCodes = [];
+        foreach ($records as $record) {
+            if ($record->source == PlayerLotteryRecord::SOURCE_GAME
+                && $record->play_game_record
+                && !empty($record->play_game_record->game_code)
+            ) {
+                $gameCodes[] = $record->play_game_record->game_code;
+            }
+        }
+        $gameCodes = array_unique($gameCodes);
+
+        // 批量查询游戏名称：game_code → game_extend.code → game.game_extend_id → game_content.game_id
+        $gameNameMap = [];
+        if (!empty($gameCodes)) {
+            $gameContents = \support\Db::table('game_extend')
+                ->join('game', 'game.game_extend_id', '=', 'game_extend.id')
+                ->join('game_content', 'game_content.game_id', '=', 'game.id')
+                ->whereIn('game_extend.code', $gameCodes)
+                ->where('game_content.lang', $lang)
+                ->select('game_extend.code', 'game_content.name')
+                ->get();
+
+            foreach ($gameContents as $item) {
+                $gameNameMap[$item->code] = $item->name;
+            }
+        }
 
         $list = [];
         foreach ($records as $record) {
@@ -3804,9 +3836,17 @@ class PlayerController
             $sourceText = match ($record->source) {
                 PlayerLotteryRecord::SOURCE_MACHINE => trans('lottery_source_machine', [], 'message'),
                 PlayerLotteryRecord::SOURCE_GAME => trans('lottery_source_game', [], 'message'),
-                PlayerLotteryRecord::SOURCE_MANUAL => trans('lottery_source_manual', [], 'message'),
                 default => trans('lottery_source_unknown', [], 'message'),
             };
+
+            // 获取游戏名称（仅 source=2 时有值）
+            $gameName = '';
+            if ($record->source == PlayerLotteryRecord::SOURCE_GAME
+                && $record->play_game_record
+                && !empty($record->play_game_record->game_code)
+            ) {
+                $gameName = $gameNameMap[$record->play_game_record->game_code] ?? '';
+            }
 
             $list[] = [
                 'id' => $record->id,
@@ -3824,6 +3864,7 @@ class PlayerController
                 'status_text' => $statusText,
                 'source' => $record->source,
                 'source_text' => $sourceText,
+                'game_name' => $gameName,
                 'reject_reason' => $record->reject_reason,
                 'audit_at' => $record->audit_at ? date('Y-m-d H:i:s', strtotime($record->audit_at)) : null,
                 'created_at' => $record->created_at ? date('Y-m-d H:i:s', strtotime($record->created_at)) : null,
