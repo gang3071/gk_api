@@ -115,7 +115,7 @@ class GamePlatformController
             ->toArray();
 
         $list = GamePlatform::query()
-            ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture', 'maintenance_week', 'maintenance_start_time', 'maintenance_end_time', 'maintenance_status'])
+            ->select(['id', 'code', 'name', 'logo', 'cate_id', 'picture', 'maintenance_week', 'maintenance_start_time', 'maintenance_end_time', 'maintenance_status', 'display_mode'])
             ->where('status', 1)
             ->whereIn('id', $allowedPlatformIds)
 
