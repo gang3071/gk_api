@@ -3168,6 +3168,14 @@ function machineWash(
         ]);
 
         // 执行下分操作（批量发送，优化：2次HTTP调用 → 1次）
+        Log::channel('machine_operations')->info('[MachineWash] 准备执行清零指令', [
+            'wash_id' => $washId,
+            'machine_id' => $machine->id,
+            'machine_type' => $machine->type,
+            'path' => $path,
+            'will_send_clear_commands' => true,
+        ]);
+
         $client = new MachineClient();
         switch ($machine->type) {
             case GameType::TYPE_STEEL_BALL:
