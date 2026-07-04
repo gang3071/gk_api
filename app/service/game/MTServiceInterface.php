@@ -64,6 +64,19 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
     }
 
     /**
+     * 获取MT平台唯一user_id（添加前缀避免全平台冲突）
+     *
+     * MT平台设计：user_id在所有代理商之间是全局唯一的
+     * 解决方案：添加system_code前缀确保唯一性
+     *
+     * @return string 格式：{system_code}_{player_uuid}
+     */
+    private function getMTUserId(): string
+    {
+        return $this->config['system_code'] . '_' . $this->player->uuid;
+    }
+
+    /**
      * 组装请求
      * @param string $url
      * @param array $params
@@ -118,7 +131,7 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         $params = [
             'system_code' => $this->config['system_code'],
             'web_id' => $this->getWebId(),
-            'user_id' => $this->player->uuid,
+            'user_id' => $this->getMTUserId(),
             'balance' => $data['amount'] ?? 0,
             'transfer_id' => $orderId
         ];
@@ -151,7 +164,7 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
             $playerGamePlatform->player_id = $this->player->id;
             $playerGamePlatform->platform_id = $this->platform->id;
             $playerGamePlatform->player_name = $this->player->name;
-            $playerGamePlatform->player_code = $this->player->uuid;
+            $playerGamePlatform->player_code = $this->getMTUserId();  // ✅ 保持与MT平台一致
             $playerGamePlatform->web_id = $this->getWebId();
             $playerGamePlatform->save();
         }
@@ -170,7 +183,7 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         $params = [
             'system_code' => $this->config['system_code'],
             'web_id' => $this->getWebId(),
-            'user_id' => $this->player->uuid,
+            'user_id' => $this->getMTUserId(),
             'user_name' => !empty($this->player->name) ? $this->player->name : $this->player->uuid,
             'currency' => $this->currency[$this->player->currency],
         ];
@@ -196,7 +209,7 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         $params = [
             'system_code' => $this->config['system_code'],
             'web_id' => $this->getWebId(),
-            'user_id' => $this->player->uuid,
+            'user_id' => $this->getMTUserId(),
             'language' => $this->lang[$data['lang']],
         ];
         $res = $this->doCurl($this->apiDomain . '/Player/GetURLToken', $params);
@@ -222,7 +235,7 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         $params = [
             'system_code' => $this->config['system_code'],
             'web_id' => $this->getWebId(),
-            'user_id' => $this->player->uuid,
+            'user_id' => $this->getMTUserId(),
             'balance' => !empty($data['amount']) ? (float)$data['amount'] : 0,
             'transfer_id' => $orderId
         ];
@@ -252,7 +265,7 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         $params = [
             'system_code' => $this->config['system_code'],
             'web_id' => $this->getWebId(),
-            'user_id' => $this->player->uuid,
+            'user_id' => $this->getMTUserId(),
         ];
         $res = $this->doCurl($this->apiDomain . '/Player/GetBalance', $params);
         if($res['code'] != '00000') {
@@ -378,7 +391,7 @@ class MTServiceInterface extends GameServiceFactory implements GameServiceInterf
         $params = [
             'system_code' => $this->config['system_code'],
             'web_id' => $this->getWebId(),
-            'user_id' => $this->player->uuid,
+            'user_id' => $this->getMTUserId(),
             'language' => $this->lang[$lang],
         ];
         $res = $this->doCurl($this->apiDomain . '/Player/GetURLToken', $params);
