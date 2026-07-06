@@ -239,7 +239,7 @@ class LotteryTicketController
 
             $progress = [
                 'bet_amount_required' => (float) $betProgress->bet_amount_required,
-                'current_bet_amount' => (float) $currentCycleBetAmount,  // ✅ 当前周期打码量（取模后）
+                'current_bet_amount' => (float) $betProgress->current_bet_amount,  // ✅ 当前周期打码量
                 'progress_percent' => (float) $currentCyclePercent,      // ✅ 当前周期进度百分比
                 'remaining_bet_amount' => (float) $currentCycleRemaining, // ✅ 当前周期剩余打码量
                 'cycles_completed' => $betProgress->cycles_completed,
@@ -763,7 +763,7 @@ class LotteryTicketController
             'player_id' => $betProgress->player_id,
             'vip_level_id' => $betProgress->vip_level_id,
             'bet_amount_required' => $betProgress->bet_amount_required,
-            'current_bet_amount' => $currentCycleBetAmount,       // ✅ 当前周期打码量（取模后）
+            'current_bet_amount' => $betProgress->current_bet_amount,       // ✅ 当前周期打码量
             'progress_percent' => $currentCyclePercent,            // ✅ 当前周期进度百分比
             'remaining_bet_amount' => $currentCycleRemaining,      // ✅ 当前周期剩余打码量
             'cycles_completed' => $betProgress->cycles_completed,
