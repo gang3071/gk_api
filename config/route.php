@@ -22,6 +22,8 @@ Route::group('/api', function () {
     Route::group('/v1', function () {
         // 玩家登录
         Route::post('/login', [\app\api\controller\v1\IndexController::class, 'login']);
+        // 获取离线推送通知
+        Route::post('/offline-notifications', [\app\api\controller\v1\IndexController::class, 'offlineNotifications']);
         // 刷新token
         Route::post('/refresh', [\app\api\controller\v1\IndexController::class, 'refreshToken']);
         // 注册接口
