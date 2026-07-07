@@ -131,12 +131,15 @@ class IndexController
             'token_is_array' => is_array($token),
         ]);
 
+        // 发送离线期间的未读VIP通知
+        sendUnreadVipLevelNotifications($player->id);
+
         return jsonSuccessResponse('success', [
             'token' => $token,
             'player_activity_phase' => (new ActivityServices(null, $player))->playerUnreceivedActivity()
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 密码登录
@@ -199,12 +202,15 @@ class IndexController
             'token_is_array' => is_array($token),
         ]);
 
+        // 发送离线期间的未读VIP通知
+        sendUnreadVipLevelNotifications($player->id);
+
         return jsonSuccessResponse('success', [
             'token' => $token,
             'player_activity_phase' => (new ActivityServices(null, $player))->playerUnreceivedActivity(),
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * @param Request $request
@@ -238,6 +244,8 @@ class IndexController
             ->first();
         if (!empty($player)) {
             addLoginRecord($player->id);
+            // 发送离线期间的未读VIP通知
+            sendUnreadVipLevelNotifications($player->id);
             return jsonSuccessResponse('success', [
                 'token' => JwtToken::generateToken([
                     'id' => $player->id,

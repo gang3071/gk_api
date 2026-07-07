@@ -1651,6 +1651,64 @@ function sendSocketMessage($channels, $content, string $form = 'system'): bool|s
 }
 
 /**
+ * 发送玩家未读的VIP等级变更通知
+ * 登录时调用，补发离线期间的升降级推送
+ *
+ * @param int $playerId 玩家ID
+ * @return int 发送的通知数量
+ */
+function sendUnreadVipLevelNotifications(int $playerId): int
+{
+    try {
+        $unreadNotices = Notice::query()
+            ->where('player_id', $playerId)
+            ->whereIn('type', [
+                Notice::TYPE_VIP_LEVEL_CHANGE_UPGRADE,
+                Notice::TYPE_VIP_LEVEL_CHANGE_DOWNGRADE,
+            ])
+            ->where('status', 0)
+            ->where('is_private', 1)
+            ->get();
+
+        if ($unreadNotices->isEmpty()) {
+            return 0;
+        }
+
+        $count = 0;
+        foreach ($unreadNotices as $notice) {
+            $changeType = $notice->type == Notice::TYPE_VIP_LEVEL_CHANGE_UPGRADE
+                ? 'upgrade' : 'downgrade';
+
+            sendSocketMessage('player-' . $playerId, [
+                'msg_type' => 'vip_level_change',
+                'change_type' => $changeType,
+                'player_id' => $playerId,
+                'notice_id' => $notice->id,
+                'title' => $notice->title,
+                'content' => $notice->content,
+            ]);
+
+            $count++;
+        }
+
+        if ($count > 0) {
+            \support\Log::info('[Login] 发送未读VIP通知', [
+                'player_id' => $playerId,
+                'count' => $count,
+            ]);
+        }
+
+        return $count;
+    } catch (\Throwable $e) {
+        \support\Log::error('[Login] 发送未读VIP通知失败', [
+            'player_id' => $playerId,
+            'error' => $e->getMessage(),
+        ]);
+        return 0;
+    }
+}
+
+/**
  * 增加玩家扩展信息
  * @param Player $player
  * @return void
