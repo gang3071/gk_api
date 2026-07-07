@@ -164,6 +164,8 @@ Route::group('/api', function () {
         Route::post('/lottery-record-list', [\app\api\controller\v1\LotteryController::class, 'lotteryRecordList']);
         // 玩家消息列表
         Route::post('/notice-list', [\app\api\controller\v1\IndexController::class, 'noticeList']);
+        // 修改单个通知为已读状态
+        Route::post('/mark-notice-read', [\app\api\controller\v1\IndexController::class, 'markNoticeRead']);
         // 领取彩金奖励
         Route::post('/receive-lottery', [\app\api\controller\v1\LotteryController::class, 'receiveLottery']);
         // 玩家账变记录

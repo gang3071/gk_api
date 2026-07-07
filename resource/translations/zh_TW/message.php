@@ -511,6 +511,10 @@ return [
     // 摸獎券相關
     'lottery_activity_not_found' => '活動不存在或無權訪問',
 
+    // 通知相關
+    'notice_id' => '通知ID',
+    'notice_not_found' => '通知不存在或無權限操作',
+
     // 出票系統相關
     'ticket_redeem_success' => '出票成功',
     'ticket_redeem_failed' => '出票失敗',

@@ -811,8 +811,44 @@ class IndexController
         
         return jsonSuccessResponse('success', $list);
     }
-    
-    
+
+    /**
+     * 修改单个通知为已读状态
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function markNoticeRead(Request $request): Response
+    {
+        $player = checkPlayer();
+        $data = $request->all();
+        $validator = v::key('notice_id', v::intVal()->setName(trans('notice_id', [], 'message')));
+
+        try {
+            $validator->assert($data);
+        } catch (AllOfException $e) {
+            return jsonFailResponse(getValidationMessages($e));
+        }
+
+        $notice = Notice::where('id', $data['notice_id'])
+            ->where('player_id', $player->id)
+            ->where('receiver', Notice::RECEIVER_PLAYER)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (empty($notice)) {
+            return jsonFailResponse(trans('notice_not_found', [], 'message'));
+        }
+
+        if ($notice->status == 0) {
+            $notice->status = 1;
+            $notice->save();
+        }
+
+        return jsonSuccessResponse('success');
+    }
+
+
     #[RateLimiter(limit: 5)]
     /**
      * 公告详情

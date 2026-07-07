@@ -510,6 +510,10 @@ return [
     // Lottery Ticket
     'lottery_activity_not_found' => 'Activity not found or access denied',
 
+    // Notice
+    'notice_id' => 'Notice ID',
+    'notice_not_found' => 'Notice not found or no permission',
+
     // Ticket System
     'ticket_redeem_success' => 'Ticket redeemed successfully',
     'ticket_redeem_failed' => 'Ticket redemption failed',

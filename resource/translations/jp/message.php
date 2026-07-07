@@ -507,6 +507,10 @@ return [
     // 抽選券関連
     'lottery_activity_not_found' => 'アクティビティが見つからないか、アクセス権限がありません',
 
+    // 通知関連
+    'notice_id' => '通知ID',
+    'notice_not_found' => '通知が見つからないか、操作権限がありません',
+
     // チケットシステム関連
     'ticket_redeem_success' => 'チケット交換成功',
     'ticket_redeem_failed' => 'チケット交換失敗',
