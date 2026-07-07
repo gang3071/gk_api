@@ -646,7 +646,7 @@ class MachineController
             }
             //尚未綁定位子僅能操作上分功能
             if ($machine->gaming_user_id == 0 && !in_array($action,
-                    ['plc_open_1', 'plc_open_10', 'plc_open_times', 'reward_switch'])) {
+                    ['plc_open_1', 'plc_open_10', 'plc_open_times', 'reward_switch', 'plc_push_5hz', 'plc_push_stop', 'plc_start_or_stop'])) {
                 return jsonFailResponse(trans('no_open_point', [], 'message'));
             }
             /** @var Player $gaming_player */
@@ -851,10 +851,41 @@ class MachineController
             throw new Exception(getValidationMessages($e));
         }
         /** @var Machine $machine */
-        $machine = Machine::where(['id' => $data['machine_id'], 'type' => $type])->first();
-        //获取机台缓存
+        // 先查找机台是否存在（不限制类型）
+        $machine = Machine::find($data['machine_id']);
+
+        // 机台不存在
         if (!$machine) {
+            Log::error('[checkAction] 机台不存在', [
+                'machine_id' => $data['machine_id'],
+                'expected_type' => $type,
+                'player_id' => $player->id,
+            ]);
             throw new Exception(trans('machine_not_fount', [], 'message'));
+        }
+
+        // 机台类型不匹配
+        if ($machine->type != $type) {
+            $typeNames = [
+                GameType::TYPE_STEEL_BALL => trans('machine_type_steel_ball', [], 'message'),  // 钢珠机
+                GameType::TYPE_SLOT => trans('machine_type_slot', [], 'message'),              // 斯洛机
+                GameType::TYPE_FISH => trans('machine_type_fish', [], 'message'),              // 捕鱼机
+            ];
+
+            Log::error('[checkAction] 机台类型不匹配', [
+                'machine_id' => $data['machine_id'],
+                'expected_type' => $type,
+                'expected_type_name' => $typeNames[$type] ?? 'Unknown',
+                'actual_type' => $machine->type,
+                'actual_type_name' => $typeNames[$machine->type] ?? 'Unknown',
+                'action' => $data['action'] ?? null,
+                'player_id' => $player->id,
+            ]);
+
+            throw new Exception(trans('machine_type_error', [
+                '{expected}' => $typeNames[$type] ?? 'Unknown',
+                '{actual}' => $typeNames[$machine->type] ?? 'Unknown'
+            ], 'message'));
         }
         if ($machine->status != 1) {
             throw new Exception(trans('machine_closing', [], 'message'));
