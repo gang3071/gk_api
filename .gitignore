@@ -1,20 +1,30 @@
-# Composer
+# ====================================
+# Dependencies
+# ====================================
 /vendor/
 composer.lock
 phinx.php
-# Runtime
-/runtime/
-*.log
 
-# Environment
+# ====================================
+# Environment & Credentials
+# ====================================
 .env
 .env.local
 .env.*.local
-
+.env.release
 # Firebase/Google Cloud credentials
 comechat-d5578-b1ad675314bd.json
 
-# IDE
+# ====================================
+# Runtime & Logs
+# ====================================
+/runtime/
+/logs/
+*.log
+
+# ====================================
+# IDE & Editor
+# ====================================
 .idea/
 .vscode/
 *.swp
@@ -22,73 +32,94 @@ comechat-d5578-b1ad675314bd.json
 *~
 .DS_Store
 
+# ====================================
+# Tests
+# ====================================
 tests/
 phpunit.xml
+
+# ====================================
+# OS Files
+# ====================================
 # Windows
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+# macOS
+.DS_Store
 
-# Temporary files
+# ====================================
+# Temporary Files
+# ====================================
 *.tmp
 *.temp
 *.cache
 *.pid
 *.sock
-
-# Logs
-/logs/
-*.log
-
-# Backup files
 *.bak
 *.backup
-*~
 
-# Upload files (可选)
-# /public/uploads/
-# /public/storage/
-
+# ====================================
+# Application Runtime
+# ====================================
 # Queue files
 /queue/
-
 # Session files
 /session/
-
 # WebSocket
 *.gateway
 
+# ====================================
 # Claude Code
+# ====================================
 .claude/
 
-# Documentation and reports (排除项目文档)
-CLAUDE.md
+# ====================================
+# Documentation & Scripts
+# ====================================
+# 忽略根目录的文档和脚本（保留重要文件）
+/*.md
+!README.md
+/*.sql
+!db/migrations/*.sql
+/*.sh
+!deploy*.sh
+
+# 临时调试脚本
+trace_*.sh
+verify_*.sh
+test_*.sh
+debug_*.sh
+
+# 文档模式
 *_REPORT.md
 *_SUMMARY.md
 *_GUIDE.md
 *_PLAN.md
 *_OPTIMIZATION.md
+*_ANALYSIS.md
+*_FIX.md
+*_CHECK.md
+*_DETAIL.md
+*_IMPLEMENTATION.md
 README_*.md
-docs/
-# 忽略所有根目录MD文件（保留README.md）
-/*.md
-!README.md
+CLAUDE.md
 
-# Database scripts
+# 数据库脚本
 database_*.sql
 database_*.md
-# 忽略根目录SQL文件
-/*.sql
-# 但保留迁移目录中的SQL
-!db/migrations/*.sql
 
-# Chinese documentation
-后台爆机功能集成说明.md
-多语言修改完成总结.md
-数据库保留表清单.md
-数据库清理-特别说明.md
-最终验证报告.md
-被清理的配置表清单.md
-设备爆机功能实现总结.md
-需要修改的API控制器列表.md
-/.env.release
+# 中文文档
+后台*.md
+多语言*.md
+数据库*.md
+最终*.md
+被清理*.md
+设备*.md
+需要修改*.md
+
+# ====================================
+# Upload Files (optional)
+# ====================================
+# /public/uploads/
+# /public/storage/
