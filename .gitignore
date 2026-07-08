@@ -61,7 +61,7 @@ Desktop.ini
 # Claude Code
 .claude/
 
-# Documentation and reports
+# Documentation and reports (排除项目文档)
 CLAUDE.md
 *_REPORT.md
 *_SUMMARY.md
@@ -70,10 +70,17 @@ CLAUDE.md
 *_OPTIMIZATION.md
 README_*.md
 docs/
+# 忽略所有根目录MD文件（保留README.md）
+/*.md
+!README.md
 
 # Database scripts
 database_*.sql
 database_*.md
+# 忽略根目录SQL文件
+/*.sql
+# 但保留迁移目录中的SQL
+!db/migrations/*.sql
 
 # Chinese documentation
 后台爆机功能集成说明.md
