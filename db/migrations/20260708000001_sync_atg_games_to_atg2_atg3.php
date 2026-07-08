@@ -46,6 +46,63 @@ final class SyncAtgGamesToAtg2Atg3 extends AbstractMigration
 
         $this->output->writeln(sprintf('<info>Platform IDs: ATG=%d, ATG2=%d, ATG3=%d</info>', $atgId, $atg2Id, $atg3Id));
 
+        // ========== 预检查：查看现有数据 ==========
+        $this->output->writeln('');
+        $this->output->writeln('<info>Pre-check: Existing data...</info>');
+
+        $existingData = $this->fetchAll("
+            SELECT
+                gp.code,
+                COUNT(DISTINCT ge.id) as game_extend_count,
+                COUNT(DISTINCT g.id) as game_count,
+                COUNT(DISTINCT gc.id) as game_content_count
+            FROM game_platform gp
+            LEFT JOIN game_extend ge ON ge.platform_id = gp.id
+            LEFT JOIN game g ON g.platform_id = gp.id AND g.deleted_at IS NULL
+            LEFT JOIN game_content gc ON gc.game_id = g.id
+            WHERE gp.code IN ('ATG', 'ATG2', 'ATG3')
+            GROUP BY gp.code
+            ORDER BY gp.code
+        ");
+
+        foreach ($existingData as $row) {
+            $this->output->writeln(sprintf(
+                '  %s: game_extend=%d, game=%d, game_content=%d',
+                $row['code'],
+                $row['game_extend_count'],
+                $row['game_count'],
+                $row['game_content_count']
+            ));
+        }
+
+        // ========== 清理现有的ATG2/ATG3数据 ==========
+        $atg2ExistingExtend = $this->fetchRow("SELECT COUNT(*) as count FROM game_extend WHERE platform_id = {$atg2Id}");
+        $atg3ExistingExtend = $this->fetchRow("SELECT COUNT(*) as count FROM game_extend WHERE platform_id = {$atg3Id}");
+
+        if ($atg2ExistingExtend['count'] > 0 || $atg3ExistingExtend['count'] > 0) {
+            $this->output->writeln('');
+            $this->output->writeln('<comment>Found existing ATG2/ATG3 data, cleaning up before sync...</comment>');
+
+            // 删除 game_content（必须先删除，因为有外键）
+            $this->execute("
+                DELETE gc FROM game_content gc
+                JOIN game g ON gc.game_id = g.id
+                WHERE g.platform_id IN ({$atg2Id}, {$atg3Id})
+            ");
+            $this->output->writeln('  ✓ Cleaned game_content');
+
+            // 删除 game
+            $this->execute("DELETE FROM game WHERE platform_id IN ({$atg2Id}, {$atg3Id})");
+            $this->output->writeln('  ✓ Cleaned game');
+
+            // 删除 game_extend
+            $this->execute("DELETE FROM game_extend WHERE platform_id IN ({$atg2Id}, {$atg3Id})");
+            $this->output->writeln('  ✓ Cleaned game_extend');
+        } else {
+            $this->output->writeln('');
+            $this->output->writeln('<info>No existing ATG2/ATG3 data found, proceeding with fresh sync...</info>');
+        }
+
         // ========== 1. 同步 game_extend 表（扩展游戏库） ==========
         $this->output->writeln('');
         $this->output->writeln('<info>Step 1: Syncing game_extend (扩展游戏库)...</info>');
