@@ -85,6 +85,9 @@ Desktop.ini
 /*.sh
 !deploy*.sh
 
+# 忽略文档目录
+docs/
+
 # 临时调试脚本
 trace_*.sh
 verify_*.sh
