@@ -20,11 +20,8 @@ final class AddAtg2Atg3Platforms extends AbstractMigration
     {
         $now = date('Y-m-d H:i:s');
 
-        // game_platform表在jin数据库，需要跨库访问
-        $dbName = 'jin';
-
         // 检查ATG平台是否存在
-        $atgPlatform = $this->query("SELECT * FROM {$dbName}.game_platform WHERE code = 'ATG' LIMIT 1")->fetch();
+        $atgPlatform = $this->fetchRow("SELECT * FROM game_platform WHERE code = 'ATG' LIMIT 1");
 
         if (!$atgPlatform) {
             $this->output->writeln('<error>Error: ATG platform not found. Please create ATG platform first.</error>');
@@ -32,10 +29,10 @@ final class AddAtg2Atg3Platforms extends AbstractMigration
         }
 
         // 创建ATG2平台（运营商2）
-        $atg2Exists = $this->query("SELECT id FROM {$dbName}.game_platform WHERE code = 'ATG2' LIMIT 1")->fetch();
+        $atg2Exists = $this->fetchRow("SELECT id FROM game_platform WHERE code = 'ATG2' LIMIT 1");
         if (!$atg2Exists) {
             $this->execute("
-                INSERT INTO {$dbName}.game_platform (
+                INSERT INTO game_platform (
                     code,
                     name,
                     config,
@@ -74,7 +71,7 @@ final class AddAtg2Atg3Platforms extends AbstractMigration
                     '{$now}' as updated_at,
                     picture,
                     NULL as default_limit_group_id
-                FROM {$dbName}.game_platform
+                FROM game_platform
                 WHERE code = 'ATG'
                 LIMIT 1
             ");
@@ -84,10 +81,10 @@ final class AddAtg2Atg3Platforms extends AbstractMigration
         }
 
         // 创建ATG3平台（运营商3）
-        $atg3Exists = $this->query("SELECT id FROM {$dbName}.game_platform WHERE code = 'ATG3' LIMIT 1")->fetch();
+        $atg3Exists = $this->fetchRow("SELECT id FROM game_platform WHERE code = 'ATG3' LIMIT 1");
         if (!$atg3Exists) {
             $this->execute("
-                INSERT INTO {$dbName}.game_platform (
+                INSERT INTO game_platform (
                     code,
                     name,
                     config,
@@ -126,7 +123,7 @@ final class AddAtg2Atg3Platforms extends AbstractMigration
                     '{$now}' as updated_at,
                     picture,
                     NULL as default_limit_group_id
-                FROM {$dbName}.game_platform
+                FROM game_platform
                 WHERE code = 'ATG'
                 LIMIT 1
             ");
@@ -136,12 +133,12 @@ final class AddAtg2Atg3Platforms extends AbstractMigration
         }
 
         // 显示创建结果
-        $platforms = $this->query("
+        $platforms = $this->fetchAll("
             SELECT id, code, name, status, created_at
-            FROM {$dbName}.game_platform
+            FROM game_platform
             WHERE code IN ('ATG', 'ATG2', 'ATG3')
             ORDER BY code
-        ")->fetchAll();
+        ");
 
         $this->output->writeln('');
         $this->output->writeln('<info>ATG Platform Summary:</info>');
@@ -167,22 +164,20 @@ final class AddAtg2Atg3Platforms extends AbstractMigration
 
     public function down(): void
     {
-        $dbName = 'jin';
-
         // 检查是否有玩家数据或游戏记录
-        $atg2Players = $this->query("
+        $atg2Players = $this->fetchRow("
             SELECT COUNT(*) as count
-            FROM {$dbName}.player_game_platform pgp
-            JOIN {$dbName}.game_platform gp ON pgp.platform_id = gp.id
+            FROM player_game_platform pgp
+            JOIN game_platform gp ON pgp.platform_id = gp.id
             WHERE gp.code = 'ATG2'
-        ")->fetch();
+        ");
 
-        $atg3Players = $this->query("
+        $atg3Players = $this->fetchRow("
             SELECT COUNT(*) as count
-            FROM {$dbName}.player_game_platform pgp
-            JOIN {$dbName}.game_platform gp ON pgp.platform_id = gp.id
+            FROM player_game_platform pgp
+            JOIN game_platform gp ON pgp.platform_id = gp.id
             WHERE gp.code = 'ATG3'
-        ")->fetch();
+        ");
 
         if ($atg2Players['count'] > 0 || $atg3Players['count'] > 0) {
             $this->output->writeln('<error>Warning: Player data exists for ATG2/ATG3. Please backup data before rollback.</error>');
@@ -192,11 +187,10 @@ final class AddAtg2Atg3Platforms extends AbstractMigration
             // 询问是否继续
             $this->output->writeln('');
             $this->output->writeln('<question>Continue with rollback? (yes/no)</question>');
-            // Phinx会自动处理用户输入
         }
 
         // 删除ATG2和ATG3平台
-        $this->execute("DELETE FROM {$dbName}.game_platform WHERE code IN ('ATG2', 'ATG3')");
+        $this->execute("DELETE FROM game_platform WHERE code IN ('ATG2', 'ATG3')");
 
         $this->output->writeln('<info>Removed ATG2 and ATG3 platforms</info>');
     }
