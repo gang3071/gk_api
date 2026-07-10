@@ -26,7 +26,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class AdminDevice extends Model
 {
-    use HasDateTimeFormatter, SoftDeletes;
+    use HasDateTimeFormatter;
 
     protected $table = 'admin_device';
 

@@ -3,6 +3,7 @@
 namespace app\api\controller\v1;
 
 use app\exception\PlayerCheckException;
+use app\model\AdminDevice;
 use app\model\Announcement;
 use app\model\Channel;
 use app\model\GameExtend;
@@ -104,6 +105,13 @@ class IndexController
         if ($player->status == Player::STATUS_STOP) {
             return jsonFailResponse(trans('player_stop', [], 'message'));
         }
+
+        // 跨店登录校验
+        $deviceCheck = $this->checkDeviceStoreMatch($player);
+        if ($deviceCheck !== true) {
+            return $deviceCheck;
+        }
+
         addLoginRecord($player->id);
 
         // 🔍 测试日志：生成登录token
@@ -165,13 +173,15 @@ class IndexController
             return jsonFailResponse(trans('must_set_password', [], 'message'));
         }
         if (!password_verify($data['password'], $player->password)) {
-            \support\Log::warning('[Login] 密码登录失败 - 密码错误', [
-                'player_id' => $player->id,
-                'phone' => $player->phone,
-                'ip' => request()->getRealIp(),
-            ]);
             return jsonFailResponse(trans('password_error', [], 'message'));
         }
+
+        // 跨店登录校验
+        $deviceCheck = $this->checkDeviceStoreMatch($player);
+        if ($deviceCheck !== true) {
+            return $deviceCheck;
+        }
+
         addLoginRecord($player->id);
 
         // 🔍 测试日志：生成登录token
@@ -237,6 +247,12 @@ class IndexController
             ->where('department_id', request()->department_id)
             ->first();
         if (!empty($player)) {
+            // 跨店登录校验
+            $deviceCheck = $this->checkDeviceStoreMatch($player);
+            if ($deviceCheck !== true) {
+                return $deviceCheck;
+            }
+
             addLoginRecord($player->id);
             return jsonSuccessResponse('success', [
                 'token' => JwtToken::generateToken([
@@ -359,10 +375,16 @@ class IndexController
                 addPlayerExtend($player);
                 isset($recommendPlayer) && !empty($recommendPlayer->player_promoter) && $recommendPlayer->player_promoter->increment('player_num');
                 addRegisterRecord($player->id, PlayerRegisterRecord::TYPE_CLIENT, $player->department_id);
-                
+
                 //全民代理
                 $this->nationalPromoter($player);
             } else {
+                // 跨店登录校验
+                $deviceCheck = $this->checkDeviceStoreMatch($player);
+                if ($deviceCheck !== true) {
+                    DB::rollBack();
+                    return $deviceCheck;
+                }
                 addLoginRecord($player->id);
             }
             DB::commit();
@@ -400,6 +422,40 @@ class IndexController
             $player->department_id)->orderBy('must_chip_amount')->first();
         $national_promoter->level = $level_min->id;
         $national_promoter->save();
+    }
+
+    /**
+     * 校验设备与玩家是否属于同一店铺
+     * @param Player $player
+     * @return true|Response
+     */
+    protected function checkDeviceStoreMatch(Player $player): mixed
+    {
+        $deviceCpuId = request()->header('DeviceCpuID', '');
+        if (empty($deviceCpuId)) {
+            return true;
+        }
+
+        $setting = SystemSetting::query()->where('feature', 'device_collect')->where('status', 1)->first();
+        if (!$setting) {
+            return true;
+        }
+
+        /** @var AdminDevice $device */
+        $device = AdminDevice::query()->where('device_no', $deviceCpuId)->first();
+        if (!$device) {
+            return jsonFailResponse(trans('device_not_found', [], 'message'), [], 403);
+        }
+
+        if ($device->status == 0) {
+            return jsonFailResponse(trans('device_disabled', [], 'message'), [], 403);
+        }
+
+        if ($device->store_admin_id != $player->store_admin_id) {
+            return jsonFailResponse(trans('device_store_mismatch', [], 'message'), [], 403);
+        }
+
+        return true;
     }
     
     #[RateLimiter(limit: 5)]

@@ -2,9 +2,11 @@
 
 namespace app\api\controller\Auth;
 
+use app\model\AdminDevice;
 use app\model\Channel;
 use app\model\PhoneSmsLog;
 use app\model\Player;
+use app\model\SystemSetting;
 use app\service\ActivityServices;
 use app\service\JpSmsServicesServices;
 use Exception;
@@ -128,6 +130,13 @@ class TalkOAuthController
         !empty($data['nickname']) && $player->name = $data['nickname'];
         $player->talk_user_id = $data['userUid'];
         $player->save();
+
+        // 跨店登录校验
+        $deviceCheck = $this->checkDeviceStoreMatch($player);
+        if ($deviceCheck !== true) {
+            return $deviceCheck;
+        }
+
         addLoginRecord($player->id);
 
         return jsonSuccessResponse('success', [
@@ -188,6 +197,13 @@ class TalkOAuthController
                 $player = createPlayer($data, $channel->currency, $departmentId);
             }
 
+            // 跨店登录校验
+            $deviceCheck = $this->checkDeviceStoreMatch($player);
+            if ($deviceCheck !== true) {
+                DB::rollBack();
+                return $deviceCheck;
+            }
+
             addLoginRecord($player->id);
 
             DB::commit();
@@ -243,6 +259,13 @@ class TalkOAuthController
                 if ($player->status == Player::STATUS_STOP) {
                     return jsonFailResponse(trans('player_stop', [], 'message'));
                 }
+
+                // 跨店登录校验
+                $deviceCheck = $this->checkDeviceStoreMatch($player);
+                if ($deviceCheck !== true) {
+                    return $deviceCheck;
+                }
+
                 addLoginRecord($player->id);
 
                 return jsonSuccessResponse('success', [
@@ -302,5 +325,39 @@ class TalkOAuthController
             return $data['data']['oauthToken'];
         }
         throw new Exception('获取token失败');
+    }
+
+    /**
+     * 校验设备与玩家是否属于同一店铺
+     * @param Player $player
+     * @return true|Response
+     */
+    protected function checkDeviceStoreMatch(Player $player): true|Response
+    {
+        $deviceCpuId = request()->header('DeviceCpuID', '');
+        if (empty($deviceCpuId)) {
+            return true;
+        }
+
+        $setting = SystemSetting::query()->where('feature', 'device_collect')->where('status', 1)->first();
+        if (!$setting) {
+            return true;
+        }
+
+        /** @var AdminDevice $device */
+        $device = AdminDevice::query()->where('device_no', $deviceCpuId)->first();
+        if (!$device) {
+            return jsonFailResponse(trans('device_not_found', [], 'message'), [], 403);
+        }
+
+        if ($device->status == 0) {
+            return jsonFailResponse(trans('device_disabled', [], 'message'), [], 403);
+        }
+
+        if ($device->store_admin_id != $player->store_admin_id) {
+            return jsonFailResponse(trans('device_store_mismatch', [], 'message'), [], 403);
+        }
+
+        return true;
     }
 }

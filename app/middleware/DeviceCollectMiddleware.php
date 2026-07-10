@@ -14,32 +14,39 @@ class DeviceCollectMiddleware implements MiddlewareInterface
     {
         $deviceCpuId = $request->header('DeviceCpuID', '');
         if (empty($deviceCpuId)) {
-            return $handler($request);
+            return jsonFailResponse(trans('device_cpu_id_required', [], 'message'), [], 403);
         }
 
-        // 未登录请求（如登录接口）跳过设备验证
-        $authHeader = $request->header('Authorization', '');
-        if (empty($authHeader)) {
-            return $handler($request);
-        }
-
-        $device = AdminDevice::query()->where('device_no', $deviceCpuId)->whereNull('deleted_at')->exists();
-        $player = checkPlayer();
-        $channel = $player->channel;
-        // 设备不存在，检查是否开启自动采集
+        // 检查 device_collect 开关
         $setting = SystemSetting::query()->where('feature', 'device_collect')->where('status', 1)->first();
-        if (!$device && $setting) {
-            AdminDevice::query()->create([
-                'channel_id'     => $channel->id ?? 0,
-                'department_id'  => $player->department_id,
-                'agent_admin_id' => $player->agent_admin_id,
-                'store_admin_id' => $player->store_admin_id,
-                'device_no'      => $deviceCpuId,
-                'device_model'   => $request->header('DeviceModel', ''),
-                'status'         => 1,
-            ]);
+        if (!$setting) {
+            return $handler($request);
         }
 
+        // 查询设备记录（无论是否登录都需要校验设备是否存在）
+        /** @var AdminDevice $device */
+        $device = AdminDevice::query()->where('device_no', $deviceCpuId)->first();
+        if (!$device) {
+            return jsonFailResponse(trans('device_not_found', [], 'message'), [], 403);
+        }
+
+        // 校验设备状态
+        if ($device->status == 0) {
+            return jsonFailResponse(trans('device_disabled', [], 'message'), [], 403);
+        }
+
+        // 已登录用户：校验跨店
+        $authHeader = $request->header('Authorization', '');
+        if (!empty($authHeader)) {
+            try {
+                $player = checkPlayer();
+                if ($device->store_admin_id != $player->store_admin_id) {
+                    return jsonFailResponse(trans('device_store_mismatch', [], 'message'), [], 403);
+                }
+            } catch (\Throwable $e) {
+                // token 无效或过期，跳过跨店校验
+            }
+        }
 
         return $handler($request);
     }
