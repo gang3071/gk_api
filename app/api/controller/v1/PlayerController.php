@@ -3600,6 +3600,7 @@ class PlayerController
             'home_notice' => '', // 默认空字符串
             'enable_physical_machine' => true, // 默认开启
             'enable_live_baccarat' => true, // 默认开启
+            'menu_image' => '', // 默认空字符串
         ];
 
         // 获取玩家所属的代理或店家admin_user_id
@@ -3645,6 +3646,17 @@ class PlayerController
         );
         if ($liveBaccaratSetting) {
             $settings['enable_live_baccarat'] = $liveBaccaratSetting->status == 1;
+        }
+
+        // 获取配置 - 点菜菜单图片
+        $menuImageSetting = StoreSetting::getSetting(
+            'menu_image',
+            $player->department_id,
+            null,
+            $adminUserId
+        );
+        if ($menuImageSetting && $menuImageSetting->status == 1 && !empty($menuImageSetting->content)) {
+            $settings['menu_image'] = $menuImageSetting->content;
         }
 
         return $settings;
