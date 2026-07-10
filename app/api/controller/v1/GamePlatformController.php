@@ -481,7 +481,8 @@ class GamePlatformController
                 'platform_id' => $game->platform_id,
                 'display_mode' => $game->display_mode,
                 'is_maintenance' => $game->gamePlatform->is_maintenance ?? 0,
-                'game_content' => $content
+                'game_content' => $content,
+                'code' => $game->gamePlatform->code
             ];
         }
 
@@ -519,7 +520,8 @@ class GamePlatformController
                             'platform_id' => $playerEnterGameRecord->game->platform_id,
                             'display_mode' => $playerEnterGameRecord->game->display_mode,
                             'is_maintenance' => $gamePlatform->is_maintenance ?? 0,
-                            'game_content' => $gameContent
+                            'game_content' => $gameContent,
+                            'code' => $gamePlatform->code
                         ];
                     }
                 }
