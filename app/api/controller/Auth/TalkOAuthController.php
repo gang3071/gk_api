@@ -330,9 +330,9 @@ class TalkOAuthController
     /**
      * 校验设备与玩家是否属于同一店铺
      * @param Player $player
-     * @return true|Response
+     * @return bool|Response
      */
-    protected function checkDeviceStoreMatch(Player $player): true|Response
+    protected function checkDeviceStoreMatch(Player $player)
     {
         $deviceCpuId = request()->header('DeviceCpuID', '');
         if (empty($deviceCpuId)) {
