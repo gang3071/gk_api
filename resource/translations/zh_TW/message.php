@@ -502,7 +502,7 @@ return [
     'score_option' => '開分選項',
     'custom_amount' => '自訂金額',
     'game_service_unavailable' => '遊戲服務暫時不可用，請稍後重試',
-    'device_store_mismatch' => '設備與當前帳號不屬於同一門店',
+    'device_store_mismatch' => '當前帳號不屬於同一門市',
     'device_not_found' => '設備不存在',
     'device_disabled' => '設備已禁用',
     'device_cross_store_not_allowed' => '該設備不允許跨店登錄',

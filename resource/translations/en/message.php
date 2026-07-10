@@ -501,7 +501,7 @@ return [
     'score_option' => 'Score Option',
     'custom_amount' => 'Custom Amount',
     'game_service_unavailable' => 'Game service is temporarily unavailable, please try again later',
-    'device_store_mismatch' => 'Device does not belong to the same store as the current account',
+    'device_store_mismatch' => 'Current account does not belong to the same store',
     'device_not_found' => 'Device not found',
     'device_disabled' => 'Device is disabled',
     'device_cross_store_not_allowed' => 'This device does not allow cross-store login',

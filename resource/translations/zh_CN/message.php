@@ -512,7 +512,7 @@ return [
     'score_option' => '开分选项',
     'custom_amount' => '自定义金额',
     'game_service_unavailable' => '游戏服务暂时不可用，请稍后重试',
-    'device_store_mismatch' => '设备与当前账号不属于同一门店',
+    'device_store_mismatch' => '当前账号不属于同一门市',
     'device_not_found' => '设备不存在',
     'device_disabled' => '设备已禁用',
     'device_cross_store_not_allowed' => '该设备不允许跨店登录',
