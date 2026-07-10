@@ -239,7 +239,8 @@ class GamePlatformController
                         'is_hot' => $playerEnterGameRecord->game->is_hot,
                         'platform_id' => $playerEnterGameRecord->game->platform_id,
                         'is_maintenance' => $playerEnterGameRecord->game->gamePlatform->is_maintenance ?? 0,
-                        'game_content' => $gameContent
+                        'game_content' => $gameContent,
+                        'code' => $playerEnterGameRecord->game->gamePlatform->code
                     ];
                 }
             }
