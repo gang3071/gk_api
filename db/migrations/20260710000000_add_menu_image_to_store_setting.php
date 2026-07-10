@@ -12,7 +12,7 @@ class AddMenuImageToStoreSetting extends AbstractMigration
      */
     public function up()
     {
-        $adminUserTable = 'admin_user';
+        $adminUserTable = 'admin_users';
         $storeSettingTable = 'store_setting';
 
         // 获取所有店家的 admin_user_id 和 department_id
