@@ -3027,8 +3027,10 @@ function machineWash(
                         $client = new MachineClient();
                         $result = $client->batchSendCommands($machine->id, $leaveCommands, $lang, $player->id, $washId ?? null);
 
-                        if (!$result['success']) {
-                            throw new Exception('批量发送弃台指令失败: ' . $result['message']);
+                        // ✅ 检查批量指令是否全部成功
+                        $failedCount = $result['data']['failed_count'] ?? 0;
+                        if (!$result['success'] || $failedCount > 0) {
+                            throw new Exception('批量发送弃台指令失败（部分指令失败）: ' . $result['message']);
                         }
                     }
                 }
@@ -3039,8 +3041,10 @@ function machineWash(
                     ['cmd' => $services::WIN_NUMBER, 'data' => 0],
                 ], $lang, $player->id, $washId ?? null);
 
-                if (!$result['success']) {
-                    throw new Exception('批量查询机台状态失败: ' . $result['message']);
+                // ✅ 检查批量指令是否全部成功
+                $failedCount = $result['data']['failed_count'] ?? 0;
+                if (!$result['success'] || $failedCount > 0) {
+                    throw new Exception('批量查询机台状态失败（部分指令失败）: ' . $result['message']);
                 }
 
                 $gamingTurnPoint = $services->player_win_number;
@@ -3097,14 +3101,17 @@ function machineWash(
                     'result' => $result,
                 ]);
 
-                if (!$result['success']) {
+                // ✅ 检查批量指令是否全部成功
+                $failedCount = $result['data']['failed_count'] ?? 0;
+                if (!$result['success'] || $failedCount > 0) {
                     Log::channel('machine_operations')->error('[MachineWash-Slot] 批量指令发送失败', [
                         'wash_id' => $washId,
                         'machine_id' => $machine->id,
                         'error' => $result['message'] ?? 'Unknown error',
+                        'failed_count' => $failedCount,
                         'result' => $result,
                     ]);
-                    throw new Exception('批量发送老虎机洗分指令失败: ' . $result['message']);
+                    throw new Exception('批量发送老虎机洗分指令失败（部分指令失败）: ' . $result['message']);
                 }
 
                 Log::channel('song_slot_machine')->info('slot -> wash', [
@@ -3264,13 +3271,19 @@ function machineWash(
                     'result' => $result,
                 ]);
 
-                if (!$result['success']) {
+                // ✅ 检查批量指令是否全部成功（修复：检查 failed_count）
+                $failedCount = $result['data']['failed_count'] ?? 0;
+                if (!$result['success'] || $failedCount > 0) {
                     Log::channel('machine_operations')->error('[MachineWash-SteelBall] 清零指令发送失败', [
                         'wash_id' => $washId,
                         'machine_id' => $machine->id,
                         'error' => $result['message'] ?? 'Unknown error',
+                        'failed_count' => $failedCount,
+                        'failed_commands' => array_filter($result['data']['results'] ?? [], function($r) {
+                            return !($r['success'] ?? false);
+                        }),
                     ]);
-                    throw new Exception('批量发送洗分清零指令失败: ' . $result['message']);
+                    throw new Exception('批量发送洗分清零指令失败（部分指令失败）: ' . $result['message']);
                 }
 
                 $services->player_win_number = 0;
@@ -3297,13 +3310,19 @@ function machineWash(
                     'result' => $result,
                 ]);
 
-                if (!$result['success']) {
+                // ✅ 检查批量指令是否全部成功（修复：检查 failed_count）
+                $failedCount = $result['data']['failed_count'] ?? 0;
+                if (!$result['success'] || $failedCount > 0) {
                     Log::channel('machine_operations')->error('[MachineWash-Slot] 清零指令发送失败', [
                         'wash_id' => $washId,
                         'machine_id' => $machine->id,
                         'error' => $result['message'] ?? 'Unknown error',
+                        'failed_count' => $failedCount,
+                        'failed_commands' => array_filter($result['data']['results'] ?? [], function($r) {
+                            return !($r['success'] ?? false);
+                        }),
                     ]);
-                    throw new Exception('批量发送洗分清零指令失败: ' . $result['message']);
+                    throw new Exception('批量发送洗分清零指令失败（部分指令失败）: ' . $result['message']);
                 }
 
                 $services->player_pressure = 0;
