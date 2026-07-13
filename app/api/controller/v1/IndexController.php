@@ -19,10 +19,12 @@ use app\model\PlayerRechargeRecord;
 use app\model\PlayerRegisterRecord;
 use app\model\PlayerReverseWaterDetail;
 use app\model\PlayerWithdrawRecord;
+use app\model\PlayerDeliveryRecord;
 use app\model\PlayGameRecord;
 use app\model\SystemSetting;
 use app\service\ActivityServices;
 use app\service\LineServices;
+use app\service\WalletService;
 use app\service\SmsServicesServices;
 use Illuminate\Support\Carbon;
 use Respect\Validation\Exceptions\AllOfException;
@@ -896,12 +898,182 @@ class IndexController
             return jsonFailResponse(trans('notice_not_found', [], 'message'));
         }
 
+        // 处理礼金发放（未读状态才处理）
+        if ($notice->status == 0) {
+            if ($notice->type == Notice::TYPE_VIP_BIRTHDAY_BONUS) {
+                $this->processBirthdayBonus($player, $notice);
+            } elseif ($notice->type == Notice::TYPE_VIP_LEVEL_CHANGE_UPGRADE) {
+                $this->processUpgradeBonus($player, $notice);
+            }
+        }
+
         if ($notice->status == 0) {
             $notice->status = 1;
             $notice->save();
         }
 
         return jsonSuccessResponse('success');
+    }
+
+    /**
+     * 处理生日礼金发放
+     *
+     * @param Player $player
+     * @param Notice $notice
+     * @return void
+     */
+    private function processBirthdayBonus(Player $player, Notice $notice): void
+    {
+        try {
+            // 解析通知内容获取金额
+            $content = json_decode($notice->content, true);
+            $bonusAmount = floatval($content['amount'] ?? 0);
+
+            if ($bonusAmount <= 0) {
+                Log::warning('Birthday bonus amount invalid', [
+                    'notice_id' => $notice->id,
+                    'amount' => $bonusAmount,
+                ]);
+                return;
+            }
+
+            // 检查当年是否已发放过（防止重复点击）
+            $hasPaid = PlayerDeliveryRecord::query()
+                ->where('player_id', $player->id)
+                ->where('type', PlayerDeliveryRecord::TYPE_BIRTHDAY_BONUS)
+                ->whereYear('created_at', date('Y'))
+                ->exists();
+
+            if ($hasPaid) {
+                Log::info('Birthday bonus already paid this year', [
+                    'player_id' => $player->id,
+                    'notice_id' => $notice->id,
+                ]);
+                return;
+            }
+
+            Db::beginTransaction();
+            try {
+                // 获取发放前余额
+                $balanceBefore = WalletService::getBalance($player->id);
+
+                // 原子性增加余额
+                $balanceAfter = WalletService::add($player->id, $bonusAmount);
+
+                // 记录到账单表
+                PlayerDeliveryRecord::query()->create([
+                    'player_id' => $player->id,
+                    'department_id' => $player->department_id,
+                    'type' => PlayerDeliveryRecord::TYPE_BIRTHDAY_BONUS,
+                    'source' => 'birthday_bonus',
+                    'amount' => $bonusAmount,
+                    'amount_before' => $balanceBefore,
+                    'amount_after' => $balanceAfter,
+                    'tradeno' => 'BD' . date('YmdHis') . str_pad($player->id, 6, '0', STR_PAD_LEFT) . mt_rand(100, 999),
+                    'remark' => sprintf('VIP%s生日礼金', $content['vip_level_name'] ?? ''),
+                ]);
+
+                Db::commit();
+
+                Log::info('Birthday bonus paid successfully', [
+                    'player_id' => $player->id,
+                    'notice_id' => $notice->id,
+                    'amount' => $bonusAmount,
+                ]);
+
+            } catch (\Throwable $e) {
+                Db::rollBack();
+                throw $e;
+            }
+
+        } catch (\Throwable $e) {
+            Log::error('Birthday bonus payment failed', [
+                'player_id' => $player->id,
+                'notice_id' => $notice->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * 处理VIP升级礼金发放
+     *
+     * @param Player $player
+     * @param Notice $notice
+     * @return void
+     */
+    private function processUpgradeBonus(Player $player, Notice $notice): void
+    {
+        try {
+            // 解析通知内容获取金额
+            $content = json_decode($notice->content, true);
+            $bonusAmount = floatval($content['amount'] ?? 0);
+
+            if ($bonusAmount <= 0) {
+                Log::warning('Upgrade bonus amount invalid', [
+                    'notice_id' => $notice->id,
+                    'amount' => $bonusAmount,
+                ]);
+                return;
+            }
+
+            // 检查该通知是否已发放过（防止重复点击）
+            $hasPaid = PlayerDeliveryRecord::query()
+                ->where('player_id', $player->id)
+                ->where('type', PlayerDeliveryRecord::TYPE_VIP_UPGRADE_BONUS)
+                ->where('source', 'vip_upgrade_bonus')
+                ->where('remark', 'like', '%notice_id:' . $notice->id . '%')
+                ->exists();
+
+            if ($hasPaid) {
+                Log::info('Upgrade bonus already paid for this notice', [
+                    'player_id' => $player->id,
+                    'notice_id' => $notice->id,
+                ]);
+                return;
+            }
+
+            Db::beginTransaction();
+            try {
+                // 获取发放前余额
+                $balanceBefore = WalletService::getBalance($player->id);
+
+                // 原子性增加余额
+                $balanceAfter = WalletService::add($player->id, $bonusAmount);
+
+                // 记录到账单表
+                PlayerDeliveryRecord::query()->create([
+                    'player_id' => $player->id,
+                    'department_id' => $player->department_id,
+                    'type' => PlayerDeliveryRecord::TYPE_VIP_UPGRADE_BONUS,
+                    'source' => 'vip_upgrade_bonus',
+                    'amount' => $bonusAmount,
+                    'amount_before' => $balanceBefore,
+                    'amount_after' => $balanceAfter,
+                    'tradeno' => 'UG' . date('YmdHis') . str_pad($player->id, 6, '0', STR_PAD_LEFT) . mt_rand(100, 999),
+                    'remark' => sprintf('VIP%s升级礼金(notice_id:%s)', $content['vip_level_name'] ?? '', $notice->id),
+                ]);
+
+                Db::commit();
+
+                Log::info('Upgrade bonus paid successfully', [
+                    'player_id' => $player->id,
+                    'notice_id' => $notice->id,
+                    'amount' => $bonusAmount,
+                ]);
+
+            } catch (\Throwable $e) {
+                Db::rollBack();
+                throw $e;
+            }
+
+        } catch (\Throwable $e) {
+            Log::error('Upgrade bonus payment failed', [
+                'player_id' => $player->id,
+                'notice_id' => $notice->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
 

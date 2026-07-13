@@ -1664,7 +1664,6 @@ function sendUnreadVipLevelNotifications(int $playerId): int
             ->where('player_id', $playerId)
             ->whereIn('type', [
                 Notice::TYPE_VIP_LEVEL_CHANGE_UPGRADE,
-                Notice::TYPE_VIP_LEVEL_CHANGE_DOWNGRADE,
                 Notice::TYPE_VIP_BIRTHDAY_BONUS,
             ])
             ->where('status', 0)
@@ -1677,23 +1676,13 @@ function sendUnreadVipLevelNotifications(int $playerId): int
 
         $count = 0;
         foreach ($unreadNotices as $notice) {
-            $message = [
-                'player_id' => $playerId,
-                'notice_id' => $notice->id,
-                'title' => $notice->title,
-                'content' => $notice->content,
-            ];
-
-            // 根据通知类型设置 msg_type
-            if ($notice->type == Notice::TYPE_VIP_BIRTHDAY_BONUS) {
-                $message['msg_type'] = 'vip_birthday_bonus';
-            } else {
-                $message['msg_type'] = 'vip_level_change';
-                $message['change_type'] = $notice->type == Notice::TYPE_VIP_LEVEL_CHANGE_UPGRADE
-                    ? 'upgrade' : 'downgrade';
+            $content = json_decode($notice->content, true);
+            if ($notice->type == Notice::TYPE_VIP_LEVEL_CHANGE_UPGRADE) {
+                $content['upgrade_bonus'] = floatval($content['upgrade_bonus'] ?? 0);
+            } elseif ($notice->type == Notice::TYPE_VIP_BIRTHDAY_BONUS) {
+                $content['amount'] = floatval($content['amount'] ?? 0);
             }
-
-            sendSocketMessage('player-' . $playerId, $message);
+            sendSocketMessage('player-' . $playerId, $content);
             $count++;
         }
 
