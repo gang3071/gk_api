@@ -1007,12 +1007,12 @@ class IndexController
         try {
             // 解析通知内容获取金额
             $content = json_decode($notice->content, true);
-            $bonusAmount = floatval($content['amount'] ?? 0);
+            $bonusAmount = floatval($content['upgrade_bonus'] ?? 0);
 
             if ($bonusAmount <= 0) {
                 Log::warning('Upgrade bonus amount invalid', [
                     'notice_id' => $notice->id,
-                    'amount' => $bonusAmount,
+                    'upgrade_bonus' => $content['upgrade_bonus'] ?? null,
                 ]);
                 return;
             }
