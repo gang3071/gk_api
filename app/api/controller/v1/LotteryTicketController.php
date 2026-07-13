@@ -534,7 +534,7 @@ class LotteryTicketController
             ->leftJoin('lottery_ticket_record', 'lottery_ticket.id', '=', 'lottery_ticket_record.ticket_id')
             ->select('lottery_ticket.*')
             ->orderByRaw('CASE WHEN lottery_ticket_record.id IS NOT NULL THEN 0 ELSE 1 END') // 中奖的排前面
-            ->orderByRaw('CASE WHEN lottery_ticket_record.id IS NOT NULL THEN lottery_ticket_record.prize_level ELSE 999 END ASC') // 中奖的按等级升序
+            ->orderByRaw('CASE WHEN lottery_ticket.prize_level IS NOT NULL THEN lottery_ticket.prize_level ELSE 999 END ASC') // 中奖的按等级升序
             ->orderBy('lottery_ticket.created_at', 'desc') // 最后按创建时间倒序
             ->forPage($page, $size)
             ->get();
