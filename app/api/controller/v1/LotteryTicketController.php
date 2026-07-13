@@ -509,11 +509,11 @@ class LotteryTicketController
         $page = $data['page'] ?? 1;
         $size = min($data['size'] ?? 20, 100);
 
-        // ✅ 修复：使用统一的状态常量
+        // ✅ 修复：使用统一的状态常量，明确指定表名避免JOIN后的字段冲突
         $query = LotteryTicket::query()
-            ->where('activity_id', $data['activity_id'])
-            ->where('player_id', $player->id)
-            ->whereIn('status', [
+            ->where('lottery_ticket.activity_id', $data['activity_id'])
+            ->where('lottery_ticket.player_id', $player->id)
+            ->whereIn('lottery_ticket.status', [
                 LotteryTicket::STATUS_UNUSED,  // 未使用
                 LotteryTicket::STATUS_USED,    // 已使用（包含中奖和未中奖）
                 LotteryTicket::STATUS_EXPIRED  // 已过期
