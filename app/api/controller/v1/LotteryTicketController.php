@@ -61,27 +61,12 @@ class LotteryTicketController
     private function getSmartActivity(int $departmentId, bool $skipEnded = false): Builder|Model|null
     {
         try {
-            $activity = null;
-
-            // ✅ 默认模式：优先展示刚结束的活动（30分钟内）
-            if (!$skipEnded) {
-                $activity = LotteryTicketActivity::query()
-                    ->where('department_id', $departmentId)
-                    ->where('status', LotteryTicketActivity::STATUS_ENDED)
-                    ->where('ended_at', '>=', date('Y-m-d H:i:s', strtotime('-30 minutes'))) // 使用ended_at字段
-                    ->orderBy('id', 'desc')
-                    ->first();
-            }
-
-            // 如果没有已结束的活动（或跳过模式），按优先级查找下期活动
-            if (!$activity) {
-                // 优先级1: 开奖中的活动
-                $activity = LotteryTicketActivity::query()
-                    ->where('department_id', $departmentId)
-                    ->where('status', LotteryTicketActivity::STATUS_DRAWING)
-                    ->orderBy('id', 'desc')
-                    ->first();
-            }
+            // 优先级1: 开奖中的活动
+            $activity = LotteryTicketActivity::query()
+                ->where('department_id', $departmentId)
+                ->where('status', LotteryTicketActivity::STATUS_DRAWING)
+                ->orderBy('id', 'desc')
+                ->first();
 
             if (!$activity) {
                 // 优先级2: 待开奖的活动（活动已结束，等待开奖）
