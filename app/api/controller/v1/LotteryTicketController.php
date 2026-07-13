@@ -509,21 +509,28 @@ class LotteryTicketController
         $page = $data['page'] ?? 1;
         $size = min($data['size'] ?? 20, 100);
 
-        // ✅ 修复：使用统一的状态常量，明确指定表名避免JOIN后的字段冲突
-        $query = LotteryTicket::query()
-            ->where('lottery_ticket.activity_id', $data['activity_id'])
-            ->where('lottery_ticket.player_id', $player->id)
-            ->whereIn('lottery_ticket.status', [
+        // ✅ COUNT查询（不包含JOIN）
+        $total = LotteryTicket::query()
+            ->where('activity_id', $data['activity_id'])
+            ->where('player_id', $player->id)
+            ->whereIn('status', [
                 LotteryTicket::STATUS_UNUSED,  // 未使用
                 LotteryTicket::STATUS_USED,    // 已使用（包含中奖和未中奖）
                 LotteryTicket::STATUS_EXPIRED  // 已过期
-            ]);
+            ])
+            ->count();
 
-        $total = $query->count();
-
-        // ✅ 优化：使用预加载避免N+1查询
+        // ✅ 数据查询（包含JOIN和排序）
         // ✅ 排序规则：中奖的奖券排在前面，且按奖项等级升序（1等奖 > 2等奖 > ...），未中奖的按创建时间倒序
-        $tickets = $query->with(['winningRecord']) // 预加载中奖记录关联
+        $tickets = LotteryTicket::query()
+            ->where('lottery_ticket.activity_id', $data['activity_id'])
+            ->where('lottery_ticket.player_id', $player->id)
+            ->whereIn('lottery_ticket.status', [
+                LotteryTicket::STATUS_UNUSED,
+                LotteryTicket::STATUS_USED,
+                LotteryTicket::STATUS_EXPIRED
+            ])
+            ->with(['winningRecord']) // 预加载中奖记录关联
             ->leftJoin('lottery_ticket_record', 'lottery_ticket.id', '=', 'lottery_ticket_record.ticket_id')
             ->select('lottery_ticket.*')
             ->orderByRaw('CASE WHEN lottery_ticket_record.id IS NOT NULL THEN 0 ELSE 1 END') // 中奖的排前面
