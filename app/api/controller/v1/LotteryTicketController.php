@@ -577,6 +577,7 @@ class LotteryTicketController
                 'prize_name' => $winningRecord->prize_name ?? '',
                 'prize_amount' => $winningRecord->prize_amount ?? 0,
                 'issued_at' => $ticket->issued_at,
+                'used_at' => $ticket->used_at,
                 'expired_at' => $ticket->expired_at,
                 'created_at' => $ticket->created_at,
             ];
