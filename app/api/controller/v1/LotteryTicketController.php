@@ -522,8 +522,13 @@ class LotteryTicketController
         $total = $query->count();
 
         // ✅ 优化：使用预加载避免N+1查询
+        // ✅ 排序规则：中奖的奖券排在前面，且按奖项等级升序（1等奖 > 2等奖 > ...），未中奖的按创建时间倒序
         $tickets = $query->with(['winningRecord']) // 预加载中奖记录关联
-            ->orderBy('created_at', 'desc')
+            ->leftJoin('lottery_ticket_record', 'lottery_ticket.id', '=', 'lottery_ticket_record.ticket_id')
+            ->select('lottery_ticket.*')
+            ->orderByRaw('CASE WHEN lottery_ticket_record.id IS NOT NULL THEN 0 ELSE 1 END') // 中奖的排前面
+            ->orderByRaw('CASE WHEN lottery_ticket_record.id IS NOT NULL THEN lottery_ticket_record.prize_level ELSE 999 END ASC') // 中奖的按等级升序
+            ->orderBy('lottery_ticket.created_at', 'desc') // 最后按创建时间倒序
             ->forPage($page, $size)
             ->get();
 
@@ -543,6 +548,7 @@ class LotteryTicketController
                 'is_winning' => $isWinning,  // ✅ 通过预加载的中奖记录判断
                 'prize_level' => $winningRecord->prize_level ?? null,
                 'prize_amount' => $winningRecord->prize_amount ?? 0,
+                'prize_level_name' => $winningRecord->prize_level_name ?? '',
                 'issued_at' => $ticket->issued_at,
                 'expired_at' => $ticket->expired_at,
                 'created_at' => $ticket->created_at,
@@ -616,7 +622,9 @@ class LotteryTicketController
             });
 
         $total = $query->count();
-        $records = $query->orderBy('created_at', 'desc')
+        // ✅ 排序规则：按奖项等级升序（1等奖 > 2等奖 > ...），同等级按创建时间倒序
+        $records = $query->orderBy('prize_level', 'asc')
+            ->orderBy('created_at', 'desc')
             ->forPage($page, $size)
             ->get();
 
