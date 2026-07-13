@@ -521,7 +521,7 @@ class LotteryTicketController
             ->count();
 
         // ✅ 数据查询（包含JOIN和排序）
-        // ✅ 排序规则：中奖的奖券排在前面，且按奖项等级升序（1等奖 > 2等奖 > ...），未中奖的按创建时间倒序
+        // ✅ 排序规则：中奖的奖券排在前面，按中奖金额降序，未中奖的按创建时间倒序
         $tickets = LotteryTicket::query()
             ->where('lottery_ticket.activity_id', $data['activity_id'])
             ->where('lottery_ticket.player_id', $player->id)
@@ -532,9 +532,9 @@ class LotteryTicketController
             ])
             ->with(['winningRecord']) // 预加载中奖记录关联
             ->leftJoin('lottery_ticket_record', 'lottery_ticket.id', '=', 'lottery_ticket_record.ticket_id')
-            ->select('lottery_ticket.*')
+            ->select('lottery_ticket.*', 'lottery_ticket_record.prize_amount as record_prize_amount')
             ->orderByRaw('CASE WHEN lottery_ticket_record.id IS NOT NULL THEN 0 ELSE 1 END') // 中奖的排前面
-            ->orderByRaw('CASE WHEN lottery_ticket.prize_level IS NOT NULL THEN lottery_ticket.prize_level ELSE 999 END ASC') // 中奖的按等级升序
+            ->orderByRaw('lottery_ticket_record.prize_amount DESC') // 中奖的按金额降序（大奖在前）
             ->orderBy('lottery_ticket.created_at', 'desc') // 最后按创建时间倒序
             ->forPage($page, $size)
             ->get();
