@@ -33,10 +33,30 @@ class LotteryTicketController
     {
         $player = checkPlayer();
 
-        // ✅ 获取参数：是否跳过已结束活动（获取最新活动）
-        $skipEnded = (bool) $request->input('skip_ended', false);
+        // ✅ 获取参数
+        $skipEnded = (bool) $request->input('skip_ended', false);     // 是否跳过已结束活动
+        $getPrevious = (bool) $request->input('get_previous', false); // 是否获取上期活动
 
-        // 智能获取活动（按优先级）
+        // ✅ 如果明确要获取上期活动，直接查询已结束的活动
+        if ($getPrevious) {
+            $activity = LotteryTicketActivity::query()
+                ->where('department_id', $player->department_id)
+                ->where('status', LotteryTicketActivity::STATUS_ENDED)
+                ->orderBy('ended_at', 'desc') // 按结束时间倒序，最近结束的在前
+                ->first();
+
+            if (!$activity) {
+                return jsonSuccessResponse('success', [
+                    'has_activity' => false,
+                    'activity' => null,
+                    'message' => '暂无历史活动'
+                ]);
+            }
+
+            return $this->buildActivityResponse($activity, $player);
+        }
+
+        // ✅ 默认逻辑：智能获取活动（按优先级）
         $activity = $this->getSmartActivity($player->department_id, $skipEnded);
 
         if (!$activity) {
