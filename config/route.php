@@ -285,6 +285,8 @@ Route::group('/api', function () {
         Route::post('/open-score-records', [\app\api\controller\v1\PlayerController::class, 'getOpenScoreRecords']);
         // 洗分记录列表
         Route::post('/present-auto-records', [\app\api\controller\v1\PlayerController::class, 'getPresentAutoRecords']);
+        // 活动记录列表（摸奖券、VIP升级礼金、生日礼金）
+        Route::post('/activity-records', [\app\api\controller\v1\PlayerController::class, 'getActivityRecords']);
         // 彩金中奖记录列表
         Route::post('/lottery-records', [\app\api\controller\v1\PlayerController::class, 'getLotteryRecords']);
 

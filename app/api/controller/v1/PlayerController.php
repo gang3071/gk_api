@@ -3766,6 +3766,56 @@ class PlayerController
     }
 
     /**
+     * 活动记录列表（摸奖券、VIP升级礼金、生日礼金）
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function getActivityRecords(Request $request): Response
+    {
+        $player = checkPlayer();
+        $data = $request->all();
+
+        // 构建查询（摸奖券中奖、VIP升级礼金、生日礼金）
+        $query = PlayerDeliveryRecord::query()
+            ->where('player_id', $player->id)
+            ->whereIn('type', [
+                PlayerDeliveryRecord::TYPE_LOTTERY_TICKET_REWARD,
+                PlayerDeliveryRecord::TYPE_VIP_UPGRADE_BONUS,
+                PlayerDeliveryRecord::TYPE_BIRTHDAY_BONUS,
+            ])
+            ->orderBy('id', 'desc');
+
+        // 分页查询
+        $records = $query->forPage($data['page'] ?? 1, $data['size'] ?? 10)->get();
+
+        $list = [];
+        /** @var PlayerDeliveryRecord $record */
+        foreach ($records as $record) {
+            $typeName = match ($record->type) {
+                PlayerDeliveryRecord::TYPE_LOTTERY_TICKET_REWARD => trans('lottery_ticket_reward', [], 'message'),
+                PlayerDeliveryRecord::TYPE_VIP_UPGRADE_BONUS => trans('vip_upgrade_bonus', [], 'message'),
+                PlayerDeliveryRecord::TYPE_BIRTHDAY_BONUS => trans('vip_birthday_bonus', [], 'message'),
+                default => trans('other', [], 'message'),
+            };
+
+            $list[] = [
+                'id' => $record->id,
+                'type' => $record->type,
+                'type_name' => $typeName,
+                'amount' => $record->amount,
+                'remark' => $record->remark,
+                'tradeno' => $record->tradeno,
+                'created_at' => date('Y-m-d H:i:s', strtotime($record->created_at)),
+            ];
+        }
+
+        return jsonSuccessResponse('success', [
+            'list' => $list,
+        ]);
+    }
+
+    /**
      * 彩金中奖记录列表
      * @param Request $request
      * @return Response
