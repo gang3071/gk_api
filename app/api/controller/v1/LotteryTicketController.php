@@ -629,8 +629,8 @@ class LotteryTicketController
             });
 
         $total = $query->count();
-        // ✅ 排序规则：按奖项等级升序（1等奖 > 2等奖 > ...），同等级按创建时间倒序
-        $records = $query->orderBy('prize_level', 'asc')
+        // ✅ 排序规则：按中奖金额降序（大奖在前），同金额按创建时间倒序
+        $records = $query->orderBy('prize_amount', 'desc')
             ->orderBy('created_at', 'desc')
             ->forPage($page, $size)
             ->get();
