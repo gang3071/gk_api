@@ -33,10 +33,30 @@ class LotteryTicketController
     {
         $player = checkPlayer();
 
-        // ✅ 获取参数：是否跳过已结束活动（获取最新活动）
-        $skipEnded = (bool) $request->input('skip_ended', false);
+        // ✅ 获取参数
+        $skipEnded = (bool) $request->input('skip_ended', false);     // 是否跳过已结束活动
+        $getPrevious = (bool) $request->input('get_previous', false); // 是否获取上期活动
 
-        // 智能获取活动（按优先级）
+        // ✅ 如果明确要获取上期活动，直接查询已结束的活动
+        if ($getPrevious) {
+            $activity = LotteryTicketActivity::query()
+                ->where('department_id', $player->department_id)
+                ->where('status', LotteryTicketActivity::STATUS_ENDED)
+                ->orderBy('ended_at', 'desc') // 按结束时间倒序，最近结束的在前
+                ->first();
+
+            if (!$activity) {
+                return jsonSuccessResponse('success', [
+                    'has_activity' => false,
+                    'activity' => null,
+                    'message' => '暂无历史活动'
+                ]);
+            }
+
+            return $this->buildActivityResponse($activity, $player);
+        }
+
+        // ✅ 默认逻辑：智能获取活动（按优先级）
         $activity = $this->getSmartActivity($player->department_id, $skipEnded);
 
         if (!$activity) {
@@ -61,27 +81,12 @@ class LotteryTicketController
     private function getSmartActivity(int $departmentId, bool $skipEnded = false): Builder|Model|null
     {
         try {
-            $activity = null;
-
-            // ✅ 默认模式：优先展示刚结束的活动（30分钟内）
-            if (!$skipEnded) {
-                $activity = LotteryTicketActivity::query()
-                    ->where('department_id', $departmentId)
-                    ->where('status', LotteryTicketActivity::STATUS_ENDED)
-                    ->where('ended_at', '>=', date('Y-m-d H:i:s', strtotime('-30 minutes'))) // 使用ended_at字段
-                    ->orderBy('id', 'desc')
-                    ->first();
-            }
-
-            // 如果没有已结束的活动（或跳过模式），按优先级查找下期活动
-            if (!$activity) {
-                // 优先级1: 开奖中的活动
-                $activity = LotteryTicketActivity::query()
-                    ->where('department_id', $departmentId)
-                    ->where('status', LotteryTicketActivity::STATUS_DRAWING)
-                    ->orderBy('id', 'desc')
-                    ->first();
-            }
+            // 优先级1: 开奖中的活动
+            $activity = LotteryTicketActivity::query()
+                ->where('department_id', $departmentId)
+                ->where('status', LotteryTicketActivity::STATUS_DRAWING)
+                ->orderBy('id', 'desc')
+                ->first();
 
             if (!$activity) {
                 // 优先级2: 待开奖的活动（活动已结束，等待开奖）
@@ -110,9 +115,9 @@ class LotteryTicketController
                     ->orderBy('id', 'desc')
                     ->first();
             }
-            // ✅ 优先级5: 已结束的活动（可选展示）
+            // ✅ 优先级5: 已结束的活动（降级展示，避免空白）
+            // 当没有任何活跃活动时，展示最近结束的活动，让用户查看历史记录
             if (!$activity && !$skipEnded) {
-                // 默认模式: 刚结束的活动（结束后30分钟内仍然展示）
                 $activity = LotteryTicketActivity::query()
                     ->where('department_id', $departmentId)
                     ->where('status', LotteryTicketActivity::STATUS_ENDED)
@@ -524,21 +529,33 @@ class LotteryTicketController
         $page = $data['page'] ?? 1;
         $size = min($data['size'] ?? 20, 100);
 
-        // ✅ 修复：使用统一的状态常量
-        $query = LotteryTicket::query()
+        // ✅ COUNT查询（不包含JOIN）
+        $total = LotteryTicket::query()
             ->where('activity_id', $data['activity_id'])
             ->where('player_id', $player->id)
             ->whereIn('status', [
                 LotteryTicket::STATUS_UNUSED,  // 未使用
                 LotteryTicket::STATUS_USED,    // 已使用（包含中奖和未中奖）
                 LotteryTicket::STATUS_EXPIRED  // 已过期
-            ]);
+            ])
+            ->count();
 
-        $total = $query->count();
-
-        // ✅ 优化：使用预加载避免N+1查询
-        $tickets = $query->with(['winningRecord']) // 预加载中奖记录关联
-            ->orderBy('created_at', 'desc')
+        // ✅ 数据查询（包含JOIN和排序）
+        // ✅ 排序规则：中奖的奖券排在前面，按中奖金额降序，未中奖的按创建时间倒序
+        $tickets = LotteryTicket::query()
+            ->where('lottery_ticket.activity_id', $data['activity_id'])
+            ->where('lottery_ticket.player_id', $player->id)
+            ->whereIn('lottery_ticket.status', [
+                LotteryTicket::STATUS_UNUSED,
+                LotteryTicket::STATUS_USED,
+                LotteryTicket::STATUS_EXPIRED
+            ])
+            ->with(['winningRecord']) // 预加载中奖记录关联
+            ->leftJoin('lottery_ticket_record', 'lottery_ticket.id', '=', 'lottery_ticket_record.ticket_id')
+            ->select('lottery_ticket.*', 'lottery_ticket_record.prize_amount as record_prize_amount')
+            ->orderByRaw('CASE WHEN lottery_ticket_record.id IS NOT NULL THEN 0 ELSE 1 END') // 中奖的排前面
+            ->orderByRaw('lottery_ticket_record.prize_amount DESC') // 中奖的按金额降序（大奖在前）
+            ->orderBy('lottery_ticket.created_at', 'desc') // 最后按创建时间倒序
             ->forPage($page, $size)
             ->get();
 
@@ -556,9 +573,11 @@ class LotteryTicketController
                 'status' => $ticket->status,
                 'status_text' => $this->getStatusText($ticket->status),
                 'is_winning' => $isWinning,  // ✅ 通过预加载的中奖记录判断
-                'prize_level' => $winningRecord->prize_level ?? null,
+                'prize_type' => $winningRecord->prize_type ?? null,
+                'prize_name' => $winningRecord->prize_name ?? '',
                 'prize_amount' => $winningRecord->prize_amount ?? 0,
                 'issued_at' => $ticket->issued_at,
+                'used_at' => $ticket->used_at,
                 'expired_at' => $ticket->expired_at,
                 'created_at' => $ticket->created_at,
             ];
@@ -631,7 +650,9 @@ class LotteryTicketController
             });
 
         $total = $query->count();
-        $records = $query->orderBy('created_at', 'desc')
+        // ✅ 排序规则：按中奖金额降序（大奖在前），同金额按创建时间倒序
+        $records = $query->orderBy('prize_amount', 'desc')
+            ->orderBy('created_at', 'desc')
             ->forPage($page, $size)
             ->get();
 
@@ -644,8 +665,6 @@ class LotteryTicketController
                 'ticket_no' => $record->ticket_no,
                 'prize_type' => $record->prize_type,
                 'prize_name' => $record->prize_name,
-                'prize_level' => $record->prize_level,
-                'prize_level_name' => $record->prize_level_name,
                 'prize_amount' => (float)$record->prize_amount,
                 'status' => $record->status,
                 'status_text' => $this->getRecordStatusText($record->status),
