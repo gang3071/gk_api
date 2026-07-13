@@ -147,22 +147,15 @@ class PlayerController
             $storeName = $player->storeAdmin->nickname ?? $player->storeAdmin->username ?? '';
         }
 
-        // 计算有效摸奖券数量（使用缓存优化）
-        $cacheKey = "player:{$player->id}:valid_ticket_count";
-        $validLotteryTicketCount = Cache::get($cacheKey);
-
-        if ($validLotteryTicketCount === null) {
-            // ✅ 修复：使用统一的状态常量，只计算未使用的奖券
-            $validLotteryTicketCount = LotteryTicket::query()
-                ->join('lottery_ticket_activity as a', 'lottery_ticket.activity_id', '=', 'a.id')
-                ->where('lottery_ticket.player_id', $player->id)
-                ->where('lottery_ticket.status', LotteryTicket::STATUS_UNUSED)  // 只计算未使用的
-                ->where('lottery_ticket.expired_at', '>', date('Y-m-d H:i:s'))
-                ->where('a.status', '!=', LotteryTicketActivity::STATUS_CLOSED)
-                ->count('lottery_ticket.id');
-
-            Cache::set($cacheKey, $validLotteryTicketCount, 300);
-        }
+        // 计算有效摸奖券数量（实时查询，确保数据准确）
+        // ✅ 去除缓存：活动状态变更时无法及时失效缓存，导致数据不准确
+        // ✅ 去除expired_at约束：活动状态已经足够判断有效性，且expired_at可能为NULL
+        $validLotteryTicketCount = LotteryTicket::query()
+            ->join('lottery_ticket_activity as a', 'lottery_ticket.activity_id', '=', 'a.id')
+            ->where('lottery_ticket.player_id', $player->id)
+            ->where('lottery_ticket.status', LotteryTicket::STATUS_UNUSED)  // 未使用
+            ->where('a.status', '!=', LotteryTicketActivity::STATUS_CLOSED)  // 活动未关闭
+            ->count('lottery_ticket.id');
 
         // 获取VIP等级信息
         /** @var VipLevel $vipLevel */
