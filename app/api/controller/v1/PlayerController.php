@@ -10,6 +10,7 @@ use app\model\Channel;
 use app\model\ChannelRechargeMethod;
 use app\model\ChannelRechargeSetting;
 use app\model\Currency;
+use app\model\GamePlatform;
 use app\model\GameType;
 use app\model\Lottery;
 use app\model\LotteryTicket;
@@ -182,6 +183,16 @@ class PlayerController
                 ->first();
         }
 
+        // 获取当天电子游戏打码量（排除真人视讯/体育平台，用于VIP升级统计）
+        $todayStart = Carbon::today()->startOfDay()->toDateTimeString();
+        $todayEnd = Carbon::today()->endOfDay()->toDateTimeString();
+        $todayGameBetAmount = PlayGameRecord::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $todayStart)
+            ->where('created_at', '<=', $todayEnd)
+            ->whereNotIn('platform_id', $this->getExcludedPlatformIds())
+            ->sum('bet');
+
         return jsonSuccessResponse('success', [
             'id' => $player->id,
             'phone' => $player->phone,
@@ -233,6 +244,7 @@ class PlayerController
                 'sort' => $vipLevel->sort,
             ],
             'valid_lottery_ticket_count' => $validLotteryTicketCount, // 有效摸奖券数量
+            'today_game_bet_amount' => $todayGameBetAmount, // 当天电子游戏打码量
         ]);
     }
     
@@ -3954,5 +3966,29 @@ class PlayerController
         }
 
         return floatval($config);
+    }
+
+    /**
+     * 获取排除的平台ID列表（真人视讯和体育平台）
+     *
+     * 这些平台不参与VIP等级升级打码量统计
+     * 使用配置文件统一管理平台过滤规则
+     *
+     * @return array 平台ID数组
+     */
+    private function getExcludedPlatformIds(): array
+    {
+        // 从配置文件读取排除的平台代码
+        $excludedCodes = config('platform_filter.excluded_platforms', [
+            // 默认值（防止配置文件不存在）
+            'WM', 'DG', 'SA', 'RSGLIVE', 'MT', 'O8', 'TNINE',
+            'KY', 'KYS', 'OB', 'SPS', 'SPS_DY'
+        ]);
+
+        // 根据平台代码查询平台ID
+        return GamePlatform::query()
+            ->whereIn('code', $excludedCodes)
+            ->pluck('id')
+            ->toArray();
     }
 }
