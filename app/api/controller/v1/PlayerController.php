@@ -193,6 +193,16 @@ class PlayerController
             ->whereNotIn('platform_id', $this->getExcludedPlatformIds())
             ->sum('bet');
 
+        // 获取昨日电子游戏打码量
+        $yesterdayStart = Carbon::yesterday()->startOfDay()->toDateTimeString();
+        $yesterdayEnd = Carbon::yesterday()->endOfDay()->toDateTimeString();
+        $yesterdayGameBetAmount = PlayGameRecord::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $yesterdayStart)
+            ->where('created_at', '<=', $yesterdayEnd)
+            ->whereNotIn('platform_id', $this->getExcludedPlatformIds())
+            ->sum('bet');
+
         return jsonSuccessResponse('success', [
             'id' => $player->id,
             'phone' => $player->phone,
@@ -245,6 +255,7 @@ class PlayerController
             ],
             'valid_lottery_ticket_count' => $validLotteryTicketCount, // 有效摸奖券数量
             'today_game_bet_amount' => $todayGameBetAmount, // 当天电子游戏打码量
+            'yesterday_game_bet_amount' => $yesterdayGameBetAmount, // 昨日电子游戏打码量
         ]);
     }
     
