@@ -3681,15 +3681,15 @@ if (!function_exists('generateLotteryLiveUrls')) {
             throw new \Exception('腾讯云配置不存在');
         }
 
-        // ✅ 优先使用大陆地区的播放域名和Key（大陆用户访问速度更快）
-        if ($useCnDomain && !empty($config->pull_domain_cn) && !empty($config->pull_key_cn)) {
-            $pullDomain = $config->pull_domain_cn;
-            $pullKey = $config->pull_key_cn;
-            $region = 'CN'; // 大陆
-        } elseif (!empty($config->pull_domain) && !empty($config->pull_key)) {
+        // ✅ 优先使用海外地区的播放域名和Key（全球用户访问更稳定）
+        if (!empty($config->pull_domain) && !empty($config->pull_key)) {
             $pullDomain = $config->pull_domain;
             $pullKey = $config->pull_key;
             $region = 'Global'; // 全球/海外
+        } elseif ($useCnDomain && !empty($config->pull_domain_cn) && !empty($config->pull_key_cn)) {
+            $pullDomain = $config->pull_domain_cn;
+            $pullKey = $config->pull_key_cn;
+            $region = 'CN'; // 大陆
         } else {
             throw new \Exception('拉流域名或密钥未配置');
         }
