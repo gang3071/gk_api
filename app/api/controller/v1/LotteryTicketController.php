@@ -22,6 +22,23 @@ use Webman\RateLimiter\Annotation\RateLimiter;
  */
 class LotteryTicketController
 {
+    /**
+     * 格式化金额显示（整数不显示小数位）
+     * @param float $amount
+     * @return float|int
+     */
+    private function formatAmount(float $amount): float|int
+    {
+        // 判断是否为整数
+        if (floor($amount) == $amount) {
+            // 整数：返回整数类型
+            return (int)$amount;
+        } else {
+            // 小数：保留两位小数
+            return round($amount, 2);
+        }
+    }
+
     #[RateLimiter(limit: 10)]
     /**
      * 智能获取摸奖券活动（按优先级返回）
@@ -169,6 +186,14 @@ class LotteryTicketController
                 ->orderBy('level_rank')
                 ->select(['level_rank', 'level_name', 'prize_amount', 'prize_count'])
                 ->get()
+                ->map(function ($level) {
+                    return [
+                        'level_rank' => $level->level_rank,
+                        'level_name' => $level->level_name,
+                        'prize_amount' => $this->formatAmount((float)$level->prize_amount),
+                        'prize_count' => $level->prize_count,
+                    ];
+                })
                 ->toArray();
 
             \support\Cache::set($cacheKey, $prizeLevels, 3600);
@@ -189,7 +214,7 @@ class LotteryTicketController
                     return [
                         'vip_level_id' => $config->vip_level_id,
                         'vip_level_name' => $config->vipLevel ? $config->vipLevel->name : ('VIP' . $config->vip_level_id), // ✅ 修正：使用 name 属性
-                        'bet_amount_required' => (float) $config->bet_amount_required,
+                        'bet_amount_required' => $this->formatAmount((float) $config->bet_amount_required),
                         'ticket_count' => $config->ticket_count,
                     ];
                 })
@@ -253,26 +278,26 @@ class LotteryTicketController
             $currentCycleRemaining = max(0, $betProgress->bet_amount_required - $currentCycleBetAmount);
 
             $progress = [
-                'bet_amount_required' => (float) $betProgress->bet_amount_required,
-                'current_bet_amount' => (float) $betProgress->current_bet_amount,  // ✅ 当前周期打码量
+                'bet_amount_required' => $this->formatAmount((float) $betProgress->bet_amount_required),
+                'current_bet_amount' => $this->formatAmount((float) $betProgress->current_bet_amount),  // ✅ 当前周期打码量
                 'progress_percent' => (float) $currentCyclePercent,      // ✅ 当前周期进度百分比
-                'remaining_bet_amount' => (float) $currentCycleRemaining, // ✅ 当前周期剩余打码量
+                'remaining_bet_amount' => $this->formatAmount((float) $currentCycleRemaining), // ✅ 当前周期剩余打码量
                 'cycles_completed' => $betProgress->cycles_completed,
                 'total_tickets_issued' => $betProgress->total_tickets_issued,
                 'ticket_count_per_cycle' => $betProgress->ticket_count_per_cycle,
-                'total_bet_amount' => (float) $betProgress->current_bet_amount, // ✅ 累计总打码量
+                'total_bet_amount' => $this->formatAmount((float) $betProgress->current_bet_amount), // ✅ 累计总打码量
             ];
         } else {
             // 没有打码进度记录，返回初始状态（使用VIP配置的基础值）
             $progress = [
-                'bet_amount_required' => (float) $baseBetAmount,
-                'current_bet_amount' => 0.00,
+                'bet_amount_required' => $this->formatAmount((float) $baseBetAmount),
+                'current_bet_amount' => 0,
                 'progress_percent' => 0.00,
-                'remaining_bet_amount' => (float) $baseBetAmount,
+                'remaining_bet_amount' => $this->formatAmount((float) $baseBetAmount),
                 'cycles_completed' => 0,
                 'total_tickets_issued' => 0,
                 'ticket_count_per_cycle' => $baseTicketCount,
-                'total_bet_amount' => 0.00, // ✅ 累计总打码量
+                'total_bet_amount' => 0, // ✅ 累计总打码量
             ];
         }
 
@@ -292,7 +317,7 @@ class LotteryTicketController
                 'status_text' => $this->getActivityStatusText($activity->status),
                 'my_ticket_count' => $myTicketCount,
                 'my_win_count' => $myWinCount,
-                'my_total_prize_amount' => (float)$myTotalPrizeAmount, // ✅ 我的总获奖金额
+                'my_total_prize_amount' => $this->formatAmount((float)$myTotalPrizeAmount), // ✅ 我的总获奖金额
                 'countdown' => $countdown,
 
                 // ✅ 开奖状态（线下摇球，无ball_result字段）
@@ -585,7 +610,7 @@ class LotteryTicketController
                 'is_winning' => $isWinning,  // ✅ 通过预加载的中奖记录判断
                 'prize_type' => $winningRecord->prize_type ?? null,
                 'prize_name' => $winningRecord->prize_name ?? '',
-                'prize_amount' => $winningRecord->prize_amount ?? 0,
+                'prize_amount' => $this->formatAmount((float)($winningRecord->prize_amount ?? 0)),
                 'issued_at' => $ticket->issued_at,
                 'used_at' => $ticket->used_at,
                 'expired_at' => $ticket->expired_at,
@@ -675,7 +700,7 @@ class LotteryTicketController
                 'ticket_no' => $record->ticket_no,
                 'prize_type' => $record->prize_type,
                 'prize_name' => $record->prize_name,
-                'prize_amount' => (float)$record->prize_amount,
+                'prize_amount' => $this->formatAmount((float)$record->prize_amount),
                 'status' => $record->status,
                 'status_text' => $this->getRecordStatusText($record->status),
                 'granted_at' => $record->granted_at,
@@ -767,10 +792,10 @@ class LotteryTicketController
                 'activity_id' => $data['activity_id'],
                 'player_id' => $player->id,
                 'vip_level_id' => $player->vip_level_id,
-                'bet_amount_required' => $betAmountRequired ?? 0,
+                'bet_amount_required' => $this->formatAmount((float)($betAmountRequired ?? 0)),
                 'current_bet_amount' => 0,
                 'progress_percent' => 0,
-                'remaining_bet_amount' => $betAmountRequired ?? 0,
+                'remaining_bet_amount' => $this->formatAmount((float)($betAmountRequired ?? 0)),
                 'cycles_completed' => 0,
                 'total_tickets_issued' => 0,
                 'ticket_count_per_cycle' => $ticketCountPerCycle ?? 0,
@@ -791,14 +816,14 @@ class LotteryTicketController
             'activity_id' => $betProgress->activity_id,
             'player_id' => $betProgress->player_id,
             'vip_level_id' => $betProgress->vip_level_id,
-            'bet_amount_required' => $betProgress->bet_amount_required,
-            'current_bet_amount' => $betProgress->current_bet_amount,       // ✅ 当前周期打码量
+            'bet_amount_required' => $this->formatAmount((float)$betProgress->bet_amount_required),
+            'current_bet_amount' => $this->formatAmount((float)$betProgress->current_bet_amount),       // ✅ 当前周期打码量
             'progress_percent' => $currentCyclePercent,            // ✅ 当前周期进度百分比
-            'remaining_bet_amount' => $currentCycleRemaining,      // ✅ 当前周期剩余打码量
+            'remaining_bet_amount' => $this->formatAmount((float)$currentCycleRemaining),      // ✅ 当前周期剩余打码量
             'cycles_completed' => $betProgress->cycles_completed,
             'total_tickets_issued' => $betProgress->total_tickets_issued,
             'ticket_count_per_cycle' => $betProgress->ticket_count_per_cycle,
-            'total_bet_amount' => $betProgress->current_bet_amount, // ✅ 累计总打码量
+            'total_bet_amount' => $this->formatAmount((float)$betProgress->current_bet_amount), // ✅ 累计总打码量
             'status' => $betProgress->status,
             'updated_at' => $betProgress->updated_at,
         ]);
