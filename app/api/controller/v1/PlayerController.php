@@ -254,9 +254,26 @@ class PlayerController
                 'sort' => $vipLevel->sort,
             ],
             'valid_lottery_ticket_count' => $validLotteryTicketCount, // 有效摸奖券数量
-            'today_game_bet_amount' => $todayGameBetAmount, // 当天电子游戏打码量
-            'yesterday_game_bet_amount' => $yesterdayGameBetAmount, // 昨日电子游戏打码量
+            'today_game_bet_amount' => $this->formatAmount($todayGameBetAmount), // 当天电子游戏打码量
+            'yesterday_game_bet_amount' => $this->formatAmount($yesterdayGameBetAmount), // 昨日电子游戏打码量
         ]);
+    }
+
+    /**
+     * 格式化金额显示（整数不显示小数位）
+     * @param float $amount
+     * @return float|int
+     */
+    private function formatAmount(float $amount): float|int
+    {
+        // 判断是否为整数
+        if (floor($amount) == $amount) {
+            // 整数：返回整数类型
+            return (int)$amount;
+        } else {
+            // 小数：保留两位小数
+            return round($amount, 2);
+        }
     }
     
     #[RateLimiter(limit: 5)]
