@@ -31,6 +31,8 @@ use Webman\RateLimiter\Annotation\RateLimiter;
 
 class GamePlatformController
 {
+    use \support\IdempotentTrait;
+
     /** 排除  */
     protected $noNeedSign = ['walletTransferIN', 'enterGame'];
     
@@ -638,27 +640,47 @@ class GamePlatformController
 
         $player = checkPlayer();
         $data = $request->all();
+
+        // ==================== 阶段1：占位前检查（参数验证） ====================
         $validator = v::key('game_platform_id',
             v::stringType()->notEmpty()->setName(trans('game_platform_id', [], 'message')))
             ->key('amount', v::floatVal()->notEmpty()->setName(trans('amount', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
+
+        // ==================== 阶段2：幂等性处理 ====================
+        $requestId = $data['request_id'] ?? null;
+        $idempotentResponse = $this->checkIdempotent($requestId, 'wallet-transfer-out', $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        if (!$this->reserveIdempotent($requestId, 'wallet-transfer-out', $player->id)) {
+            $response = $this->checkIdempotent($requestId, 'wallet-transfer-out', $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ==================== 阶段3：占位后检查（需要查库，失败需释放） ====================
         /** @var GamePlatform $gamePlatform */
         $gamePlatform = GamePlatform::query()->find($data['game_platform_id']);
         if (empty($gamePlatform)) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('game_platform_not_found', [], 'message'));
         }
         if ($gamePlatform->status != 1) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('game_platform_disable', [], 'message'));
         }
+
         $amount = (float)$data['amount'];
         // ✅ 从 Redis 读取实时余额
         $currentBalance = \app\service\WalletService::getBalance($player->id);
         if ($amount > $currentBalance) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('your_point_insufficient', [], 'message'));
         }
         $lang = locale() ?? 'zh_TW';
@@ -716,12 +738,18 @@ class GamePlatformController
             $playerDeliveryRecord->save();
 
             DB::commit();
+
+            // 保存幂等性记录（覆盖占位）
+            $response = jsonSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, 'wallet-transfer-out', $player->id);
+
+            return $response;
         } catch (Exception $e) {
             DB::rollBack();
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
-        
-        return jsonSuccessResponse('success');
     }
     
     #[RateLimiter(limit: 5)]
@@ -936,30 +964,50 @@ class GamePlatformController
 
         $player = checkPlayer();
         $data = $request->all();
+
+        // ==================== 阶段1：占位前检查（参数验证） ====================
         $validator = v::key('game_platform_id',
             v::stringType()->notEmpty()->setName(trans('game_platform_id', [], 'message')))
             ->key('take_all', v::in(['false', 'true'])->notEmpty()->setName(trans('take_all', [], 'message')))
             ->key('amount', v::floatVal()->setName(trans('amount', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
+
+        // ==================== 阶段2：幂等性处理 ====================
+        $requestId = $data['request_id'] ?? null;
+        $idempotentResponse = $this->checkIdempotent($requestId, 'wallet-transfer-in', $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        if (!$this->reserveIdempotent($requestId, 'wallet-transfer-in', $player->id)) {
+            $response = $this->checkIdempotent($requestId, 'wallet-transfer-in', $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ==================== 阶段3：占位后检查（需要查库/调用外部，失败需释放） ====================
         /** @var GamePlatform $gamePlatform */
         $gamePlatform = GamePlatform::query()->find($data['game_platform_id']);
         if (empty($gamePlatform)) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('game_platform_not_found', [], 'message'));
         }
         if ($gamePlatform->status != 1) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('game_platform_disable', [], 'message'));
         }
+
         $amount = $data['amount'] ?? 0;
         $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         $gameService = GameServiceFactory::createService(strtoupper($gamePlatform->code), $player);
         $balance = $gameService->getBalance(['lang' => $lang]);
         if ($data['take_all'] == 'false' && $amount > $balance) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('insufficient_wallet_balance', [], 'message'));
         }
         if ($data['take_all'] == 'true') {
@@ -1017,14 +1065,20 @@ class GamePlatformController
             $playerDeliveryRecord->save();
 
             DB::commit();
+
+            // 保存幂等性记录（覆盖占位）
+            $response = jsonSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, 'wallet-transfer-in', $player->id);
+
+            return $response;
         } catch (Exception|GameException $e) {
             DB::rollBack();
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
-        
-        return jsonSuccessResponse('success');
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 进入游戏大厅

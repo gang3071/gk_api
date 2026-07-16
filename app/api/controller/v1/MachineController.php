@@ -52,6 +52,8 @@ use yzh52521\WebmanLock\Locker;
 
 class MachineController
 {
+    use \support\IdempotentTrait;
+
     /** 排除验签 */
     protected $noNeedSign = [];
 
@@ -1342,14 +1344,10 @@ class MachineController
     public function rechargeAndWithdraw(Request $request): Response
     {
         $player = checkPlayer();
-
-        // 爆机检查：玩家不能投钞
-        $crashCheck = checkMachineCrash($player);
-        if ($crashCheck['crashed']) {
-            return jsonFailResponse(trans('machine_crashed_cannot_recharge', [], 'message'));
-        }
-
         $data = $request->all();
+
+        // ==================== 阶段1：占位前检查 ====================
+        // 参数验证
         $validator = v::arrayType()
             ->key('amount', v::numericVal()->notEmpty()->setName(trans('amount', [], 'store_machine_message')));
         try {
@@ -1358,15 +1356,40 @@ class MachineController
             return jsonFailResponse(getValidationMessages($e));
         }
 
-        /** @var Channel $channel */
-        $channel = Channel::where('department_id', \request()->department_id)->first();
-        if (empty($channel)) {
-            return jsonFailResponse(trans('channel_not_found', [], 'message'));
-        }
+        // Player属性检查
         if ($player->status_offline_open == 0) {
             return jsonFailResponse(trans('recharge_closed', [], 'message'));
         }
+
+        // ==================== 阶段2：幂等性处理 ====================
+        $requestId = $data['request_id'] ?? null;
+        $idempotentResponse = $this->checkIdempotent($requestId, 'machine-recharge', $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        if (!$this->reserveIdempotent($requestId, 'machine-recharge', $player->id)) {
+            $response = $this->checkIdempotent($requestId, 'machine-recharge', $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ==================== 阶段3：占位后检查（需要查库，失败需释放） ====================
+        // 爆机检查
+        $crashCheck = checkMachineCrash($player);
+        if ($crashCheck['crashed']) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('machine_crashed_cannot_recharge', [], 'message'));
+        }
+
+        // 渠道检查
+        /** @var Channel $channel */
+        $channel = Channel::where('department_id', \request()->department_id)->first();
+        if (empty($channel)) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('channel_not_found', [], 'message'));
+        }
         if ($channel->recharge_status == 0) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('recharge_closed', [], 'message'));
         }
         
@@ -1436,18 +1459,25 @@ class MachineController
             $playerDeliveryRecord->save();
             
             DB::commit();
+
+            // 发送队列消息
+            queueClient::send('game-depositAmount', [
+                'player_id' => $player->id,
+                'amount' => $playerRechargeRecord->point,
+            ]);
+
+            // 保存幂等性记录（覆盖占位）
+            $response = jsonSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, 'machine-recharge', $player->id);
+
+            return $response;
         } catch (Exception $e) {
             DB::rollBack();
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
             Log::error($e->getMessage());
             return jsonFailResponse($e->getMessage());
         }
-        
-        queueClient::send('game-depositAmount', [
-            'player_id' => $player->id,
-            'amount' => $playerRechargeRecord->point,
-        ]);
-        
-        return jsonSuccessResponse('success');
     }
     
     /**

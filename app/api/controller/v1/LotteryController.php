@@ -26,6 +26,8 @@ use Webman\RateLimiter\Annotation\RateLimiter;
 
 class LotteryController
 {
+    use \support\IdempotentTrait;
+
     /** 排除  */
     protected $noNeedSign = [];
 
@@ -214,6 +216,8 @@ class LotteryController
     {
         $player = checkPlayer();
         $data = $request->all();
+
+        // ==================== 阶段1：占位前检查（参数验证） ====================
         $validator = v::key('id', v::intVal()->setName(trans('player_lottery_record_id', [], 'message')));
 
         try {
@@ -222,18 +226,35 @@ class LotteryController
             return jsonFailResponse(getValidationMessages($e));
         }
 
+        // ==================== 阶段2：幂等性处理 ====================
+        $requestId = $data['request_id'] ?? null;
+        $idempotentResponse = $this->checkIdempotent($requestId, 'receive-lottery:' . ($data['id'] ?? ''), $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        if (!$this->reserveIdempotent($requestId, 'receive-lottery:' . ($data['id'] ?? ''), $player->id)) {
+            $response = $this->checkIdempotent($requestId, 'receive-lottery:' . ($data['id'] ?? ''), $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ==================== 阶段3：占位后检查（需要查库，失败需释放占位） ====================
         /** @var PlayerLotteryRecord $playerLotteryRecord */
         $playerLotteryRecord = PlayerLotteryRecord::where('player_id', $player->id)->where('id', $data['id'])->first();
         if (empty($playerLotteryRecord)) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('player_lottery_record_not_found', [], 'message'));
         }
         if ($playerLotteryRecord->status == PlayerLotteryRecord::STATUS_REJECT) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('player_lottery_record_reject', [], 'message'));
         }
         if ($playerLotteryRecord->status == PlayerLotteryRecord::STATUS_UNREVIEWED) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('player_activity_phase_record_unreviewed', [], 'message'));
         }
         if ($playerLotteryRecord->status == PlayerLotteryRecord::STATUS_COMPLETE) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('player_activity_phase_record_complete', [], 'message'));
         }
 
@@ -277,12 +298,18 @@ class LotteryController
             $lottery->lottery_times = $lottery->lottery_times +1;
             $lottery->save();
             DB::commit();
+
+            // 保存幂等性记录（覆盖占位）
+            $response = jsonSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, 'receive-lottery:' . ($data['id'] ?? ''), $player->id);
+
+            return $response;
         } catch (\Exception $e) {
             DB::rollBack();
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('system_error', [], 'message'));
         }
-
-        return jsonSuccessResponse('success');
     }
 
     #[RateLimiter(limit: 5)]
@@ -295,6 +322,21 @@ class LotteryController
     {
         $player = checkPlayer();
 
+        // 幂等性检查（如果客户端传递了 request_id）
+        $requestId = request()->post('request_id');
+        $idempotentResponse = $this->checkIdempotent($requestId, 'receive-all-lottery', $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        // 提前占位（防止并发）
+        if (!$this->reserveIdempotent($requestId, 'receive-all-lottery', $player->id)) {
+            // 占位失败，再次检查状态（可能已完成或正在处理）
+            $response = $this->checkIdempotent($requestId, 'receive-all-lottery', $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ==================== 阶段3：占位后检查（需要查库，失败需释放占位） ====================
         $playerLotteryRecordList = PlayerLotteryRecord::query()
             ->where('player_id', $player->id)
             ->where('status', PlayerLotteryRecord::STATUS_PASS)
@@ -311,6 +353,7 @@ class LotteryController
             ->get();
 
         if (empty($playerLotteryRecordList->toArray()) && empty($playerActivityPhaseRecordList->toArray()) && empty($playerReverseWater->toArray())) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('player_lottery_record_not_found', [], 'message'));
         }
 
@@ -428,11 +471,17 @@ class LotteryController
             
             $machineWallet->save();
             DB::commit();
+
+            // 保存幂等性记录（覆盖占位）
+            $response = jsonSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, 'receive-all-lottery', $player->id);
+
+            return $response;
         } catch (\Exception) {
             DB::rollBack();
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('system_error', [], 'message'));
         }
-
-        return jsonSuccessResponse('success');
     }
 }

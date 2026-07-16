@@ -27,6 +27,8 @@ use Throwable;
  */
 class TicketController
 {
+    use \support\IdempotentTrait;
+
     /**
      * 核销出票 - 玩家端主动出票
      *
@@ -38,44 +40,65 @@ class TicketController
     {
         $player = checkPlayer();
 
-        // 基础验证
+        // ==================== 阶段1：占位前检查（轻量级） ====================
+        // 基础验证 - Player属性检查
         if ($player->is_coin == 1) {
             return jsonFailResponse(trans('coin_cannot_present', [], 'message'));
         }
 
-        // 爆机检查：玩家不能出票
-        $crashCheck = checkMachineCrash($player);
-        if ($crashCheck['crashed']) {
-            return jsonFailResponse(trans('machine_crashed_cannot_wash_score', [], 'message'));
-        }
-
-        // 渠道和货币验证（先验证，避免扣款后回退）
-        /** @var Channel $channel */
-        $channel = Channel::query()->where('department_id', \request()->department_id)->first();
         if ($player->status_withdraw != 1) {
             return jsonFailResponse(trans('player_withdraw_closed', [], 'message'));
         }
+
+        // ==================== 阶段2：幂等性处理 ====================
+        // 幂等性检查
+        $requestId = $request->post('request_id');
+        $idempotentResponse = $this->checkIdempotent($requestId, 'ticket-redeem', $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        // 提前占位（防止并发）
+        if (!$this->reserveIdempotent($requestId, 'ticket-redeem', $player->id)) {
+            // 占位失败，再次检查状态（可能已完成或正在处理）
+            $response = $this->checkIdempotent($requestId, 'ticket-redeem', $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ==================== 阶段3：占位后检查（需要查库，失败需释放占位） ====================
+        // 爆机检查：玩家不能出票
+        $crashCheck = checkMachineCrash($player);
+        if ($crashCheck['crashed']) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('machine_crashed_cannot_wash_score', [], 'message'));
+        }
+
+        // 渠道和货币验证
+        /** @var Channel $channel */
+        $channel = Channel::query()->where('department_id', \request()->department_id)->first();
         if ($channel->withdraw_status == 0) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('self_withdraw_closed', [], 'message'));
         }
+
         /** @var Currency $currency */
         $currency = Currency::query()->where('identifying', $channel->currency)->where('status',
             1)->whereNull('deleted_at')->first();
         if (empty($currency)) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
 
-        // 🔥 获取后台配置的洗分数值
-        // 从店家后台账号获取 wash_point_config 配置
-        // 如果未配置或配置为0，则使用默认值100
+        // 🔥 原子性洗分操作（完全避免 TOCTOU 问题）
+        // 获取后台配置的洗分数值
         $washPointConfig = self::getWashPointConfig($player->store_admin_id);
 
-        // 🔥 原子性洗分操作（完全避免 TOCTOU 问题）
         // 在 Redis 中原子性完成：读取余额 → 根据配置计算洗分金额 → 扣款
         try {
             $washResult = WalletService::atomicWash($player->id, $washPointConfig);
         } catch (\Throwable $e) {
-            // Lua 脚本执行失败或其他异常
+            // Lua 脚本执行失败 - 释放占位
+            $this->releaseIdempotent($requestId);
             Log::error('TicketController: Wash operation failed', [
                 'player_id' => $player->id,
                 'error' => $e->getMessage(),
@@ -85,7 +108,8 @@ class TicketController
         }
 
         if ($washResult['ok'] == 0) {
-            // 洗分失败
+            // 洗分失败 - 释放占位（允许用户充值后重试）
+            $this->releaseIdempotent($requestId);
             if ($washResult['error'] == 'insufficient_wash_amount') {
                 // 余额不足：当前余额小于配置的洗分基数
                 return jsonFailResponse(trans('insufficient_balance_wash', [
@@ -186,6 +210,20 @@ class TicketController
             $playerDeliveryRecord->save();
 
             DB::commit();
+
+            // ✅ 事务提交后更新爆机状态
+            WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
+
+            // 保存幂等性记录（覆盖占位）
+            $response = jsonSuccessResponse(trans('ticket_redeem_success', [], 'message'), [
+                'order_id' => $orderId,
+                'encrypted_content' => $orderId,
+                'score' => $washAmount,
+                'store_name' => $storeName,
+            ]);
+            $this->saveIdempotent($requestId, $response, 'ticket-redeem', $player->id);
+
+            return $response;
         } catch (Exception $e) {
             // 确保事务回滚
             if (DB::transactionLevel() > 0) {
@@ -194,6 +232,9 @@ class TicketController
 
             // 事务失败，回退已扣除的余额
             WalletService::atomicIncrement($player->id, $washAmount);
+
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
 
             Log::error('redeemTicket failed, balance refunded', [
                 'player_id' => $player->id,
@@ -212,6 +253,9 @@ class TicketController
             // 事务失败，回退已扣除的余额
             WalletService::atomicIncrement($player->id, $washAmount);
 
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
+
             Log::error('redeemTicket failed (Throwable), balance refunded', [
                 'player_id' => $player->id,
                 'wash_amount' => $washAmount,
@@ -221,16 +265,6 @@ class TicketController
 
             return jsonFailResponse(trans('system_error', [], 'message'));
         }
-
-        // ✅ 事务提交后更新爆机状态
-        WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
-
-        return jsonSuccessResponse(trans('ticket_redeem_success', [], 'message'), [
-            'order_id' => $orderId,
-            'encrypted_content' => $orderId,
-            'score' => $washAmount,
-            'store_name' => $storeName,
-        ]);
     }
 
     /**
@@ -250,15 +284,31 @@ class TicketController
             return jsonFailResponse(trans('ticket_order_id_empty', [], 'message'));
         }
 
+        // 幂等性检查（如果客户端传递了 request_id）
+        $requestId = $request->post('request_id');
+        $idempotentResponse = $this->checkIdempotent($requestId, 'ticket-scan-open:' . $orderId, $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        // 提前占位（防止并发）
+        if (!$this->reserveIdempotent($requestId, 'ticket-scan-open:' . $orderId, $player->id)) {
+            // 占位失败，再次检查状态（可能已完成或正在处理）
+            $response = $this->checkIdempotent($requestId, 'ticket-scan-open:' . $orderId, $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
         try {
             Log::info('scanOpenScore: 开始处理', [
                 'player_id' => $player->id,
                 'order_id' => $orderId,
             ]);
 
+            // ==================== 阶段3：占位后检查（需要查库，失败需释放） ====================
             // 爆机检查：玩家不能开分
             $crashCheck = checkMachineCrash($player);
             if ($crashCheck['crashed']) {
+                $this->releaseIdempotent($requestId);
                 return jsonFailResponse(trans('machine_crashed_cannot_open_score', [], 'message'));
             }
 
@@ -268,6 +318,7 @@ class TicketController
             $lock = \support\Redis::set($lockKey, 1, 'EX', $lockTtl, 'NX');
 
             if (!$lock) {
+                $this->releaseIdempotent($requestId);
                 Log::warning('scanOpenScore: 获取锁失败，正在处理中', [
                     'player_id' => $player->id,
                     'order_id' => $orderId,
@@ -281,6 +332,7 @@ class TicketController
                 $ticket = TicketRecord::where('order_id', $orderId)->first();
 
                 if (!$ticket) {
+                    $this->releaseIdempotent($requestId);
                     Log::warning('scanOpenScore: 出票记录不存在', [
                         'player_id' => $player->id,
                         'order_id' => $orderId,
@@ -290,6 +342,7 @@ class TicketController
 
                 // 验证状态（已打印或待核销状态才能扫码）
                 if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
+                    $this->releaseIdempotent($requestId);
                     Log::warning('scanOpenScore: 出票状态异常', [
                         'player_id' => $player->id,
                         'order_id' => $orderId,
@@ -304,6 +357,7 @@ class TicketController
                 // player_id = 0: 未绑定，任何人都能扫码
                 // player_id > 0: 已绑定，只有绑定玩家能扫码
                 if ((int)$ticket->player_id > 0 && (int)$ticket->player_id !== (int)$player->id) {
+                    $this->releaseIdempotent($requestId);
                     Log::warning('scanOpenScore: 玩家绑定验证失败', [
                         'current_player_id' => $player->id,
                         'ticket_player_id' => $ticket->player_id,
@@ -396,11 +450,15 @@ class TicketController
                 // ✅ 事务提交后更新爆机状态
                 \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $playerDeliveryRecord->amount_after, $playerDeliveryRecord->amount_before);
 
-                return jsonSuccessResponse(trans('ticket_open_score_success', [], 'message'), [
+                // 保存幂等性记录（覆盖占位）
+                $response = jsonSuccessResponse(trans('ticket_open_score_success', [], 'message'), [
                     'order_id' => $ticket->order_id,
                     'score' => $score,
                     'balance' => $currentBalance,
                 ]);
+                $this->saveIdempotent($requestId, $response, 'ticket-scan-open:' . $orderId, $player->id);
+
+                return $response;
 
             } finally {
                 // 🔓 释放锁
@@ -418,6 +476,8 @@ class TicketController
             if (Db::transactionLevel() > 0) {
                 Db::rollBack();
             }
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
             Log::error('scanOpenScore: 业务异常', [
                 'player_id' => $player->id,
                 'error' => $e->getMessage(),
@@ -428,6 +488,8 @@ class TicketController
             if (Db::transactionLevel() > 0) {
                 Db::rollBack();
             }
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
             Log::error('scanOpenScore: 系统异常', [
                 'player_id' => $player->id,
                 'error' => $e->getMessage(),
