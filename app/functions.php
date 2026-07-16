@@ -3668,11 +3668,10 @@ if (!function_exists('generateLotteryLiveUrls')) {
      * @param string $streamName 流名称（StreamName）
      * @param int $expireDays 签名有效期（天数，默认30天）
      * @param bool|null $useCnDomain 是否使用大陆域名（null=自动根据APP_ENV选择，true=强制大陆，false=强制海外）
-     * @param string $preferProtocol 优先返回的协议（默认 webrtc，可选 flv/hls/rtmp）
      * @return array 返回多协议播放地址和过期时间
      * @throws \Exception 配置不存在或域名未配置时抛出异常
      */
-    function generateLotteryLiveUrls(int $configId, string $streamName, int $expireDays = 30, ?bool $useCnDomain = null, string $preferProtocol = 'webrtc'): array
+    function generateLotteryLiveUrls(int $configId, string $streamName, int $expireDays = 30, ?bool $useCnDomain = null): array
     {
         /** @var \app\model\MachineTencentPlay $config */
         $config = \app\model\MachineTencentPlay::query()->find($configId);
