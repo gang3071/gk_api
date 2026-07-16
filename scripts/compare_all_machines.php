@@ -168,12 +168,25 @@ try {
             $key = $redisKeyPrefix . $field;
             $value = $redis->get($key);
             if ($value !== false) {
-                // Redis中存储的是二进制整数，需要解包
-                if (strpos($value, "\0") !== false) {
-                    $unpacked = unpack('V', $value);  // V = unsigned long (32 bit, little endian)
-                    $redisData[$field] = $unpacked[1] ?? $value;
+                // Redis中存储的是自定义6字节格式
+                if (strpos($value, "\0") !== false || !ctype_print($value)) {
+                    $len = strlen($value);
+
+                    if ($len === 6) {
+                        // 6字节格式：只取最后1个字节作为数值
+                        $unpacked = unpack('C6', $value);
+                        $redisData[$field] = $unpacked[6];
+                    } elseif ($len === 4) {
+                        $unpacked = unpack('V', $value);
+                        $redisData[$field] = $unpacked[1] ?? 0;
+                    } elseif ($len === 8) {
+                        $unpacked = unpack('P', $value);
+                        $redisData[$field] = $unpacked[1] ?? 0;
+                    } else {
+                        $redisData[$field] = ord(substr($value, -1));
+                    }
                 } else {
-                    $redisData[$field] = $value;
+                    $redisData[$field] = is_numeric($value) ? (int)$value : $value;
                 }
             }
         }

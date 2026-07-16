@@ -156,31 +156,31 @@ try {
         if ($value !== false) {
             $redisRawData[$field] = bin2hex($value);  // 保存十六进制格式
 
-            // Redis中存储的是二进制整数，需要解包
-            // 检测是否为二进制数据（包含\0字节）
+            // Redis中存储的是自定义6字节格式
+            // 格式：前5字节头部 + 最后1字节数据
+            // 例如：000000020601 -> gaming = 1
             if (strpos($value, "\0") !== false || !ctype_print($value)) {
                 $len = strlen($value);
-                if ($len === 4) {
-                    // 4字节整数，尝试小端序和大端序
-                    $unpackedLE = unpack('V', $value);  // V = little endian
-                    $unpackedBE = unpack('N', $value);  // N = big endian
 
-                    // 优先使用小端序，但如果结果异常大，尝试大端序
-                    $valueLE = $unpackedLE[1] ?? 0;
-                    $valueBE = $unpackedBE[1] ?? 0;
-
-                    $redisData[$field] = $valueLE;
+                if ($len === 6) {
+                    // 6字节格式：只取最后1个字节作为数值
+                    $unpacked = unpack('C6', $value);  // C = unsigned char (1 byte)
+                    $redisData[$field] = $unpacked[6];  // 第6个字节
+                } elseif ($len === 4) {
+                    // 4字节整数（小端序）
+                    $unpacked = unpack('V', $value);
+                    $redisData[$field] = $unpacked[1] ?? 0;
                 } elseif ($len === 8) {
-                    // 8字节整数（可能是64位）
-                    $unpacked = unpack('P', $value);  // P = 64-bit little endian
-                    $redisData[$field] = $unpacked[1] ?? $value;
+                    // 8字节整数（小端序）
+                    $unpacked = unpack('P', $value);
+                    $redisData[$field] = $unpacked[1] ?? 0;
                 } else {
-                    // 其他长度，保留原始值
-                    $redisData[$field] = $value;
+                    // 其他长度，尝试解析为整数
+                    $redisData[$field] = ord(substr($value, -1));  // 取最后一字节
                 }
             } else {
                 // 纯文本数据
-                $redisData[$field] = $value;
+                $redisData[$field] = is_numeric($value) ? (int)$value : $value;
             }
         }
     }
