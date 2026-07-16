@@ -669,7 +669,8 @@ class LotteryTicketController
 
         $validator = v::key('activity_id', v::intVal()->setName('活动ID'), false)
             ->key('page', v::intVal()->setName('页码'), false)
-            ->key('size', v::intVal()->setName('每页数量'), false);
+            ->key('size', v::intVal()->setName('每页数量'), false)
+            ->key('scope', v::in(['all', 'mine'])->setName('查询范围'), false);
 
         try {
             $validator->assert($data);
@@ -679,11 +680,19 @@ class LotteryTicketController
 
         $page = $data['page'] ?? 1;
         $size = min($data['size'] ?? 20, 100);
+        $scope = $data['scope'] ?? 'mine'; // 默认只查询当前玩家
 
         $query = LotteryTicketRecord::query()
-            ->where('player_id', $player->id)
+            ->when($scope === 'mine', function ($query) use ($player) {
+                // 只查询当前玩家的中奖记录
+                $query->where('player_id', $player->id);
+            })
             ->when(!empty($data['activity_id']), function ($query) use ($data) {
                 $query->where('activity_id', $data['activity_id']);
+            })
+            ->when($scope === 'all', function ($query) {
+                // 查询所有记录时，预加载玩家信息
+                $query->with('player:id,name');
             });
 
         $total = $query->count();
@@ -695,7 +704,7 @@ class LotteryTicketController
 
         $list = [];
         foreach ($records as $record) {
-            $list[] = [
+            $item = [
                 'id' => $record->id,
                 'activity_id' => $record->activity_id,
                 'activity_name' => $record->activity_name,
@@ -709,6 +718,16 @@ class LotteryTicketController
                 'distributed_at' => $record->distributed_at,
                 'created_at' => $record->created_at,
             ];
+
+            // 当查询所有记录时，包含玩家信息（脱敏处理）
+            if ($scope === 'all') {
+                $item['player_id'] = $record->player_id;
+                // 玩家名称脱敏
+                $playerName = $record->player?->name ?? '';
+                $item['player_name'] = $this->maskPlayerName($playerName);
+            }
+
+            $list[] = $item;
         }
 
         return jsonSuccessResponse('success', [
@@ -716,6 +735,7 @@ class LotteryTicketController
             'total' => $total,
             'page' => $page,
             'size' => $size,
+            'scope' => $scope,
         ]);
     }
 
@@ -733,6 +753,25 @@ class LotteryTicketController
             LotteryTicketRecord::STATUS_FAILED => '发放失败',
             default => '未知',
         };
+    }
+
+    /**
+     * 玩家名称脱敏处理
+     */
+    private function maskPlayerName(string $name): string
+    {
+        if (empty($name)) {
+            return '';
+        }
+
+        $nameLength = mb_strlen($name);
+        if ($nameLength <= 2) {
+            // 1-2个字：显示第1个字 + *，如 "张*"
+            return mb_substr($name, 0, 1) . '*';
+        } else {
+            // 3个字及以上：显示第1个字 + ***，如 "王***"
+            return mb_substr($name, 0, 1) . '***';
+        }
     }
 
     #[RateLimiter(limit: 10)]

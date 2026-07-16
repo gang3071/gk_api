@@ -43,4 +43,12 @@ class LotteryTicketRecord extends Model
     protected $table = 'lottery_ticket_record';
 
     protected $guarded = [];
+
+    /**
+     * 关联玩家
+     */
+    public function player()
+    {
+        return $this->belongsTo(Player::class, 'player_id', 'id');
+    }
 }
