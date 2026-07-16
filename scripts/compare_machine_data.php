@@ -46,12 +46,41 @@ use Illuminate\Redis\RedisManager;
 use support\Db;
 use support\Redis;
 
-$capsule = new Capsule;
-if (isset($config['database']['connections'])) {
-    foreach ($config['database']['connections'] as $name => $dbConfig) {
-        $capsule->addConnection($dbConfig, $name);
-    }
+// 获取数据库配置
+$databaseConfig = $config['database'] ?? [];
+if (empty($databaseConfig['connections'])) {
+    echo "❌ 数据库配置未找到\n";
+    echo "正在尝试直接从环境变量读取...\n";
+
+    $databaseConfig = [
+        'default' => getenv('DB_CONNECTION') ?: 'mysql',
+        'connections' => [
+            'mysql' => [
+                'driver' => 'mysql',
+                'host' => getenv('DB_HOST') ?: '127.0.0.1',
+                'port' => getenv('DB_PORT') ?: 3306,
+                'database' => getenv('DB_DATABASE') ?: '',
+                'username' => getenv('DB_USERNAME') ?: 'root',
+                'password' => getenv('DB_PASSWORD') ?: '',
+                'charset' => getenv('DB_CHARSET') ?: 'utf8mb4',
+                'collation' => getenv('DB_COLLATION') ?: 'utf8mb4_unicode_ci',
+                'prefix' => getenv('DB_PREFIX') ?: '',
+            ],
+        ],
+    ];
 }
+
+$capsule = new Capsule;
+
+// 添加所有数据库连接
+foreach ($databaseConfig['connections'] as $name => $dbConfig) {
+    $capsule->addConnection($dbConfig, $name);
+}
+
+// 设置默认连接
+$defaultConnection = $databaseConfig['default'] ?? 'mysql';
+$capsule->getDatabaseManager()->setDefaultConnection($defaultConnection);
+
 $capsule->setAsGlobal();
 $capsule->bootEloquent();
 
