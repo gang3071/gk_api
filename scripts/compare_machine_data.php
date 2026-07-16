@@ -137,47 +137,42 @@ try {
     // 2. 从Redis获取机台数据
     echo "📡 从Redis获取机台 #{$machineId} 的数据...\n";
 
-    // Redis中机台数据的key格式（需要根据实际情况调整）
-    $redisKey = "machine:{$machineId}";
-    $redisData = $redis->hGetAll($redisKey);
+    // Redis中机台数据的key格式：machine_tcp_data_cache_{id}_{field}
+    $redisKeyPrefix = "machine_tcp_data_cache_{$machineId}_";
+
+    // 定义需要读取的字段
+    $fieldsToRead = [
+        'gaming', 'keeping', 'gaming_user_id', 'keeping_user_id',
+        'turn', 'score', 'point', 'pressure', 'reward_status',
+        'is_use', 'maintaining', 'auto_up_turn', 'move'
+    ];
+
+    // 从Redis读取各个字段
+    $redisData = [];
+    foreach ($fieldsToRead as $field) {
+        $key = $redisKeyPrefix . $field;
+        $value = $redis->get($key);
+        if ($value !== false) {
+            $redisData[$field] = $value;
+        }
+    }
 
     if (empty($redisData)) {
-        echo "⚠️  Redis中未找到key: {$redisKey}\n";
-        echo "尝试其他可能的key格式...\n";
-
-        // 尝试其他可能的格式
-        $possibleKeys = [
-            "machine_{$machineId}",
-            "m:{$machineId}",
-            "machine_data:{$machineId}",
-            "slot_machine:{$machineId}",
-        ];
-
-        foreach ($possibleKeys as $key) {
-            $redisData = $redis->hGetAll($key);
-            if (!empty($redisData)) {
-                echo "✅ 找到数据，使用key: {$key}\n\n";
-                $redisKey = $key;
-                break;
+        echo "❌ Redis中未找到机台数据\n";
+        echo "\n尝试列出所有包含 machine_tcp_data_cache_{$machineId}_ 的 keys:\n";
+        $keys = $redis->keys("{$redisKeyPrefix}*");
+        if (!empty($keys)) {
+            echo "找到以下keys:\n";
+            foreach ($keys as $k) {
+                echo "  - {$k}\n";
             }
+            echo "\n提示：找到了keys但字段列表可能不完整，请检查 \$fieldsToRead 数组\n";
+        } else {
+            echo "未找到任何相关keys\n";
         }
-
-        if (empty($redisData)) {
-            echo "❌ Redis中未找到机台数据\n";
-            echo "\n尝试列出所有包含 machine 的 keys:\n";
-            $keys = $redis->keys("*machine*{$machineId}*");
-            if (!empty($keys)) {
-                echo "找到以下keys:\n";
-                foreach ($keys as $k) {
-                    echo "  - {$k}\n";
-                }
-            } else {
-                echo "未找到任何相关keys\n";
-            }
-            exit(1);
-        }
+        exit(1);
     } else {
-        echo "✅ Redis数据获取成功\n\n";
+        echo "✅ Redis数据获取成功（找到 " . count($redisData) . " 个字段）\n\n";
     }
 
     // 3. 对比关键字段
@@ -266,7 +261,7 @@ try {
 
     // 4. 输出完整的Redis数据（用于调试）
     echo "====================================\n";
-    echo "Redis完整数据 (key: {$redisKey})\n";
+    echo "Redis完整数据 (key prefix: {$redisKeyPrefix})\n";
     echo "====================================\n\n";
 
     if (!empty($redisData)) {
@@ -300,7 +295,7 @@ try {
         $report = "机台数据差异报告\n";
         $report .= "生成时间: " . date('Y-m-d H:i:s') . "\n";
         $report .= "机台ID: {$machineId}\n";
-        $report .= "Redis Key: {$redisKey}\n";
+        $report .= "Redis Key Prefix: {$redisKeyPrefix}\n";
         $report .= str_repeat("=", 50) . "\n\n";
 
         foreach ($differences as $diff) {

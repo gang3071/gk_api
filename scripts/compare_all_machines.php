@@ -159,22 +159,16 @@ try {
 
         echo sprintf("[%d/%d] 机台 #%d (%s)...", $processedCount, $totalMachines, $machineId, $machineCode);
 
-        // 尝试获取Redis数据
-        $redisData = null;
-        $redisKey = null;
-        $possibleKeys = [
-            "machine:{$machineId}",
-            "machine_{$machineId}",
-            "m:{$machineId}",
-            "slot_machine:{$machineId}",
-        ];
+        // Redis中机台数据的key格式：machine_tcp_data_cache_{id}_{field}
+        $redisKeyPrefix = "machine_tcp_data_cache_{$machineId}_";
 
-        foreach ($possibleKeys as $key) {
-            $data = $redis->hGetAll($key);
-            if (!empty($data)) {
-                $redisData = $data;
-                $redisKey = $key;
-                break;
+        // 从Redis读取各个字段
+        $redisData = [];
+        foreach (array_keys($compareFields) as $field) {
+            $key = $redisKeyPrefix . $field;
+            $value = $redis->get($key);
+            if ($value !== false) {
+                $redisData[$field] = $value;
             }
         }
 
@@ -185,6 +179,7 @@ try {
         }
 
         $foundInRedis++;
+        $redisKey = $redisKeyPrefix . '*';
 
         // 对比字段
         $differences = [];
