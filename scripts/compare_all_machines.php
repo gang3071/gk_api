@@ -162,13 +162,19 @@ try {
         // Redis中机台数据的key格式：machine_tcp_data_cache_{id}_{field}
         $redisKeyPrefix = "machine_tcp_data_cache_{$machineId}_";
 
-        // 从Redis读取各个字段
+        // 从Redis读取各个字段（需要解包二进制数据）
         $redisData = [];
         foreach (array_keys($compareFields) as $field) {
             $key = $redisKeyPrefix . $field;
             $value = $redis->get($key);
             if ($value !== false) {
-                $redisData[$field] = $value;
+                // Redis中存储的是二进制整数，需要解包
+                if (strpos($value, "\0") !== false) {
+                    $unpacked = unpack('V', $value);  // V = unsigned long (32 bit, little endian)
+                    $redisData[$field] = $unpacked[1] ?? $value;
+                } else {
+                    $redisData[$field] = $value;
+                }
             }
         }
 

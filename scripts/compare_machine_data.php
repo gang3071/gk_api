@@ -147,13 +147,22 @@ try {
         'is_use', 'maintaining', 'auto_up_turn', 'move'
     ];
 
-    // 从Redis读取各个字段
+    // 从Redis读取各个字段（需要解包二进制数据）
     $redisData = [];
     foreach ($fieldsToRead as $field) {
         $key = $redisKeyPrefix . $field;
         $value = $redis->get($key);
         if ($value !== false) {
-            $redisData[$field] = $value;
+            // Redis中存储的是二进制整数，需要解包
+            // 检测是否为二进制数据（包含\0字节）
+            if (strpos($value, "\0") !== false) {
+                // 尝试解包为32位整数（小端序）
+                $unpacked = unpack('V', $value);  // V = unsigned long (32 bit, little endian)
+                $redisData[$field] = $unpacked[1] ?? $value;
+            } else {
+                // 纯文本数据
+                $redisData[$field] = $value;
+            }
         }
     }
 
