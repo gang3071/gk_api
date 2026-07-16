@@ -661,27 +661,51 @@ class MachineController
                 case 'plc_open_1':
                 case 'plc_open_10':
                 case 'plc_open_times': // 上分
-                if ($services->reward_status == 1) {
-                    return jsonFailResponse(trans('machine_reward_drawing', ['{code}' => $machine->code],
-                        'message'));
-                }
-                    //上分一次扣多少
-                    $money = 100;
-                    if ($action == 'plc_open_10') {
-                        $money = 1000;
+                    // 幂等性保护：plc_open_1、plc_open_10、plc_open_times（上分）都需要 request_id
+                    $requestId = $request->input('request_id');
+                    if (empty($requestId)) {
+                        return jsonFailResponse('缺少必需参数 request_id');
                     }
-                
-                if ($action == 'plc_open_times') {
-                        $money = (int)$data['open_point'] ?? 0;
+
+                    // 第一阶段：检查并预留幂等性（在业务校验之前）
+                    $existingResponse = $this->checkIdempotent($requestId, 'jackpot_action_' . $action, $player->id);
+                    if ($existingResponse) {
+                        return $existingResponse;
                     }
-                
-                if ($money <= 0) {
-                        if (empty($data['give_rule_id'])) {
-                            return jsonFailResponse(trans('machine_open_amount_error', [], 'message'));
+                    if (!$this->reserveIdempotent($requestId, 'jackpot_action_' . $action, $player->id)) {
+                        return jsonFailResponse('请求正在处理中，请稍后');
+                    }
+
+                    // 业务校验和逻辑执行（包裹在 try-catch 中）
+                    try {
+                        if ($services->reward_status == 1) {
+                            throw new Exception(trans('machine_reward_drawing', ['{code}' => $machine->code], 'message'));
                         }
+                        //上分一次扣多少
+                        $money = 100;
+                        if ($action == 'plc_open_10') {
+                            $money = 1000;
+                        }
+                        if ($action == 'plc_open_times') {
+                            $money = (int)$data['open_point'] ?? 0;
+                        }
+                        if ($money <= 0) {
+                            if (empty($data['give_rule_id'])) {
+                                throw new Exception(trans('machine_open_amount_error', [], 'message'));
+                            }
+                        }
+                        //是否是开分赠点
+                        $this->givePoints($player, $machine, $data['give_rule_id'] ?? 0, $money);
+
+                        // 第三阶段：保存幂等性记录
+                        $response = jsonSuccessResponse('success', []);
+                        $this->saveIdempotent($requestId, $response, 'jackpot_action_' . $action, $player->id);
+                        return $response;
+                    } catch (Exception $e) {
+                        // 业务失败，释放预留
+                        $this->releaseIdempotent($requestId);
+                        throw $e;
                     }
-                    //是否是开分赠点
-                $this->givePoints($player, $machine, $data['give_rule_id'] ?? 0, $money);
                     break;
                 case 'combine_status': // 机台履历
                     /** @var PlayerGameRecord $playerGameRecord */
@@ -810,14 +834,40 @@ class MachineController
                     break;
                 case 'leave': // 下分弃台
                 case 'down': // 下分
-                if ($machine->gaming_user_id == 0) {
-                        return jsonFailResponse(trans('no_open_point', [], 'message'));
+                    // 幂等性保护：down（下分）和 leave（弃台）需要 request_id
+                    $requestId = $request->input('request_id');
+                    if (empty($requestId)) {
+                        return jsonFailResponse('缺少必需参数 request_id');
                     }
-                if ($services->reward_status == 1) {
-                    return jsonFailResponse(trans('machine_reward_drawing', ['{code}' => $machine->code],
-                        'message'));
-                }
-                machineWash($player, $machine, $action, 0, $hasLottery);
+
+                    // 第一阶段：检查并预留幂等性（在业务校验之前）
+                    $existingResponse = $this->checkIdempotent($requestId, 'jackpot_action_' . $action, $player->id);
+                    if ($existingResponse) {
+                        return $existingResponse;
+                    }
+                    if (!$this->reserveIdempotent($requestId, 'jackpot_action_' . $action, $player->id)) {
+                        return jsonFailResponse('请求正在处理中，请稍后');
+                    }
+
+                    // 业务校验和逻辑执行（包裹在 try-catch 中）
+                    try {
+                        if ($machine->gaming_user_id == 0) {
+                            throw new Exception(trans('no_open_point', [], 'message'));
+                        }
+                        if ($services->reward_status == 1) {
+                            throw new Exception(trans('machine_reward_drawing', ['{code}' => $machine->code], 'message'));
+                        }
+                        machineWash($player, $machine, $action, 0, $hasLottery);
+
+                        // 第三阶段：保存幂等性记录
+                        $response = jsonSuccessResponse('success', []);
+                        $this->saveIdempotent($requestId, $response, 'jackpot_action_' . $action, $player->id);
+                        return $response;
+                    } catch (Exception $e) {
+                        // 业务失败，释放预留
+                        $this->releaseIdempotent($requestId);
+                        throw $e;
+                    }
                     break;
             }
             
