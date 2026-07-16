@@ -2977,63 +2977,163 @@ function machineWash(
             case GameType::TYPE_STEEL_BALL:
                 // 弃台需要下转,下珠
                 if ($path == 'leave') {
-                    $leaveCommands = [];
+                    $client = new MachineClient();
 
                     if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        // 批量发送弃台指令（优化：最多4次HTTP调用 → 1次）
-                        $leaveCommands[] = ['cmd' => $services::PUSH . $services::PUSH_STOP, 'data' => 0];
+                        // PUSH_STOP
+                        $result = $client->sendCommand($machine->id, $services::PUSH . $services::PUSH_STOP, 0, $lang, $player->id, [
+                            'wash_id' => $washId,
+                            'command_name' => 'PUSH_STOP',
+                        ]);
 
+                        if (!$result['success']) {
+                            throw new Exception('停止push失败，请稍后再试');
+                        }
+
+                        // AUTO_UP_TURN（如果需要）
                         if ($services->auto == 1) {
-                            $leaveCommands[] = ['cmd' => $services::AUTO_UP_TURN, 'data' => 0];
+                            $result = $client->sendCommand($machine->id, $services::AUTO_UP_TURN, 0, $lang, $player->id, [
+                                'wash_id' => $washId,
+                                'command_name' => 'AUTO_UP_TURN',
+                            ]);
+
+                            if (!$result['success']) {
+                                throw new Exception('关闭自动上转失败，请稍后再试');
+                            }
                         }
+
+                        // SCORE_TO_POINT（得分转分数）
                         if ($services->score > 0) {
-                            $leaveCommands[] = ['cmd' => $services::SCORE_TO_POINT, 'data' => 0];
+                            $result = $client->sendCommand($machine->id, $services::SCORE_TO_POINT, 0, $lang, $player->id, [
+                                'wash_id' => $washId,
+                                'command_name' => 'SCORE_TO_POINT',
+                            ]);
+
+                            if (!$result['success']) {
+                                throw new Exception('得分转换失败，请稍后再试');
+                            }
                         }
+
+                        // TURN_DOWN_ALL（转数转分数）
                         if ($services->turn > 0) {
-                            $leaveCommands[] = ['cmd' => $services::TURN_DOWN_ALL, 'data' => 0];
+                            $result = $client->sendCommand($machine->id, $services::TURN_DOWN_ALL, 0, $lang, $player->id, [
+                                'wash_id' => $washId,
+                                'command_name' => 'TURN_DOWN_ALL',
+                            ]);
+
+                            if (!$result['success']) {
+                                throw new Exception('转数转换失败，请稍后再试');
+                            }
                         }
                     }
 
                     if ($machine->control_type == Machine::CONTROL_TYPE_SONG) {
-                        // 批量发送弃台指令（优化：最多5次HTTP调用 → 1次）
+                        // AUTO_UP_TURN（如果需要）
                         if ($services->auto == 1) {
-                            $leaveCommands[] = ['cmd' => $services::AUTO_UP_TURN, 'data' => 0];
+                            $result = $client->sendCommand($machine->id, $services::AUTO_UP_TURN, 0, $lang, $player->id, [
+                                'wash_id' => $washId,
+                                'command_name' => 'AUTO_UP_TURN',
+                            ]);
+
+                            if (!$result['success']) {
+                                Log::channel('machine_operations')->error('[MachineWash-SteelBall-Song] 关闭自动上转失败，终止操作', [
+                                    'wash_id' => $washId,
+                                    'machine_id' => $machine->id,
+                                    'error' => $result['message'],
+                                ]);
+                                throw new Exception('关闭自动上转失败，请稍后再试');
+                            }
                         }
 
-                        $leaveCommands[] = ['cmd' => $services::MACHINE_TURN, 'data' => 0];
-                        $leaveCommands[] = ['cmd' => $services::MACHINE_SCORE, 'data' => 0];
+                        // MACHINE_TURN
+                        $result = $client->sendCommand($machine->id, $services::MACHINE_TURN, 0, $lang, $player->id, [
+                            'wash_id' => $washId,
+                            'command_name' => 'MACHINE_TURN',
+                        ]);
 
+                        if (!$result['success']) {
+                            throw new Exception('读取转数失败，请稍后再试');
+                        }
+
+                        // MACHINE_SCORE
+                        $result = $client->sendCommand($machine->id, $services::MACHINE_SCORE, 0, $lang, $player->id, [
+                            'wash_id' => $washId,
+                            'command_name' => 'MACHINE_SCORE',
+                        ]);
+
+                        if (!$result['success']) {
+                            throw new Exception('读取得分失败，请稍后再试');
+                        }
+
+                        // SCORE_TO_POINT
                         if ($services->score > 0) {
-                            $leaveCommands[] = ['cmd' => $services::SCORE_TO_POINT, 'data' => 0];
+                            $result = $client->sendCommand($machine->id, $services::SCORE_TO_POINT, 0, $lang, $player->id, [
+                                'wash_id' => $washId,
+                                'command_name' => 'SCORE_TO_POINT',
+                            ]);
+
+                            if (!$result['success']) {
+                                Log::channel('machine_operations')->error('[MachineWash-SteelBall-Song] 得分转换失败，终止操作', [
+                                    'wash_id' => $washId,
+                                    'machine_id' => $machine->id,
+                                    'score' => $services->score,
+                                    'error' => $result['message'],
+                                ]);
+                                throw new Exception('得分转换失败，请稍后再试');
+                            }
                         }
+
+                        // TURN_DOWN_ALL
                         if ($services->turn > 0) {
-                            $leaveCommands[] = ['cmd' => $services::TURN_DOWN_ALL, 'data' => 0];
+                            $result = $client->sendCommand($machine->id, $services::TURN_DOWN_ALL, 0, $lang, $player->id, [
+                                'wash_id' => $washId,
+                                'command_name' => 'TURN_DOWN_ALL',
+                            ]);
+
+                            if (!$result['success']) {
+                                Log::channel('machine_operations')->error('[MachineWash-SteelBall-Song] 转数转换失败，终止操作', [
+                                    'wash_id' => $washId,
+                                    'machine_id' => $machine->id,
+                                    'turn' => $services->turn,
+                                    'error' => $result['message'],
+                                ]);
+                                throw new Exception('转数转换失败，请稍后再试');
+                            }
                         }
                     }
 
-                    // 批量发送所有弃台指令
-                    if (!empty($leaveCommands)) {
-                        $client = new MachineClient();
-                        $result = $client->batchSendCommands($machine->id, $leaveCommands, $lang, $player->id, $washId ?? null);
-
-                        // ✅ 检查批量指令是否全部成功
-                        $failedCount = $result['data']['failed_count'] ?? 0;
-                        if (!$result['success'] || $failedCount > 0) {
-                            throw new Exception('批量发送弃台指令失败（部分指令失败）: ' . $result['message']);
-                        }
-                    }
+                    Log::channel('machine_operations')->info('[MachineWash-SteelBall] 弃台指令全部执行成功', [
+                        'wash_id' => $washId,
+                        'machine_id' => $machine->id,
+                        'control_type' => $machine->control_type,
+                    ]);
                 }
-                // 批量查询机台状态（优化：2次HTTP调用 → 1次）
+                // 单个查询机台状态
                 $client = new MachineClient();
-                $result = $client->batchSendCommands($machine->id, [
-                    ['cmd' => $services::MACHINE_POINT, 'data' => 0],
-                    ['cmd' => $services::WIN_NUMBER, 'data' => 0],
-                ], $lang, $player->id, $washId ?? null);
 
-                // ✅ 检查批量指令是否全部成功
-                $failedCount = $result['data']['failed_count'] ?? 0;
-                if (!$result['success'] || $failedCount > 0) {
-                    throw new Exception('批量查询机台状态失败（部分指令失败）: ' . $result['message']);
+                // MACHINE_POINT
+                $result = $client->sendCommand($machine->id, $services::MACHINE_POINT, 0, $lang, $player->id, [
+                    'wash_id' => $washId,
+                    'command_name' => 'MACHINE_POINT',
+                ]);
+
+                if (!$result['success']) {
+                    throw new Exception('读取分数失败，请稍后再试');
+                }
+
+                // WIN_NUMBER
+                $result = $client->sendCommand($machine->id, $services::WIN_NUMBER, 0, $lang, $player->id, [
+                    'wash_id' => $washId,
+                    'command_name' => 'WIN_NUMBER',
+                ]);
+
+                if (!$result['success']) {
+                    Log::channel('machine_operations')->error('[MachineWash-SteelBall] 读取转数失败，终止操作', [
+                        'wash_id' => $washId,
+                        'machine_id' => $machine->id,
+                        'error' => $result['message'],
+                    ]);
+                    throw new Exception('读取转数失败，请稍后再试');
                 }
 
                 $gamingTurnPoint = $services->player_win_number;
@@ -3043,7 +3143,7 @@ function machineWash(
                 }
                 break;
             case GameType::TYPE_SLOT:
-                Log::channel('machine_operations')->info('[MachineWash-Slot] 开始准备洗分指令', [
+                Log::channel('machine_operations')->info('[MachineWash-Slot] 开始发送洗分指令', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
                     'control_type' => $machine->control_type,
@@ -3051,56 +3151,75 @@ function machineWash(
                     'auto' => $services->auto,
                 ]);
 
-                // 批量发送老虎机洗分指令（优化：最多6次HTTP调用 → 2次）
-                $slotCommands = [];
-
-                if ($services->move_point == 1 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                    $slotCommands[] = ['cmd' => $services::MOVE_POINT_OFF, 'data' => 0];
-                    Log::channel('machine_operations')->info('[MachineWash-Slot] 添加指令: MOVE_POINT_OFF', ['wash_id' => $washId]);
-                }
-                if ($services->auto == 1) {
-                    $slotCommands[] = ['cmd' => $services::OUT_OFF, 'data' => 0];
-                    Log::channel('machine_operations')->info('[MachineWash-Slot] 添加指令: OUT_OFF', ['wash_id' => $washId]);
-                }
-
-                // 无条件发送的4个停止和读取指令
-                $slotCommands[] = ['cmd' => $services::STOP_ONE, 'data' => 0];
-                $slotCommands[] = ['cmd' => $services::STOP_TWO, 'data' => 0];
-                $slotCommands[] = ['cmd' => $services::STOP_THREE, 'data' => 0];
-                $slotCommands[] = ['cmd' => $services::MACHINE_POINT, 'data' => 0];
-
-                Log::channel('machine_operations')->info('[MachineWash-Slot] 准备发送批量指令', [
-                    'wash_id' => $washId,
-                    'machine_id' => $machine->id,
-                    'commands_count' => count($slotCommands),
-                    'commands' => $slotCommands,
-                    'lang' => $lang,
-                ]);
-
-                $cmdStartTime = microtime(true);
                 $client = new MachineClient();
-                $result = $client->batchSendCommands($machine->id, $slotCommands, $lang, $player->id, $washId);
-                $cmdDuration = round((microtime(true) - $cmdStartTime) * 1000, 2);
 
-                Log::channel('machine_operations')->info('[MachineWash-Slot] 批量指令执行完成', [
+                // 1. MOVE_POINT_OFF（如果需要）
+                if ($services->move_point == 1 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
+                    $result = $client->sendCommand($machine->id, $services::MOVE_POINT_OFF, 0, $lang, $player->id, [
+                        'wash_id' => $washId,
+                        'command_name' => 'MOVE_POINT_OFF',
+                    ]);
+
+                    if (!$result['success']) {
+                        throw new Exception('关闭移分失败，请稍后再试');
+                    }
+                }
+
+                // 2. OUT_OFF（如果需要）
+                if ($services->auto == 1) {
+                    $result = $client->sendCommand($machine->id, $services::OUT_OFF, 0, $lang, $player->id, [
+                        'wash_id' => $washId,
+                        'command_name' => 'OUT_OFF',
+                    ]);
+
+                    if (!$result['success']) {
+                        throw new Exception('关闭自动失败，请稍后再试');
+                    }
+                }
+
+                // 3. STOP_ONE
+                $result = $client->sendCommand($machine->id, $services::STOP_ONE, 0, $lang, $player->id, [
                     'wash_id' => $washId,
-                    'machine_id' => $machine->id,
-                    'success' => $result['success'],
-                    'duration_ms' => $cmdDuration,
-                    'result' => $result,
+                    'command_name' => 'STOP_ONE',
                 ]);
 
-                // ✅ 检查批量指令是否全部成功
-                $failedCount = $result['data']['failed_count'] ?? 0;
-                if (!$result['success'] || $failedCount > 0) {
-                    Log::channel('machine_operations')->error('[MachineWash-Slot] 批量指令发送失败', [
+                if (!$result['success']) {
+                    throw new Exception('停止转轮1失败，请稍后再试');
+                }
+
+                // 4. STOP_TWO
+                $result = $client->sendCommand($machine->id, $services::STOP_TWO, 0, $lang, $player->id, [
+                    'wash_id' => $washId,
+                    'command_name' => 'STOP_TWO',
+                ]);
+
+                if (!$result['success']) {
+                    throw new Exception('停止转轮2失败，请稍后再试');
+                }
+
+                // 5. STOP_THREE
+                $result = $client->sendCommand($machine->id, $services::STOP_THREE, 0, $lang, $player->id, [
+                    'wash_id' => $washId,
+                    'command_name' => 'STOP_THREE',
+                ]);
+
+                if (!$result['success']) {
+                    throw new Exception('停止转轮3失败，请稍后再试');
+                }
+
+                // 6. MACHINE_POINT
+                $result = $client->sendCommand($machine->id, $services::MACHINE_POINT, 0, $lang, $player->id, [
+                    'wash_id' => $washId,
+                    'command_name' => 'MACHINE_POINT',
+                ]);
+
+                if (!$result['success']) {
+                    Log::channel('machine_operations')->error('[MachineWash-Slot] 读取分数失败，终止操作', [
                         'wash_id' => $washId,
                         'machine_id' => $machine->id,
-                        'error' => $result['message'] ?? 'Unknown error',
-                        'failed_count' => $failedCount,
-                        'result' => $result,
+                        'error' => $result['message'],
                     ]);
-                    throw new Exception('批量发送老虎机洗分指令失败（部分指令失败）: ' . $result['message']);
+                    throw new Exception('读取分数失败，请稍后再试');
                 }
 
                 Log::channel('song_slot_machine')->info('slot -> wash', [
@@ -3111,7 +3230,7 @@ function machineWash(
                     'player_pressure' => $services->player_pressure,
                 ]);
 
-                // READ_BET单独发送（因为在日志之后）
+                // 7. READ_BET
                 Log::channel('machine_operations')->info('[MachineWash-Slot] 发送READ_BET指令', [
                     'wash_id' => $washId,
                     'machine_id' => $machine->id,
@@ -3199,11 +3318,6 @@ function machineWash(
             ]);
 
             if (!$result['success']) {
-                Log::channel('machine_operations')->error('[MachineWash-SteelBall] WASH_ZERO指令失败，终止操作', [
-                    'wash_id' => $washId,
-                    'machine_id' => $machine->id,
-                    'error' => $result['message'],
-                ]);
                 throw new Exception(trans('machine_clear_failed', [], 'message') ?: '机台清零失败，请稍后再试');
             }
 
@@ -3214,11 +3328,6 @@ function machineWash(
             ]);
 
             if (!$result['success']) {
-                Log::channel('machine_operations')->error('[MachineWash-SteelBall] CLEAR_LOG指令失败，终止操作', [
-                    'wash_id' => $washId,
-                    'machine_id' => $machine->id,
-                    'error' => $result['message'],
-                ]);
                 throw new Exception(trans('machine_clear_failed', [], 'message') ?: '机台清除日志失败，请稍后再试');
             }
 
@@ -3265,22 +3374,10 @@ function machineWash(
             ]);
 
             if (!$result['success']) {
-                Log::channel('machine_operations')->error('[MachineWash-Slot] ALL_DOWN指令失败，终止操作', [
-                    'wash_id' => $washId,
-                    'machine_id' => $machine->id,
-                    'error' => $result['message'],
-                ]);
                 throw new Exception(trans('machine_clear_failed', [], 'message') ?: '机台全部下分失败，请稍后再试');
             }
 
             $clearDuration = round((microtime(true) - $clearStartTime) * 1000, 2);
-
-            Log::channel('machine_operations')->info('[MachineWash-Slot] 清零指令全部执行成功', [
-                'wash_id' => $washId,
-                'machine_id' => $machine->id,
-                'duration_ms' => $clearDuration,
-            ]);
-
             $services->player_pressure = 0;
             $services->player_score = 0;
             $services->bet = 0;
