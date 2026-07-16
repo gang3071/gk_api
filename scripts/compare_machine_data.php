@@ -149,16 +149,35 @@ try {
 
     // 从Redis读取各个字段（需要解包二进制数据）
     $redisData = [];
+    $redisRawData = [];  // 保存原始数据用于调试
     foreach ($fieldsToRead as $field) {
         $key = $redisKeyPrefix . $field;
         $value = $redis->get($key);
         if ($value !== false) {
+            $redisRawData[$field] = bin2hex($value);  // 保存十六进制格式
+
             // Redis中存储的是二进制整数，需要解包
             // 检测是否为二进制数据（包含\0字节）
-            if (strpos($value, "\0") !== false) {
-                // 尝试解包为32位整数（小端序）
-                $unpacked = unpack('V', $value);  // V = unsigned long (32 bit, little endian)
-                $redisData[$field] = $unpacked[1] ?? $value;
+            if (strpos($value, "\0") !== false || !ctype_print($value)) {
+                $len = strlen($value);
+                if ($len === 4) {
+                    // 4字节整数，尝试小端序和大端序
+                    $unpackedLE = unpack('V', $value);  // V = little endian
+                    $unpackedBE = unpack('N', $value);  // N = big endian
+
+                    // 优先使用小端序，但如果结果异常大，尝试大端序
+                    $valueLE = $unpackedLE[1] ?? 0;
+                    $valueBE = $unpackedBE[1] ?? 0;
+
+                    $redisData[$field] = $valueLE;
+                } elseif ($len === 8) {
+                    // 8字节整数（可能是64位）
+                    $unpacked = unpack('P', $value);  // P = 64-bit little endian
+                    $redisData[$field] = $unpacked[1] ?? $value;
+                } else {
+                    // 其他长度，保留原始值
+                    $redisData[$field] = $value;
+                }
             } else {
                 // 纯文本数据
                 $redisData[$field] = $value;
@@ -275,7 +294,8 @@ try {
 
     if (!empty($redisData)) {
         foreach ($redisData as $key => $value) {
-            echo sprintf("  %-20s => %s\n", $key, $value);
+            $hexValue = $redisRawData[$key] ?? 'N/A';
+            echo sprintf("  %-20s => %-10s (hex: %s)\n", $key, $value, $hexValue);
         }
     }
     echo "\n";
