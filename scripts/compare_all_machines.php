@@ -41,6 +41,7 @@ foreach ($configFiles as $configName) {
 
 // 初始化数据库连接
 use Illuminate\Database\Capsule\Manager as Capsule;
+use support\Db;
 
 $capsule = new Capsule;
 if (isset($config['database']['connections'])) {
@@ -51,11 +52,27 @@ if (isset($config['database']['connections'])) {
 $capsule->setAsGlobal();
 $capsule->bootEloquent();
 
-// 初始化 Redis
-\support\Redis::connection();
+// 初始化 Redis（使用原生 Redis 扩展）
+$redisConfig = $config['redis'] ?? [];
+$redisHost = getenv('REDIS_HOST') ?: '127.0.0.1';
+$redisPort = getenv('REDIS_PORT') ?: 6379;
+$redisPassword = getenv('REDIS_PASSWORD') ?: null;
+$redisDb = getenv('REDIS_DB') ?: 0;
 
-use support\Db;
-use support\Redis;
+// 创建 Redis 连接
+$redis = new \Redis();
+try {
+    $redis->connect($redisHost, $redisPort);
+    if ($redisPassword) {
+        $redis->auth($redisPassword);
+    }
+    $redis->select($redisDb);
+} catch (Exception $e) {
+    echo "❌ Redis连接失败: " . $e->getMessage() . "\n";
+    echo "   Host: {$redisHost}:{$redisPort}\n";
+    echo "   DB: {$redisDb}\n";
+    exit(1);
+}
 
 echo "====================================\n";
 echo "批量机台数据对比工具\n";
@@ -83,9 +100,6 @@ try {
     $totalMachines = count($machines);
 
     echo "✅ 找到 {$totalMachines} 台机台\n\n";
-
-    // 2. 连接Redis
-    $redis = Redis::connection();
 
     // 3. 定义需要对比的字段
     $compareFields = [

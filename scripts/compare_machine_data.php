@@ -42,6 +42,9 @@ foreach ($configFiles as $configName) {
 
 // 初始化数据库连接
 use Illuminate\Database\Capsule\Manager as Capsule;
+use Illuminate\Redis\RedisManager;
+use support\Db;
+use support\Redis;
 
 $capsule = new Capsule;
 if (isset($config['database']['connections'])) {
@@ -52,11 +55,27 @@ if (isset($config['database']['connections'])) {
 $capsule->setAsGlobal();
 $capsule->bootEloquent();
 
-// 初始化 Redis
-\support\Redis::connection();
+// 初始化 Redis（使用原生 Redis 扩展）
+$redisConfig = $config['redis'] ?? [];
+$redisHost = getenv('REDIS_HOST') ?: '127.0.0.1';
+$redisPort = getenv('REDIS_PORT') ?: 6379;
+$redisPassword = getenv('REDIS_PASSWORD') ?: null;
+$redisDb = getenv('REDIS_DB') ?: 0;
 
-use support\Db;
-use support\Redis;
+// 创建 Redis 连接
+$redis = new \Redis();
+try {
+    $redis->connect($redisHost, $redisPort);
+    if ($redisPassword) {
+        $redis->auth($redisPassword);
+    }
+    $redis->select($redisDb);
+} catch (Exception $e) {
+    echo "❌ Redis连接失败: " . $e->getMessage() . "\n";
+    echo "   Host: {$redisHost}:{$redisPort}\n";
+    echo "   DB: {$redisDb}\n";
+    exit(1);
+}
 
 echo "====================================\n";
 echo "机台数据对比工具\n";
@@ -88,7 +107,6 @@ try {
 
     // 2. 从Redis获取机台数据
     echo "📡 从Redis获取机台 #{$machineId} 的数据...\n";
-    $redis = Redis::connection();
 
     // Redis中机台数据的key格式（需要根据实际情况调整）
     $redisKey = "machine:{$machineId}";
