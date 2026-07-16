@@ -3667,12 +3667,12 @@ if (!function_exists('generateLotteryLiveUrls')) {
      * @param int $configId 腾讯云配置ID（对应 machine_tencent_play 表）
      * @param string $streamName 流名称（StreamName）
      * @param int $expireDays 签名有效期（天数，默认30天）
-     * @param bool $useCnDomain 是否优先使用大陆域名（默认 true）
+     * @param bool|null $useCnDomain 是否使用大陆域名（null=自动根据APP_ENV选择，true=强制大陆，false=强制海外）
      * @param string $preferProtocol 优先返回的协议（默认 webrtc，可选 flv/hls/rtmp）
      * @return array 返回多协议播放地址和过期时间
      * @throws \Exception 配置不存在或域名未配置时抛出异常
      */
-    function generateLotteryLiveUrls(int $configId, string $streamName, int $expireDays = 30, bool $useCnDomain = true, string $preferProtocol = 'webrtc'): array
+    function generateLotteryLiveUrls(int $configId, string $streamName, int $expireDays = 30, ?bool $useCnDomain = null, string $preferProtocol = 'webrtc'): array
     {
         /** @var \app\model\MachineTencentPlay $config */
         $config = \app\model\MachineTencentPlay::query()->find($configId);
@@ -3681,12 +3681,24 @@ if (!function_exists('generateLotteryLiveUrls')) {
             throw new \Exception('腾讯云配置不存在');
         }
 
-        // ✅ 优先使用海外地区的播放域名和Key（全球用户访问更稳定）
-        if (!empty($config->pull_domain) && !empty($config->pull_key)) {
+        // ⭐ 自动选择线路：根据 APP_ENV 环境变量
+        // - null（默认）: 根据 config('app.env') 自动判断（pro=海外，其他=大陆）
+        // - true: 强制使用大陆域名
+        // - false: 强制使用海外域名
+        if ($useCnDomain === null) {
+            // 自动模式：根据 APP_ENV 选择
+            $appEnv = config('app.env', 'pro');
+            $useCnDomain = ($appEnv !== 'pro'); // pro环境走海外，其他环境走大陆
+        }
+
+        // ⭐ 优先使用海外域名（全球用户访问更稳定）
+        if (!$useCnDomain && !empty($config->pull_domain) && !empty($config->pull_key)) {
+            // 条件1：明确指定不使用大陆域名 且 海外域名已配置
             $pullDomain = $config->pull_domain;
             $pullKey = $config->pull_key;
             $region = 'Global'; // 全球/海外
-        } elseif ($useCnDomain && !empty($config->pull_domain_cn) && !empty($config->pull_key_cn)) {
+        } elseif (!empty($config->pull_domain_cn) && !empty($config->pull_key_cn)) {
+            // 条件2：海外域名未配置 或 明确指定使用大陆域名
             $pullDomain = $config->pull_domain_cn;
             $pullKey = $config->pull_key_cn;
             $region = 'CN'; // 大陆

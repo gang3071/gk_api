@@ -491,8 +491,10 @@ class LotteryTicketController
         }
 
         try {
-            // 使用固定配置ID=1，生成30天有效期的播放地址
-            $urls = generateLotteryLiveUrls(1, $streamName, 30);
+            // ⭐ 自动根据 APP_ENV 选择线路（传 null）
+            // - APP_ENV=pro: 走海外线路（useCnDomain=false）
+            // - APP_ENV=其他: 走大陆线路（useCnDomain=true）
+            $urls = generateLotteryLiveUrls(1, $streamName, 30, null);
 
             return [
                 'webrtc' => $urls['webrtc'], // 推荐：超低延迟 <1秒

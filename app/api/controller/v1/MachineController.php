@@ -1003,38 +1003,33 @@ class MachineController
                     return jsonFailResponse(trans('point_zero_open_give', [], 'message'));
                 }
 
-                    // 幂等性保护：plc_open_times（上分）需要 request_id
-                    if ($action == 'plc_open_times') {
-                        $requestId = $request->input('request_id');
-                        if (empty($requestId)) {
-                            return jsonFailResponse('缺少必需参数 request_id');
-                        }
+                    // 幂等性保护：open_1、open_10、plc_open_times（上分）都需要 request_id
+                    $requestId = $request->input('request_id');
+                    if (empty($requestId)) {
+                        return jsonFailResponse('缺少必需参数 request_id');
+                    }
 
-                        // 第一阶段：检查并预留幂等性
-                        $existingResponse = $this->checkIdempotent($requestId);
-                        if ($existingResponse) {
-                            return $existingResponse;
-                        }
-                        if (!$this->reserveIdempotent($requestId)) {
-                            return jsonFailResponse('请求正在处理中，请稍后');
-                        }
+                    // 第一阶段：检查并预留幂等性
+                    $existingResponse = $this->checkIdempotent($requestId, 'slot_action_' . $action, $player->id);
+                    if ($existingResponse) {
+                        return $existingResponse;
+                    }
+                    if (!$this->reserveIdempotent($requestId, 'slot_action_' . $action, $player->id)) {
+                        return jsonFailResponse('请求正在处理中，请稍后');
+                    }
 
-                        // 执行业务逻辑（givePoints 内部已包含事务）
-                        try {
-                            $this->givePoints($player, $machine, $data['give_rule_id'] ?? 0, $money);
-
-                            // 第三阶段：保存幂等性记录
-                            $response = jsonSuccessResponse('success', []);
-                            $this->saveIdempotent($requestId, $response, 'slot_action_plc_open_times', $player->id);
-                            return $response;
-                        } catch (Exception $e) {
-                            // 业务失败，释放预留
-                            $this->releaseIdempotent($requestId);
-                            throw $e;
-                        }
-                    } else {
-                        // open_1 和 open_10 不需要幂等性保护
+                    // 执行业务逻辑（givePoints 内部已包含事务）
+                    try {
                         $this->givePoints($player, $machine, $data['give_rule_id'] ?? 0, $money);
+
+                        // 第三阶段：保存幂等性记录
+                        $response = jsonSuccessResponse('success', []);
+                        $this->saveIdempotent($requestId, $response, 'slot_action_' . $action, $player->id);
+                        return $response;
+                    } catch (Exception $e) {
+                        // 业务失败，释放预留
+                        $this->releaseIdempotent($requestId);
+                        throw $e;
                     }
                     break;
                 case 'leave':
@@ -1059,11 +1054,11 @@ class MachineController
                     }
 
                     // 第一阶段：检查并预留幂等性
-                    $existingResponse = $this->checkIdempotent($requestId);
+                    $existingResponse = $this->checkIdempotent($requestId, 'slot_action_' . $action, $player->id);
                     if ($existingResponse) {
                         return $existingResponse;
                     }
-                    if (!$this->reserveIdempotent($requestId)) {
+                    if (!$this->reserveIdempotent($requestId, 'slot_action_' . $action, $player->id)) {
                         return jsonFailResponse('请求正在处理中，请稍后');
                     }
 
