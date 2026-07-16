@@ -1317,26 +1317,80 @@ class MachineController
                     $service->machineAction($action);
                     break;
                 case 'open_point': // 開分
-                    $money = $data['open_point'] ?? 0;
-                    if ($money <= 0) {
-                        return jsonFailResponse(trans('machine_open_amount_error', [], 'message'));
+                    // 幂等性保护：open_point（开分）需要 request_id
+                    $requestId = $request->input('request_id');
+                    if (empty($requestId)) {
+                        return jsonFailResponse('缺少必需参数 request_id');
                     }
-                    // 执行开分
-                    fishMachineOpenAny($player, $machine, $money, $service);
+
+                    // 第一阶段：检查并预留幂等性（在业务校验之前）
+                    $existingResponse = $this->checkIdempotent($requestId, 'fish_action_open_point', $player->id);
+                    if ($existingResponse) {
+                        return $existingResponse;
+                    }
+                    if (!$this->reserveIdempotent($requestId, 'fish_action_open_point', $player->id)) {
+                        return jsonFailResponse('请求正在处理中，请稍后');
+                    }
+
+                    // 业务校验和逻辑执行（包裹在 try-catch 中）
+                    try {
+                        $money = $data['open_point'] ?? 0;
+                        if ($money <= 0) {
+                            throw new Exception(trans('machine_open_amount_error', [], 'message'));
+                        }
+                        // 执行开分
+                        fishMachineOpenAny($player, $machine, $money, $service);
+
+                        // 第三阶段：保存幂等性记录
+                        $response = jsonSuccessResponse('success');
+                        $this->saveIdempotent($requestId, $response, 'fish_action_open_point', $player->id);
+                        return $response;
+                    } catch (Exception $e) {
+                        // 业务失败，释放预留
+                        $this->releaseIdempotent($requestId);
+                        throw $e;
+                    }
                     break;
                 case 'wash_point': // 洗分
-                    //尚未綁定位子
-                    if ($machine->gaming_user_id == 0) {
-                        return jsonFailResponse(trans('no_open_point', [], 'message'));
+                    // 幂等性保护：wash_point（洗分）需要 request_id
+                    $requestId = $request->input('request_id');
+                    if (empty($requestId)) {
+                        return jsonFailResponse('缺少必需参数 request_id');
                     }
-                    // 增加业务锁
-                    $actionLockerKey = 'action_locker_key_machine_' . $machine->id . '_player_' . $player->id;
-                    $lock = Locker::lock($actionLockerKey, 5, true);
-                    if (!$lock->acquire()) {
-                        Log::error('业务锁异常--这里不处理异常');
+
+                    // 第一阶段：检查并预留幂等性（在业务校验之前）
+                    $existingResponse = $this->checkIdempotent($requestId, 'fish_action_wash_point', $player->id);
+                    if ($existingResponse) {
+                        return $existingResponse;
                     }
-                    
-                    fishMachineWash($player, $machine, $service, $action);
+                    if (!$this->reserveIdempotent($requestId, 'fish_action_wash_point', $player->id)) {
+                        return jsonFailResponse('请求正在处理中，请稍后');
+                    }
+
+                    // 业务校验和逻辑执行（包裹在 try-catch 中）
+                    try {
+                        //尚未綁定位子
+                        if ($machine->gaming_user_id == 0) {
+                            throw new Exception(trans('no_open_point', [], 'message'));
+                        }
+                        // 增加业务锁
+                        $actionLockerKey = 'action_locker_key_machine_' . $machine->id . '_player_' . $player->id;
+                        $lock = Locker::lock($actionLockerKey, 5, true);
+                        if (!$lock->acquire()) {
+                            Log::error('业务锁异常--这里不处理异常');
+                        }
+
+                        fishMachineWash($player, $machine, $service, $action);
+
+                        // 第三阶段：保存幂等性记录
+                        $response = jsonSuccessResponse('success');
+                        $this->saveIdempotent($requestId, $response, 'fish_action_wash_point', $player->id);
+                        return $response;
+                    } catch (Exception $e) {
+                        // 业务失败，释放预留
+                        $this->releaseIdempotent($requestId);
+                        throw $e;
+                    }
                     break;
                 case 'lock': // 锁
                     break;
