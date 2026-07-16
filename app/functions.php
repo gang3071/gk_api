@@ -3170,7 +3170,106 @@ function machineWash(
             return $playerLotteryRecord;
         }
     }
-    Log::channel('machine_operations')->info('[MachineWash] 开始数据库事务', [
+
+    // ✅ 修复事务一致性bug：先清零机台，再执行数据库事务
+    // 防止"玩家拿钱但机台没清零"的严重问题
+    Log::channel('machine_operations')->info('[MachineWash] 准备清零机台（在数据库事务前）', [
+        'wash_id' => $washId,
+        'machine_id' => $machine->id,
+        'money' => $money,
+        'path' => $path,
+    ]);
+
+    $client = new MachineClient();
+    switch ($machine->type) {
+        case GameType::TYPE_STEEL_BALL:
+            Log::channel('machine_operations')->info('[MachineWash-SteelBall] 准备发送清零指令', [
+                'wash_id' => $washId,
+                'machine_id' => $machine->id,
+                'commands' => ['WASH_ZERO', 'CLEAR_LOG'],
+            ]);
+
+            $clearStartTime = microtime(true);
+            $result = $client->batchSendCommands($machine->id, [
+                ['cmd' => $services::WASH_ZERO, 'data' => 0],
+                ['cmd' => $services::CLEAR_LOG, 'data' => 0],
+            ], $lang, $player->id, $washId ?? null);
+            $clearDuration = round((microtime(true) - $clearStartTime) * 1000, 2);
+
+            Log::channel('machine_operations')->info('[MachineWash-SteelBall] 清零指令执行完成', [
+                'wash_id' => $washId,
+                'machine_id' => $machine->id,
+                'success' => $result['success'],
+                'duration_ms' => $clearDuration,
+                'result' => $result,
+            ]);
+
+            // ✅ 检查清零是否成功
+            $failedCount = $result['data']['failed_count'] ?? 0;
+            if (!$result['success'] || $failedCount > 0) {
+                Log::channel('machine_operations')->error('[MachineWash-SteelBall] 机台清零失败，终止下分操作', [
+                    'wash_id' => $washId,
+                    'machine_id' => $machine->id,
+                    'player_id' => $player->id,
+                    'money' => $money,
+                    'error' => $result['message'] ?? 'Unknown error',
+                    'failed_count' => $failedCount,
+                    'failed_commands' => array_filter($result['data']['results'] ?? [], function($r) {
+                        return !($r['success'] ?? false);
+                    }),
+                ]);
+                throw new Exception(trans('machine_clear_failed', [], 'message') ?: '机台清零失败，请稍后再试');
+            }
+
+            $services->player_win_number = 0;
+            break;
+
+        case GameType::TYPE_SLOT:
+            Log::channel('machine_operations')->info('[MachineWash-Slot] 准备发送清零指令', [
+                'wash_id' => $washId,
+                'machine_id' => $machine->id,
+                'commands' => ['WASH_ZERO', 'ALL_DOWN'],
+            ]);
+
+            $clearStartTime = microtime(true);
+            $result = $client->batchSendCommands($machine->id, [
+                ['cmd' => $services::WASH_ZERO, 'data' => 0],
+                ['cmd' => $services::ALL_DOWN, 'data' => 0],
+            ], $lang, $player->id, $washId ?? null);
+            $clearDuration = round((microtime(true) - $clearStartTime) * 1000, 2);
+
+            Log::channel('machine_operations')->info('[MachineWash-Slot] 清零指令执行完成', [
+                'wash_id' => $washId,
+                'machine_id' => $machine->id,
+                'success' => $result['success'],
+                'duration_ms' => $clearDuration,
+                'result' => $result,
+            ]);
+
+            // ✅ 检查清零是否成功
+            $failedCount = $result['data']['failed_count'] ?? 0;
+            if (!$result['success'] || $failedCount > 0) {
+                Log::channel('machine_operations')->error('[MachineWash-Slot] 机台清零失败，终止下分操作', [
+                    'wash_id' => $washId,
+                    'machine_id' => $machine->id,
+                    'player_id' => $player->id,
+                    'money' => $money,
+                    'error' => $result['message'] ?? 'Unknown error',
+                    'failed_count' => $failedCount,
+                    'failed_commands' => array_filter($result['data']['results'] ?? [], function($r) {
+                        return !($r['success'] ?? false);
+                    }),
+                ]);
+                throw new Exception(trans('machine_clear_failed', [], 'message') ?: '机台清零失败，请稍后再试');
+            }
+
+            $services->player_pressure = 0;
+            $services->player_score = 0;
+            $services->bet = 0;
+            break;
+    }
+
+    Log::channel('machine_operations')->info('[MachineWash] 机台清零成功，开始数据库事务', [
         'wash_id' => $washId,
         'machine_id' => $machine->id,
         'money' => $money,
@@ -3237,113 +3336,28 @@ function machineWash(
             'machine_id' => $machine->id,
         ]);
 
-        // 执行下分操作（批量发送，优化：2次HTTP调用 → 1次）
-        Log::channel('machine_operations')->info('[MachineWash] 准备执行清零指令', [
-            'wash_id' => $washId,
-            'machine_id' => $machine->id,
-            'machine_type' => $machine->type,
-            'path' => $path,
-            'will_send_clear_commands' => true,
-        ]);
-
-        $client = new MachineClient();
-        switch ($machine->type) {
-            case GameType::TYPE_STEEL_BALL:
-                Log::channel('machine_operations')->info('[MachineWash-SteelBall] 准备发送清零指令', [
-                    'wash_id' => $washId,
-                    'machine_id' => $machine->id,
-                    'commands' => ['WASH_ZERO', 'CLEAR_LOG'],
-                ]);
-
-                $clearStartTime = microtime(true);
-                $result = $client->batchSendCommands($machine->id, [
-                    ['cmd' => $services::WASH_ZERO, 'data' => 0],
-                    ['cmd' => $services::CLEAR_LOG, 'data' => 0],
-                ], $lang, $player->id, $washId ?? null);
-                $clearDuration = round((microtime(true) - $clearStartTime) * 1000, 2);
-
-                Log::channel('machine_operations')->info('[MachineWash-SteelBall] 清零指令执行完成', [
-                    'wash_id' => $washId,
-                    'machine_id' => $machine->id,
-                    'success' => $result['success'],
-                    'duration_ms' => $clearDuration,
-                    'result' => $result,
-                ]);
-
-                // ✅ 检查批量指令是否全部成功（修复：检查 failed_count）
-                $failedCount = $result['data']['failed_count'] ?? 0;
-                if (!$result['success'] || $failedCount > 0) {
-                    Log::channel('machine_operations')->error('[MachineWash-SteelBall] 清零指令发送失败', [
-                        'wash_id' => $washId,
-                        'machine_id' => $machine->id,
-                        'error' => $result['message'] ?? 'Unknown error',
-                        'failed_count' => $failedCount,
-                        'failed_commands' => array_filter($result['data']['results'] ?? [], function($r) {
-                            return !($r['success'] ?? false);
-                        }),
-                    ]);
-                    throw new Exception('批量发送洗分清零指令失败（部分指令失败）: ' . $result['message']);
-                }
-
-                $services->player_win_number = 0;
-                break;
-            case GameType::TYPE_SLOT:
-                Log::channel('machine_operations')->info('[MachineWash-Slot] 准备发送清零指令', [
-                    'wash_id' => $washId,
-                    'machine_id' => $machine->id,
-                    'commands' => ['WASH_ZERO', 'ALL_DOWN'],
-                ]);
-
-                $clearStartTime = microtime(true);
-                $result = $client->batchSendCommands($machine->id, [
-                    ['cmd' => $services::WASH_ZERO, 'data' => 0],
-                    ['cmd' => $services::ALL_DOWN, 'data' => 0],
-                ], $lang, $player->id, $washId ?? null);
-                $clearDuration = round((microtime(true) - $clearStartTime) * 1000, 2);
-
-                Log::channel('machine_operations')->info('[MachineWash-Slot] 清零指令执行完成', [
-                    'wash_id' => $washId,
-                    'machine_id' => $machine->id,
-                    'success' => $result['success'],
-                    'duration_ms' => $clearDuration,
-                    'result' => $result,
-                ]);
-
-                // ✅ 检查批量指令是否全部成功（修复：检查 failed_count）
-                $failedCount = $result['data']['failed_count'] ?? 0;
-                if (!$result['success'] || $failedCount > 0) {
-                    Log::channel('machine_operations')->error('[MachineWash-Slot] 清零指令发送失败', [
-                        'wash_id' => $washId,
-                        'machine_id' => $machine->id,
-                        'error' => $result['message'] ?? 'Unknown error',
-                        'failed_count' => $failedCount,
-                        'failed_commands' => array_filter($result['data']['results'] ?? [], function($r) {
-                            return !($r['success'] ?? false);
-                        }),
-                    ]);
-                    throw new Exception('批量发送洗分清零指令失败（部分指令失败）: ' . $result['message']);
-                }
-
-                $services->player_pressure = 0;
-                $services->player_score = 0;
-                $services->bet = 0;
-                break;
-        }
     } catch (\Exception $e) {
         DB::rollback();
+
+        // ⚠️ 数据库事务失败，但机台已清零
+        // 记录补偿日志，需要人工处理
+        Log::channel('machine_operations')->error('[MachineWash] 数据库事务失败，但机台已清零（需人工补偿）', [
+            'wash_id' => $washId,
+            'machine_id' => $machine->id,
+            'player_id' => $player->id,
+            'money' => $money,
+            'error' => $e->getMessage(),
+            'trace' => substr($e->getTraceAsString(), 0, 500),
+        ]);
+
         throw new Exception($e->getMessage());
     }
-    // 游戏结束同步Redis彩金到数据库（新版：独立彩池模式）
-    // 强制同步所有彩金的Redis数据到数据库
+
     try {
         LotteryServices::forceSyncRedisToDatabase();
     } catch (\Exception $e) {
         Log::error('游戏结束同步彩金失败: ' . $e->getMessage());
     }
-    queueClient::send('media-recording', [
-        'machine_id' => $machine->id,
-        'action' => 'stop',
-    ], 10);
     //下分成功 下分&下轉限制歸零 開獎中結束 關閉 push auto
     $services->last_play_time = time();
     if ($path == 'leave') {
