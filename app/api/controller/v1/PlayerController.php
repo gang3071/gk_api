@@ -62,6 +62,8 @@ use WebmanTech\LaravelHttpClient\Facades\Http;
 
 class PlayerController
 {
+    use \support\IdempotentTrait;
+
     /** 排除验签 */
     protected $noNeedSign = ['addBankCard', 'uploadAvatar', 'completeRecharge', 'editBankCard'];
 
@@ -1082,30 +1084,52 @@ class PlayerController
     ): Response {
         $player = checkPlayer();
 
-        // 基础验证
+        // ==================== 阶段1：占位前检查（轻量级） ====================
+        // 基础验证 - Player属性检查（已在checkPlayer()中查询）
         if ($player->is_coin == 1) {
             return jsonFailResponse(trans('coin_cannot_present', [], 'message'));
         }
 
-        // 爆机检查：玩家不能洗分
-        $crashCheck = checkMachineCrash($player);
-        if ($crashCheck['crashed']) {
-            return jsonFailResponse(trans('machine_crashed_cannot_wash_score', [], 'message'));
-        }
-
-        // 渠道和货币验证（先验证，避免扣款后回退）
-        /** @var Channel $channel */
-        $channel = Channel::query()->where('department_id', \request()->department_id)->first();
         if ($player->status_withdraw != 1) {
             return jsonFailResponse(trans('player_withdraw_closed', [], 'message'));
         }
+
+        // ==================== 阶段2：幂等性处理 ====================
+        // 幂等性检查
+        $requestId = $request->post('request_id');
+        $idempotentResponse = $this->checkIdempotent($requestId, 'present-auto', $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        // 提前占位（防止并发重复执行）
+        if (!$this->reserveIdempotent($requestId, 'present-auto', $player->id)) {
+            // 占位失败，再次检查状态（可能已完成或正在处理）
+            $response = $this->checkIdempotent($requestId, 'present-auto', $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ==================== 阶段3：占位后检查（需要查库，失败需释放占位） ====================
+        // 爆机检查：玩家不能洗分
+        $crashCheck = checkMachineCrash($player);
+        if ($crashCheck['crashed']) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('machine_crashed_cannot_wash_score', [], 'message'));
+        }
+
+        // 渠道和货币验证
+        /** @var Channel $channel */
+        $channel = Channel::query()->where('department_id', \request()->department_id)->first();
         if ($channel->withdraw_status == 0) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('self_withdraw_closed', [], 'message'));
         }
+
         /** @var Currency $currency */
         $currency = Currency::query()->where('identifying', $channel->currency)->where('status',
             1)->whereNull('deleted_at')->first();
         if (empty($currency)) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
 
@@ -1201,11 +1225,29 @@ class PlayerController
             $playerDeliveryRecord->save();
 
             DB::commit();
+
+            // ✅ 事务提交后更新爆机状态
+            \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
+
+            // 保存幂等性记录（覆盖占位）
+            $response = jsonSuccessResponse('success', [
+                'amount' => $playerDeliveryRecord->amount,
+                'created_at' => date('Y-m-d H:i:s', strtotime($playerDeliveryRecord->created_at)),
+                'tradeno' => $playerDeliveryRecord->tradeno,
+                'name' => $player->name
+            ]);
+            $this->saveIdempotent($requestId, $response, 'present-auto', $player->id);
+
+            return $response;
+
         } catch (Exception $e) {
             DB::rollBack();
 
             // 事务失败，回退已扣除的余额
             \app\service\WalletService::atomicIncrement($player->id, $washAmount);
+
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
 
             Log::error('presentAuto failed, balance refunded', [
                 'player_id' => $player->id,
@@ -1216,16 +1258,6 @@ class PlayerController
 
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
-
-        // ✅ 事务提交后更新爆机状态
-        \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
-
-        return jsonSuccessResponse('success', [
-            'amount' => $playerDeliveryRecord->amount,
-            'created_at' => date('Y-m-d H:i:s', strtotime($playerDeliveryRecord->created_at)),
-            'tradeno' => $playerDeliveryRecord->tradeno,
-            'name' => $player->name
-        ]);
     }
     
     #[RateLimiter(limit: 5)]
@@ -3358,14 +3390,38 @@ class PlayerController
     {
         $data = $request->all();
         $player = checkPlayer();
-        
+
+        // 幂等性检查（如果客户端传递了 request_id）
+        $requestId = $data['request_id'] ?? null;
+        $idempotentResponse = $this->checkIdempotent($requestId, 'receive-reverse-water:' . ($data['id'] ?? ''), $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        // 提前占位（防止并发）
+        if (!$this->reserveIdempotent($requestId, 'receive-reverse-water:' . ($data['id'] ?? ''), $player->id)) {
+            // 占位失败，再次检查状态（可能已完成或正在处理）
+            $response = $this->checkIdempotent($requestId, 'receive-reverse-water:' . ($data['id'] ?? ''), $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ==================== 阶段3：占位后检查（需要查库，失败需释放占位） ====================
         //查找反水日期
         $id = Notice::query()->where('id', $data['id'])->value('source_id');
-        
+        if (empty($id)) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('notice_not_found', [], 'message'));
+        }
+
         $playerReverseWaterDetail = PlayerReverseWaterDetail::query()
             ->where('id', $id)
             ->first();
-        
+
+        if (empty($playerReverseWaterDetail)) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('reverse_water_detail_not_found', [], 'message'));
+        }
+
         //获取用户该日期的所有反水金额
         $reverseWater = PlayerReverseWaterDetail::query()
             ->where('player_id', $player->id)
@@ -3374,11 +3430,13 @@ class PlayerController
             ->where('is_settled', 1)
             ->where('switch', 1)
             ->sum('reverse_water');
-        
+
         if ($reverseWater <= 0) {
-            return jsonSuccessResponse('success');
+            $response = jsonSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, 'receive-reverse-water:' . ($data['id'] ?? ''), $player->id);
+            return $response;
         }
-        
+
         DB::beginTransaction();
         try {
             // ✅ 从 Redis 读取余额（唯一可信源）
@@ -3412,12 +3470,18 @@ class PlayerController
                 ->where('status', PlayerReverseWaterDetail::STATUS_UNRECEIVED)
                 ->update(['status' => PlayerReverseWaterDetail::STATUS_RECEIVED, 'receive_time' => Carbon::now()]);
             DB::commit();
+
+            // 保存幂等性记录（覆盖占位）
+            $response = jsonSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, 'receive-reverse-water:' . ($data['id'] ?? ''), $player->id);
+
+            return $response;
         } catch (Exception) {
             DB::rollBack();
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('system_error', [], 'message'));
         }
-        
-        return jsonSuccessResponse('success');
     }
     
     /**
@@ -3484,7 +3548,9 @@ class PlayerController
     {
         $player = checkPlayer();
         $data = $request->post();
-        // 验证必需参数：score_option (score_1, score_2, score_3, score_4, score_5, score_6, default_scores, custom)
+
+        // ==================== 阶段1：占位前检查（轻量级，无需查库） ====================
+        // 验证必需参数：score_option
         $validator = v::key('score_option', v::in(['score_1', 'score_2', 'score_3', 'score_4', 'score_5', 'score_6', 'default_scores', 'custom'])->notEmpty()->setName(trans('score_option', [], 'message')));
         try {
             $validator->assert($data);
@@ -3502,18 +3568,38 @@ class PlayerController
             }
         }
 
+        // ==================== 阶段2：幂等性处理 ====================
+        // 幂等性检查
+        $requestId = $data['request_id'] ?? null;
+        $idempotentResponse = $this->checkIdempotent($requestId, 'open-score', $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        // 提前占位（防止并发重复执行）
+        if (!$this->reserveIdempotent($requestId, 'open-score', $player->id)) {
+            // 占位失败，再次检查状态（可能已完成或正在处理）
+            $response = $this->checkIdempotent($requestId, 'open-score', $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ==================== 阶段3：占位后检查（需要查库，失败需释放占位） ====================
         // 爆机检查：玩家不能开分
         $crashCheck = checkMachineCrash($player);
         if ($crashCheck['crashed']) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('machine_crashed_cannot_open_score', [], 'message'));
         }
 
+        // 渠道检查
         /** @var Channel $channel */
         $channel = Channel::query()->where('department_id', \request()->department_id)->first();
         if (empty($channel)) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('channel_not_found', [], 'message'));
         }
         if ($channel->recharge_status == 0) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('recharge_closed', [], 'message'));
         }
 
@@ -3525,14 +3611,15 @@ class PlayerController
             $scoreAmount = $data['custom_amount'];
         } else {
             // 获取店家开分配置
-            // 新架构：使用 store_admin_id 查找店家的开分配置
             if (empty($player->store_admin_id)) {
+                $this->releaseIdempotent($requestId);
                 return jsonFailResponse(trans('player_not_bind_store', [], 'message'));
             }
 
             /** @var OpenScoreSetting $openScoreSetting */
             $openScoreSetting = OpenScoreSetting::query()->where('admin_user_id', $player->store_admin_id)->first();
             if (empty($openScoreSetting)) {
+                $this->releaseIdempotent($requestId);
                 return jsonFailResponse(trans('open_point_config_not_found', [], 'message'));
             }
 
@@ -3540,19 +3627,23 @@ class PlayerController
         }
 
         if ($scoreAmount <= 0) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('open_point_amount_invalid', [], 'message'));
         }
 
+        // 货币配置检查
         /** @var Currency $currency */
         $currency = Currency::query()->where('identifying', $channel->currency)->where('status',
             1)->whereNull('deleted_at')->select(['id', 'identifying', 'ratio'])->first();
         if (empty($currency)) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
 
-        // 计算实际充值金额（分数转换为货币）
+        // 计算实际充值金额
         $money = bcdiv($scoreAmount, $currency->ratio, 2);
         if ($money <= 0) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
 
@@ -3609,16 +3700,25 @@ class PlayerController
             $playerDeliveryRecord->save();
 
             DB::commit();
+
+            // ✅ 事务提交后更新爆机状态
+            \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
+
+            // 保存幂等性记录（覆盖占位）
+            $response = jsonSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, 'open-score', $player->id);
+
+            return $response;
+
         } catch (\Exception $e) {
             DB::rollBack();
+
+            // 释放占位（允许重试）
+            $this->releaseIdempotent($requestId);
+
             Log::error($e->getMessage());
             return jsonFailResponse(trans('system_error', [], 'message'));
         }
-
-        // ✅ 事务提交后更新爆机状态
-        \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
-
-        return jsonSuccessResponse('success');
     }
 
     /**
