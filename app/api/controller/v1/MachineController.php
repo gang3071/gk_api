@@ -1043,8 +1043,9 @@ class MachineController
         ?MachineCategoryGiveRule $machineCategoryGiveRule
     ): void {
         // 增加业务锁（与 machineWashV2 使用同一把锁，防止上下分并发）
+        // 锁超时15秒 > gk_work超时5秒，防止锁提前释放导致并发冲突
         $actionLockerKey = 'machine_operation_lock_' . $machine->id;
-        $lock = Locker::lock($actionLockerKey, 8, true);
+        $lock = Locker::lock($actionLockerKey, 15, true);
 
         try {
             if (!$lock->acquire()) {
@@ -1175,10 +1176,12 @@ class MachineController
 
             // ========== 阶段 4: 数据库事务 ==========
             DB::beginTransaction();
+            $walletDeducted = false;  // 标记钱包是否已扣款
             try {
                 // 4.1 扣除玩家钱包
                 $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
                 $afterGameAmount = \app\service\WalletService::deduct($player->id, $money, 1);
+                $walletDeducted = true;  // 标记已扣款
 
                 // 4.2 记录游戏局记录
                 /** @var PlayerGameRecord $gameRecord */
@@ -1262,7 +1265,8 @@ class MachineController
                 }
 
                 // ========== 阶段 5: 调用 gk_work 执行机台硬件操作（在 commit 之前）==========
-                $client = new MachineClient();
+                // 设置gk_work超时为5秒（< 锁超时15秒），确保锁不会提前释放
+                $client = new MachineClient(null, 5);
                 $machineContext = [
                     'type' => $machine->type,
                     'control_type' => $machine->control_type,
@@ -1312,34 +1316,46 @@ class MachineController
                     'machine_id' => $machine->id,
                     'error' => $e->getMessage(),
                     'trace' => $e->getTraceAsString(),
+                    'wallet_deducted' => $walletDeducted,
                 ]);
 
-                // 回滚 Redis 余额
-                try {
-                    \app\service\WalletService::add($player->id, $money, 1);
-                    Log::info('[MachineOpenAnyV2] Redis余额回滚成功', [
-                        'player_id' => $player->id,
-                        'refund_amount' => $money
-                    ]);
-                } catch (\Exception $refundError) {
-                    Log::critical('[MachineOpenAnyV2] Redis余额回滚失败，需人工介入', [
-                        'player_id' => $player->id,
-                        'machine_id' => $machine->id,
-                        'refund_amount' => $money,
-                        'error' => $refundError->getMessage()
-                    ]);
+                // 只有在已扣款的情况下才回滚 Redis 余额
+                if ($walletDeducted) {
+                    try {
+                        \app\service\WalletService::add($player->id, $money, 1);
+                        Log::info('[MachineOpenAnyV2] Redis余额回滚成功', [
+                            'player_id' => $player->id,
+                            'refund_amount' => $money
+                        ]);
+                    } catch (\Exception $refundError) {
+                        Log::critical('[MachineOpenAnyV2] Redis余额回滚失败，需人工介入', [
+                            'player_id' => $player->id,
+                            'machine_id' => $machine->id,
+                            'refund_amount' => $money,
+                            'error' => $refundError->getMessage()
+                        ]);
+                    }
                 }
 
                 throw $e;
             }
 
         } finally {
-            if ($lock->isAcquired()) {
-                $lock->release();
+            // 添加异常保护，防止锁释放失败导致死锁
+            try {
+                if ($lock->isAcquired()) {
+                    $lock->release();
+                }
+            } catch (\Exception $lockError) {
+                Log::critical('[MachineOpenAnyV2] 锁释放失败，可能导致死锁', [
+                    'machine_id' => $machine->id,
+                    'lock_key' => $actionLockerKey,
+                    'error' => $lockError->getMessage(),
+                ]);
             }
         }
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 斯洛机台操作
@@ -2465,8 +2481,9 @@ class MachineController
         bool    $hasLottery = false
     ): bool|array {
         // 添加分布式锁（与 machineOpenAnyV2 使用同一把锁，防止上下分并发）
+        // 锁超时15秒 > gk_work超时5秒，防止锁提前释放导致并发冲突
         $actionLockerKey = 'machine_operation_lock_' . $machine->id;
-        $lock = Locker::lock($actionLockerKey, 8, true);
+        $lock = Locker::lock($actionLockerKey, 15, true);
 
         try {
             if (!$lock->acquire()) {
@@ -2501,7 +2518,8 @@ class MachineController
             ]);
 
             // ========== 阶段 2: 调用 gk_work 执行机台硬件操作并获取洗分数量 ==========
-            $client = new MachineClient();
+            // 设置gk_work超时为5秒（< 锁超时15秒），确保锁不会提前释放
+            $client = new MachineClient(null, 5);
             $machineContext = [
                 'type' => $machine->type,
                 'control_type' => $machine->control_type,
@@ -2543,12 +2561,14 @@ class MachineController
             }
 
             DB::beginTransaction();
+            $walletAdded = false;  // 标记钱包是否已加款
             try {
 
                 // 获取余额并加款
                 $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
                 if ($gameAmount > 0) {
                     $afterGameAmount = \app\service\WalletService::add($player->id, $gameAmount, 1);
+                    $walletAdded = true;  // 标记已加款
                 } else {
                     $afterGameAmount = $beforeGameAmount;
                 }
@@ -2660,10 +2680,11 @@ class MachineController
                     'player_id' => $player->id,
                     'machine_id' => $machine->id,
                     'error' => $e->getMessage(),
+                    'wallet_added' => $walletAdded,
                 ]);
 
-                // 如果数据库失败，钱包加款需要回滚
-                if ($gameAmount > 0) {
+                // 只有在已加款的情况下才回滚钱包
+                if ($walletAdded && $gameAmount > 0) {
                     try {
                         \app\service\WalletService::deduct($player->id, $gameAmount, 1);
                         Log::info('[MachineWashV2] Redis余额回滚成功', [
@@ -2685,8 +2706,17 @@ class MachineController
             }
 
         } finally {
-            if ($lock->isAcquired()) {
-                $lock->release();
+            // 添加异常保护，防止锁释放失败导致死锁
+            try {
+                if ($lock->isAcquired()) {
+                    $lock->release();
+                }
+            } catch (\Exception $lockError) {
+                Log::critical('[MachineWashV2] 锁释放失败，可能导致死锁', [
+                    'machine_id' => $machine->id,
+                    'lock_key' => $actionLockerKey,
+                    'error' => $lockError->getMessage(),
+                ]);
             }
         }
     }
