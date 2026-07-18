@@ -1472,8 +1472,8 @@ class MachineController
                             throw new Exception(trans('reward_not_down_leave', [], 'message'));
                         }
 
-                        // 执行业务逻辑（machineWash 内部已包含事务）
-                        $machineWashResult = machineWash($player, $machine, $action, 0, $hasLottery);
+                        // 执行业务逻辑（使用优化后的 machineWashV2）
+                        $machineWashResult = $this->machineWashV2($player, $machine, $action, 0, $hasLottery);
                         if ($machineWashResult instanceof PlayerLotteryRecord) {
                             $result = $machineWashResult->toArray();
                             $result['has_lottery'] = false;
@@ -1605,23 +1605,35 @@ class MachineController
                         ->where('status', PlayerGameRecord::STATUS_START)
                         ->orderBy('created_at', 'desc')
                         ->first();
-                    $playerGameLog = PlayerGameLog::query()
-                        ->where('game_record_id', $playerGameRecord->id)
-                        ->selectRaw('sum(pressure) as total_pressure,sum(score) as total_score')
-                        ->first()
-                        ->toArray();
-                    $services->sendCmd($services::READ_BET, 0, 'player', $player->id);
-                    $services->sendCmd($services::READ_WIN, 0, 'player', $player->id);
-                    // 玩家当局游戏压分
-                    $gamingPressure = $services->bet - $services->player_pressure + (!empty($playerGameLog['total_pressure']) ? $playerGameLog['total_pressure'] : 0);
-                    if ($gamingPressure <= 0 || $machine->gaming_user_id == 0) {
-                        $gamingPressure = 0;
+
+                    // 初始化默认值，防止 null 错误
+                    $playerGameLog = ['total_pressure' => 0, 'total_score' => 0];
+                    $gamingPressure = 0;
+                    $gamingScore = 0;
+
+                    // 只有存在游戏记录时才查询日志和计算
+                    if ($playerGameRecord) {
+                        $playerGameLog = PlayerGameLog::query()
+                            ->where('game_record_id', $playerGameRecord->id)
+                            ->selectRaw('sum(pressure) as total_pressure,sum(score) as total_score')
+                            ->first()
+                            ->toArray();
+
+                        $services->sendCmd($services::READ_BET, 0, 'player', $player->id);
+                        $services->sendCmd($services::READ_WIN, 0, 'player', $player->id);
+
+                        // 玩家当局游戏压分
+                        $gamingPressure = $services->bet - $services->player_pressure + (!empty($playerGameLog['total_pressure']) ? $playerGameLog['total_pressure'] : 0);
+                        if ($gamingPressure <= 0 || $machine->gaming_user_id == 0) {
+                            $gamingPressure = 0;
+                        }
+                        // 玩家当局游戏得分
+                        $gamingScore = $services->win - $services->player_score + (!empty($playerGameLog['total_score']) ? $playerGameLog['total_score'] : 0);
+                        if ($gamingScore <= 0 || $machine->gaming_user_id == 0) {
+                            $gamingScore = 0;
+                        }
                     }
-                    // 玩家当局游戏得分
-                    $gamingScore = $services->win - $services->player_score + (!empty($playerGameLog['total_score']) ? $playerGameLog['total_score'] : 0);
-                    if ($gamingScore <= 0 || $machine->gaming_user_id == 0) {
-                        $gamingScore = 0;
-                    }
+
                     $givePoint = getGivePoints($player->id, $machine->id);
                     $result['pressure'] = $services->bet;
                     $result['gaming_pressure'] = $gamingPressure; // 总押注
@@ -1631,8 +1643,8 @@ class MachineController
                     $result['wash_point'] = floor((($services->point)) * ($machine->odds_x ?? 1) / ($machine->odds_y ?? 1));
                     $activityServices = new ActivityServices($machine, $player);
                     $result['player_activity_bonus'] = $activityServices->playerActivityBonus(); // 本轮活动奖励
-                    $result['open_point'] = $playerGameRecord->open_amount; // 总上点
-                    $result['total_wash_point'] = $playerGameRecord->wash_amount ?? 0; // 总下点
+                    $result['open_point'] = $playerGameRecord ? $playerGameRecord->open_amount : 0; // 总上点
+                    $result['total_wash_point'] = $playerGameRecord ? ($playerGameRecord->wash_amount ?? 0) : 0; // 总下点
                     break;
                 default:
                     throw new Exception(trans('system_error', [], 'message'));
