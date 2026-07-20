@@ -1074,6 +1074,8 @@ class MachineController
             $machine->id,
             $player->id,
             $openScore,
+            $giftScore,
+            $machineCategoryGiveRule?->id,
             $lang
         );
 
@@ -2268,6 +2270,7 @@ class MachineController
             $player->id,
             $action,
             $hasLottery,
+            $is_system,
             $lang
         );
 

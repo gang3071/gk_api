@@ -692,6 +692,8 @@ class MachineClient
         int $machineId,
         int $playerId,
         float $openScore,
+        float $giftScore = 0,
+        ?int $giveRuleId = null,
         string $lang = 'zh_TW'
     ): array {
         return $this->executeOperation(
@@ -700,6 +702,8 @@ class MachineClient
             [
                 'player_id' => $playerId,
                 'open_score' => $openScore,
+                'gift_score' => $giftScore,
+                'give_rule_id' => $giveRuleId,
             ],
             $lang
         );
@@ -748,6 +752,7 @@ class MachineClient
         int $playerId,
         string $action,
         bool $hasLottery = false,
+        int $isSystem = 0,
         string $lang = 'zh_TW'
     ): array {
         return $this->executeOperation(
@@ -757,6 +762,7 @@ class MachineClient
                 'player_id' => $playerId,
                 'action' => $action,
                 'has_lottery' => $hasLottery,
+                'is_system' => $isSystem,
             ],
             $lang
         );
