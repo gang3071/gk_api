@@ -614,12 +614,13 @@ class MachineClient
 
                 // 处理返回数据格式，转换为 [机台ID => 状态] 格式
                 $processedData = [];
-                foreach ($rawData as $item) {
+                foreach ($rawData['machines'] ?? $rawData as $item) {
                     if (is_array($item) && isset($item['machine_id'])) {
                         $machineId = $item['machine_id'];
 
                         // 宽松判断在线状态（兼容整数1和布尔值true）
-                        $online = !empty($item['online']);
+                        // 修复：使用正确的字段名 'is_online'（gk_work接口返回的字段）
+                        $online = !empty($item['is_online']);
                         $processedData[$machineId] = $online ? 'online' : 'offline';
                     }
                 }
