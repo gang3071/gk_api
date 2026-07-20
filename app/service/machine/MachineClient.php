@@ -981,4 +981,107 @@ class MachineClient
             throw new Exception(trans('machine_action_failed', [], 'message') . ': ' . $e->getMessage());
         }
     }
+
+    /**
+     * 执行机台操作（新接口 - 使用统一服务）
+     *
+     * 调用 gk_work 的统一操作接口 /api/v1/machine/execute
+     *
+     * @param int $machineId 机台 ID
+     * @param string $action 操作名称
+     * @param array $params 操作参数
+     * @param string $lang 语言
+     * @param int|null $playerId 玩家 ID
+     * @return array ['success' => bool, 'data' => array, 'message' => string]
+     */
+    public function executeOperation(
+        int $machineId,
+        string $action,
+        array $params = [],
+        string $lang = 'zh_TW',
+        ?int $playerId = null
+    ): array {
+        $startTime = microtime(true);
+        $requestPayload = [
+            'machine_id' => $machineId,
+            'action' => $action,
+            'params' => $params,
+        ];
+
+        $headers = [
+            'Accept-Language' => $lang,
+        ];
+
+        if ($playerId !== null && $playerId > 0) {
+            $headers['X-Player-Id'] = $playerId;
+        }
+
+        Log::channel('machine_operations')->info('[MachineClient] 执行机台操作（新接口） - 请求', [
+            'url' => $this->baseUrl . '/api/v1/machine/execute',
+            'payload' => $requestPayload,
+            'headers' => $headers,
+            'player_id' => $playerId,
+        ]);
+
+        try {
+            $response = Http::timeout($this->timeout)
+                ->withHeaders($headers)
+                ->post($this->baseUrl . '/api/v1/machine/execute', $requestPayload);
+
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+            $body = $response->json();
+
+            $code = $body['code'] ?? 0;
+            $isCodeOk = ($code === 1 || $code === '1');
+
+            if ($response->successful() && isset($body['code']) && $isCodeOk) {
+                Log::channel('machine_operations')->info('[MachineClient] 操作执行成功（新接口） - 响应', [
+                    'machine_id' => $machineId,
+                    'action' => $action,
+                    'player_id' => $playerId,
+                    'duration_ms' => $duration,
+                    'status_code' => $response->status(),
+                    'response_body' => $body,
+                ]);
+
+                return [
+                    'success' => true,
+                    'data' => $body['data'] ?? [],
+                    'message' => $body['msg'] ?? 'success',
+                ];
+            }
+
+            Log::channel('machine_operations')->warning('[MachineClient] 操作执行失败（新接口） - 响应', [
+                'machine_id' => $machineId,
+                'action' => $action,
+                'status_code' => $response->status(),
+                'duration_ms' => $duration,
+                'response_body' => $body,
+            ]);
+
+            return [
+                'success' => false,
+                'data' => [],
+                'message' => $body['msg'] ?? 'Unknown error',
+            ];
+
+        } catch (RequestException $e) {
+            $duration = round((microtime(true) - $startTime) * 1000, 2);
+
+            Log::channel('machine_operations')->error('[MachineClient] 操作执行异常（新接口）', [
+                'machine_id' => $machineId,
+                'action' => $action,
+                'player_id' => $playerId,
+                'duration_ms' => $duration,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'data' => [],
+                'message' => trans('machine_action_failed', [], 'message') . ': ' . $e->getMessage(),
+            ];
+        }
+    }
 }

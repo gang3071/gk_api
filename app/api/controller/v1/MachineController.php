@@ -1527,18 +1527,16 @@ class MachineController
                             }
                         }
 
-                        // 调用 gk_work 统一处理硬件指令
-                        // 硬件逻辑（move_point、PRESSURE、control_type）全部迁移到 gk_work
+                        // ✅ 调用 gk_work 统一服务（新接口）
+                        // 硬件逻辑（move_point、PRESSURE、control_type）全部在 MachineOperationService 中处理
                         $client = new MachineClient(null, 5);
                         $lang = locale() ?? 'zh_TW';
                         $lang = \Illuminate\Support\Str::replace('_', '-', $lang);
 
-                        $actionResult = $client->executeMachineAction(
+                        $actionResult = $client->executeOperation(
                             $machine->id,
                             $action,
                             [
-                                'machine_type' => GameType::TYPE_SLOT,  // 斯洛机
-                                'control_type' => $machine->control_type,  // 双美/小淞
                                 'move_point' => $services->move_point,  // 移分状态（仅双美斯洛使用）
                                 'auto' => $services->auto,  // 自动状态
                                 'is_special' => $machine->is_special,  // 特殊机台标记
@@ -1588,17 +1586,15 @@ class MachineController
                         }
                     }
 
-                    // 调用 gk_work 统一处理
+                    // ✅ 调用 gk_work 统一服务（新接口）
                     $client = new MachineClient(null, 5);
                     $lang = locale() ?? 'zh_TW';
                     $lang = \Illuminate\Support\Str::replace('_', '-', $lang);
 
-                    $actionResult = $client->executeMachineAction(
+                    $actionResult = $client->executeOperation(
                         $machine->id,
                         $action,
                         [
-                            'machine_type' => GameType::TYPE_SLOT,
-                            'control_type' => $machine->control_type,
                             'auto' => $services->auto,
                             'is_special' => $machine->is_special,
                         ],
