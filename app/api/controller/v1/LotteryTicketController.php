@@ -691,8 +691,8 @@ class LotteryTicketController
                 $query->where('activity_id', $data['activity_id']);
             })
             ->when($scope === 'all', function ($query) {
-                // 查询所有记录时，预加载玩家信息
-                $query->with('player:id,name');
+                // 查询所有记录时，预加载玩家信息及店家信息
+                $query->with(['player:id,name,store_admin_id', 'player.storeAdmin:id,nickname']);
             });
 
         $total = $query->count();
@@ -703,6 +703,7 @@ class LotteryTicketController
             ->get();
 
         $list = [];
+        /** @var LotteryTicketRecord $record */
         foreach ($records as $record) {
             $item = [
                 'id' => $record->id,
@@ -719,12 +720,14 @@ class LotteryTicketController
                 'created_at' => $record->created_at,
             ];
 
-            // 当查询所有记录时，包含玩家信息（脱敏处理）
+            // 当查询所有记录时，包含玩家信息（脱敏处理）和店名
             if ($scope === 'all') {
                 $item['player_id'] = $record->player_id;
                 // 玩家名称脱敏
                 $playerName = $record->player?->name ?? '';
                 $item['player_name'] = $this->maskPlayerName($playerName);
+                // 店名
+                $item['store_name'] = $record->player?->storeAdmin?->nickname ?? '';
             }
 
             $list[] = $item;
