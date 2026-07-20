@@ -525,4 +525,15 @@ return [
     'ticket_open_score_success' => 'スコア追加成功',
     'ticket_open_score_failed' => 'スコア追加失敗',
     'ticket_scan_success' => 'QRコードスキャン成功',
+
+    // マシンコマンド関連
+    'machine_command_failed' => 'マシンコマンド送信失敗',
+    'machine_action_failed' => 'マシン操作実行失敗',
+    'check_machine_online_failed' => 'マシンオンライン状態確認失敗',
+    'batch_check_machine_online_failed' => 'マシンオンライン状態の一括確認失敗',
+    'machine_open_point_failed' => 'マシンポイント投入操作失敗',
+    'machine_open_command_failed' => 'マシンポイント投入コマンド送信失敗、サポートに連絡してください',
+    'machine_wash_point_failed' => 'マシンポイント精算操作失敗',
+    'machine_wash_command_failed' => 'マシンポイント精算コマンド送信失敗、サポートに連絡してください',
+    'no_game_record_found' => 'ゲーム記録が見つかりません。まず入金してください',
 ];

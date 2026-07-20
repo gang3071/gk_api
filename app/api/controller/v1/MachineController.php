@@ -1496,57 +1496,75 @@ class MachineController
                     }
                 break;
                 case 'start':
-                    if ($machine->gaming_user_id == 0) {
-                        return jsonFailResponse(trans('no_open_point', [], 'message'));
-                    }
-                    if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
-                        return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
-                    }
-                    if ($services->auto == 1) {
-                        return jsonFailResponse(trans('slot_machine_must_stop_auto', [], 'message'));
-                    }
-                    if ($services->move_point == 0 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        $services->sendCmd($services::MOVE_POINT_ON, 0, 'player', $player->id);
-                    }
-                    if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        $services->sendCmd($services::PRESSURE, 0, 'player', $player->id);
-                    }
-                    $services->sendCmd($services::START, 0, 'player', $player->id);
-                    break;
                 case 'auto':
-                    if ($machine->gaming_user_id == 0) {
-                        return jsonFailResponse(trans('no_open_point', [], 'message'));
-                    }
-                    if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
-                        return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
-                    }
-                    if ($services->move_point == 0 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                        $services->sendCmd($services::MOVE_POINT_ON, 0, 'player', $player->id);
-                    }
-                    if ($machine->is_special == 1) {
-                        $actionLockerKey = 'machine_special' . $machine->id;
-                        $lock = Locker::lock($actionLockerKey, 2, true);
-                        if (!$lock->acquire()) {
-                            throw new Exception(trans('busy_operations', [], 'message'));
-                        }
-                    }
-                    $services->sendCmd($services::OUT_ON, 0, 'player', $player->id);
-                    break;
                 case 'stop_auto':
-                    if ($machine->gaming_user_id == 0) {
-                        return jsonFailResponse(trans('no_open_point', [], 'message'));
-                    }
-                    if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
-                        return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
-                    }
-                    if ($machine->is_special == 1) {
-                        $actionLockerKey = 'machine_special' . $machine->id;
-                        $lock = Locker::lock($actionLockerKey, 2, true);
+                    // 统一加锁机制（15秒超时 + finally 保护）
+                    $actionLockerKey = 'machine_operation_lock_' . $machine->id;
+                    $lock = Locker::lock($actionLockerKey, 15, true);
+
+                    try {
                         if (!$lock->acquire()) {
-                            throw new Exception(trans('busy_operations', [], 'message'));
+                            return jsonFailResponse(trans('busy_operations', [], 'message'));
+                        }
+
+                        // 业务校验
+                        if ($action === 'start') {
+                            if ($machine->gaming_user_id == 0) {
+                                return jsonFailResponse(trans('no_open_point', [], 'message'));
+                            }
+                            if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
+                                return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
+                            }
+                            if ($services->auto == 1) {
+                                return jsonFailResponse(trans('slot_machine_must_stop_auto', [], 'message'));
+                            }
+                        } elseif ($action === 'auto' || $action === 'stop_auto') {
+                            if ($machine->gaming_user_id == 0) {
+                                return jsonFailResponse(trans('no_open_point', [], 'message'));
+                            }
+                            if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
+                                return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
+                            }
+                        }
+
+                        // 调用 gk_work 统一处理硬件指令
+                        // 硬件逻辑（move_point、PRESSURE、control_type）全部迁移到 gk_work
+                        $client = new MachineClient(null, 5);
+                        $lang = locale() ?? 'zh_TW';
+                        $lang = \Illuminate\Support\Str::replace('_', '-', $lang);
+
+                        $actionResult = $client->executeMachineAction(
+                            $machine->id,
+                            $action,
+                            [
+                                'machine_type' => GameType::TYPE_SLOT,  // 斯洛机
+                                'control_type' => $machine->control_type,  // 双美/小淞
+                                'move_point' => $services->move_point,  // 移分状态（仅双美斯洛使用）
+                                'auto' => $services->auto,  // 自动状态
+                                'is_special' => $machine->is_special,  // 特殊机台标记
+                            ],
+                            $lang,
+                            $player->id
+                        );
+
+                        if (!$actionResult['success']) {
+                            return jsonFailResponse($actionResult['message']);
+                        }
+
+                    } finally {
+                        try {
+                            if ($lock->isAcquired()) {
+                                $lock->release();
+                            }
+                        } catch (\Exception $lockError) {
+                            Log::critical('[SlotAction] 锁释放失败', [
+                                'machine_id' => $machine->id,
+                                'action' => $action,
+                                'lock_key' => $actionLockerKey,
+                                'error' => $lockError->getMessage(),
+                            ]);
                         }
                     }
-                    $services->sendCmd($services::OUT_OFF, 0, 'player', $player->id);
                     break;
                 case 'out_1_pulse':
                     if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {

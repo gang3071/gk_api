@@ -539,4 +539,15 @@ return [
     'ticket_open_score_success' => '上分成功',
     'ticket_open_score_failed' => '上分失败',
     'ticket_scan_success' => '扫码开分成功',
+
+    // 机台指令相关
+    'machine_command_failed' => '机台指令发送失败',
+    'machine_action_failed' => '机台操作执行失败',
+    'check_machine_online_failed' => '检查机台在线状态失败',
+    'batch_check_machine_online_failed' => '批量检查机台在线状态失败',
+    'machine_open_point_failed' => '机台上分操作失败',
+    'machine_open_command_failed' => '机台上分指令发送失败，请联系客服',
+    'machine_wash_point_failed' => '机台洗分操作失败',
+    'machine_wash_command_failed' => '机台洗分指令发送失败，请联系客服',
+    'no_game_record_found' => '未找到游戏记录，请先上分',
 ];

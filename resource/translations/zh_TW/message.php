@@ -529,4 +529,15 @@ return [
     'ticket_open_score_success' => '上分成功',
     'ticket_open_score_failed' => '上分失敗',
     'ticket_scan_success' => '掃碼開分成功',
+
+    // 機台指令相關
+    'machine_command_failed' => '機台指令發送失敗',
+    'machine_action_failed' => '機台操作執行失敗',
+    'check_machine_online_failed' => '檢查機台在線狀態失敗',
+    'batch_check_machine_online_failed' => '批量檢查機台在線狀態失敗',
+    'machine_open_point_failed' => '機台上分操作失敗',
+    'machine_open_command_failed' => '機台上分指令發送失敗，請聯繫客服',
+    'machine_wash_point_failed' => '機台洗分操作失敗',
+    'machine_wash_command_failed' => '機台洗分指令發送失敗，請聯繫客服',
+    'no_game_record_found' => '未找到遊戲記錄，請先上分',
 ];

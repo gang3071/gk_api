@@ -528,4 +528,15 @@ return [
     'ticket_open_score_success' => 'Score added successfully',
     'ticket_open_score_failed' => 'Failed to add score',
     'ticket_scan_success' => 'QR code scanned and score added successfully',
+
+    // Machine Commands
+    'machine_command_failed' => 'Machine command failed',
+    'machine_action_failed' => 'Machine action failed',
+    'check_machine_online_failed' => 'Failed to check machine online status',
+    'batch_check_machine_online_failed' => 'Failed to batch check machine online status',
+    'machine_open_point_failed' => 'Machine open point operation failed',
+    'machine_open_command_failed' => 'Machine open point command failed, please contact support',
+    'machine_wash_point_failed' => 'Machine wash point operation failed',
+    'machine_wash_command_failed' => 'Machine wash point command failed, please contact support',
+    'no_game_record_found' => 'No game record found, please deposit first',
 ];
