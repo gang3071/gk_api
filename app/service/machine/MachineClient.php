@@ -894,6 +894,28 @@ class MachineClient
      * @return array 返回格式: ['success' => bool, 'data' => array, 'message' => string]
      * @throws Exception
      */
+    /**
+     * 执行机台动作（旧接口）
+     *
+     * @deprecated 已废弃，请使用 executeOperation()
+     * @see executeOperation()
+     *
+     * 新方法更简洁：
+     * - 无需传递 machine_type 和 control_type（服务端自动识别）
+     * - 参数从 context 改为 params（更简洁）
+     * - 调用新接口 /api/v1/machine/execute
+     *
+     * 迁移示例：
+     * 旧: $client->executeMachineAction($id, $action, ['machine_type' => ..., 'control_type' => ..., 'move_point' => ...], $lang, $playerId)
+     * 新: $client->executeOperation($id, $action, ['move_point' => ...], $lang, $playerId)
+     *
+     * @param int $machineId
+     * @param string $action
+     * @param array $context
+     * @param string $lang
+     * @param int|null $playerId
+     * @return array
+     */
     public function executeMachineAction(
         int $machineId,
         string $action,
@@ -901,6 +923,14 @@ class MachineClient
         string $lang = 'zh_TW',
         ?int $playerId = null
     ): array {
+        // 添加废弃警告日志
+        Log::channel('machine_operations')->warning('[Deprecated] executeMachineAction 已废弃', [
+            'machine_id' => $machineId,
+            'action' => $action,
+            'player_id' => $playerId,
+            'new_method' => 'executeOperation',
+            'new_api' => '/api/v1/machine/execute',
+        ]);
         $startTime = microtime(true);
         $requestPayload = [
             'machine_id' => $machineId,
