@@ -809,17 +809,16 @@ class MachineController
                         }
                     }
 
-                    // 统一调用 gk_work 的机台动作执行接口
-                    // 原本每个 action 都要调用一次 sendCmd，现在由 gk_work 统一处理
+                    // ✅ 调用 gk_work 统一服务（新接口）
+                    // 原本每个 action 都要调用一次 sendCmd，现在由 MachineOperationService 统一处理
                     $client = new MachineClient();
                     $lang = locale() ?? 'zh_TW';
                     $lang = \Illuminate\Support\Str::replace('_', '-', $lang);
 
-                    $actionResult = $client->executeMachineAction(
+                    $actionResult = $client->executeOperation(
                         $machine->id,
                         $action,
                         [
-                            'control_type' => $machine->control_type,
                             'reward_status' => $services->reward_status,
                             'point' => $services->point,
                         ],
