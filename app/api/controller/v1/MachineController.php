@@ -1567,50 +1567,48 @@ class MachineController
                     }
                     break;
                 case 'out_1_pulse':
-                    if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
-                        return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
-                    }
-                    if ($machine->control_type == Machine::CONTROL_TYPE_SONG) {
-                        $services->sendCmd($services::REWARD_SWITCH, 0, 'player', $player->id);
-                    } else {
-                        $services->sendCmd($services::OUTPUT . $services::U1_PULSE, 0, 'player', $player->id);
-                    }
-                    break;
                 case 'stop_1':
-                    if ($machine->gaming_user_id == 0) {
-                        return jsonFailResponse(trans('no_open_point', [], 'message'));
-                    }
-                    if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
-                        return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
-                    }
-                    if ($services->auto == 1 && $machine->is_special == 1) {
-                        return jsonFailResponse(trans('slot_machine_must_stop_auto', [], 'message'));
-                    }
-                    $services->sendCmd($services::STOP_ONE, 0, 'player', $player->id);
-                    break;
                 case 'stop_2':
-                    if ($machine->gaming_user_id == 0) {
-                        return jsonFailResponse(trans('no_open_point', [], 'message'));
-                    }
-                    if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
-                        return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
-                    }
-                    if ($services->auto == 1 && $machine->is_special == 1) {
-                        return jsonFailResponse(trans('slot_machine_must_stop_auto', [], 'message'));
-                    }
-                    $services->sendCmd($services::STOP_TWO, 0, 'player', $player->id);
-                    break;
                 case 'stop_3':
-                    if ($machine->gaming_user_id == 0) {
-                        return jsonFailResponse(trans('no_open_point', [], 'message'));
+                    // 业务校验
+                    if ($action === 'out_1_pulse') {
+                        if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
+                            return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
+                        }
+                    } else {
+                        // stop_1/2/3 的校验
+                        if ($machine->gaming_user_id == 0) {
+                            return jsonFailResponse(trans('no_open_point', [], 'message'));
+                        }
+                        if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
+                            return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
+                        }
+                        if ($services->auto == 1 && $machine->is_special == 1) {
+                            return jsonFailResponse(trans('slot_machine_must_stop_auto', [], 'message'));
+                        }
                     }
-                    if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
-                        return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'));
+
+                    // 调用 gk_work 统一处理
+                    $client = new MachineClient(null, 5);
+                    $lang = locale() ?? 'zh_TW';
+                    $lang = \Illuminate\Support\Str::replace('_', '-', $lang);
+
+                    $actionResult = $client->executeMachineAction(
+                        $machine->id,
+                        $action,
+                        [
+                            'machine_type' => GameType::TYPE_SLOT,
+                            'control_type' => $machine->control_type,
+                            'auto' => $services->auto,
+                            'is_special' => $machine->is_special,
+                        ],
+                        $lang,
+                        $player->id
+                    );
+
+                    if (!$actionResult['success']) {
+                        return jsonFailResponse($actionResult['message']);
                     }
-                    if ($services->auto == 1 && $machine->is_special == 1) {
-                        return jsonFailResponse(trans('slot_machine_must_stop_auto', [], 'message'));
-                    }
-                    $services->sendCmd($services::STOP_THREE, 0, 'player', $player->id);
                     break;
                 case 'pressure_score':
                     if ($machine->gaming_user_id == 0) {
