@@ -676,92 +676,33 @@ class MachineClient
      * @return array 返回格式: ['success' => bool, 'data' => array, 'message' => string]
      * @throws Exception
      */
+    /**
+     * 机台上分（完整业务逻辑）
+     *
+     * 调用 gk_work 统一 execute 接口，action='open'
+     * gk_work 会调用完整的 machineOpenAnyFree() 函数处理所有业务逻辑
+     *
+     * @param int $machineId 机台ID
+     * @param int $playerId 玩家ID
+     * @param float $openScore 上分数量
+     * @param string $lang 语言
+     * @return array ['success' => bool, 'data' => array, 'message' => string]
+     */
     public function openMachine(
         int $machineId,
         int $playerId,
         float $openScore,
-        array $machineContext,
-        array $preClearCommands = [],
         string $lang = 'zh_TW'
     ): array {
-        $startTime = microtime(true);
-        $requestPayload = [
-            'machine_id' => $machineId,
-            'player_id' => $playerId,
-            'open_score' => $openScore,
-            'machine_context' => $machineContext,
-            'pre_clear_commands' => $preClearCommands,
-            'lang' => $lang,
-        ];
-
-        $headers = [
-            'Accept-Language' => $lang,
-            'X-Player-Id' => $playerId,
-        ];
-
-        Log::channel('machine_operations')->info('[MachineClient] 机台上分 - 请求', [
-            'url' => $this->baseUrl . '/api/v1/machine/open-point',
-            'payload' => $requestPayload,
-            'headers' => $headers,
-        ]);
-
-        try {
-            $response = Http::timeout($this->timeout)
-                ->withHeaders($headers)
-                ->post($this->baseUrl . '/api/v1/machine/open-point', $requestPayload);
-
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
-            $body = $response->json();
-
-            $code = $body['code'] ?? 0;
-            $isCodeOk = ($code === 200 || $code === '200');
-
-            if ($response->successful() && isset($body['code']) && $isCodeOk) {
-                Log::channel('machine_operations')->info('[MachineClient] 机台上分成功 - 响应', [
-                    'machine_id' => $machineId,
-                    'player_id' => $playerId,
-                    'open_score' => $openScore,
-                    'duration_ms' => $duration,
-                    'status_code' => $response->status(),
-                    'response_body' => $body,
-                ]);
-
-                return [
-                    'success' => true,
-                    'data' => $body['data'] ?? [],
-                    'message' => $body['msg'] ?? 'success',
-                ];
-            }
-
-            Log::channel('machine_operations')->warning('[MachineClient] 机台上分失败 - 响应', [
-                'machine_id' => $machineId,
+        return $this->executeOperation(
+            $machineId,
+            'open',
+            [
                 'player_id' => $playerId,
                 'open_score' => $openScore,
-                'status_code' => $response->status(),
-                'duration_ms' => $duration,
-                'response_body' => $body,
-            ]);
-
-            return [
-                'success' => false,
-                'data' => [],
-                'message' => $body['msg'] ?? 'Unknown error',
-            ];
-
-        } catch (RequestException $e) {
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
-
-            Log::channel('machine_operations')->error('[MachineClient] 机台上分异常', [
-                'machine_id' => $machineId,
-                'player_id' => $playerId,
-                'open_score' => $openScore,
-                'duration_ms' => $duration,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            throw new Exception(trans('machine_open_point_failed', [], 'message') . ': ' . $e->getMessage());
-        }
+            ],
+            $lang
+        );
     }
 
     /**
@@ -789,96 +730,36 @@ class MachineClient
      * @return array 返回格式: ['success' => bool, 'data' => ['wash_point' => float], 'message' => string]
      * @throws Exception
      */
+    /**
+     * 机台洗分（完整业务逻辑）
+     *
+     * 调用 gk_work 统一 execute 接口，action='wash'
+     * gk_work 会调用完整的 machineWash() 函数处理所有业务逻辑
+     *
+     * @param int $machineId 机台ID
+     * @param int $playerId 玩家ID
+     * @param string $action 洗分类型: 'leave'(弃台) 或 'switch'(换台)
+     * @param bool $hasLottery 是否有彩金
+     * @param string $lang 语言
+     * @return array ['success' => bool, 'data' => array, 'message' => string]
+     */
     public function washMachine(
         int $machineId,
         int $playerId,
         string $action,
-        array $machineContext,
-        string $washId,
+        bool $hasLottery = false,
         string $lang = 'zh_TW'
     ): array {
-        $startTime = microtime(true);
-        $requestPayload = [
-            'machine_id' => $machineId,
-            'player_id' => $playerId,
-            'action' => $action,
-            'machine_context' => $machineContext,
-            'wash_id' => $washId,
-            'lang' => $lang,
-        ];
-
-        $headers = [
-            'Accept-Language' => $lang,
-            'X-Player-Id' => $playerId,
-            'X-Wash-Id' => $washId,
-        ];
-
-        Log::channel('machine_operations')->info('[MachineClient] 机台洗分 - 请求', [
-            'url' => $this->baseUrl . '/api/v1/machine/wash-point',
-            'payload' => $requestPayload,
-            'headers' => $headers,
-        ]);
-
-        try {
-            $response = Http::timeout($this->timeout)
-                ->withHeaders($headers)
-                ->post($this->baseUrl . '/api/v1/machine/wash-point', $requestPayload);
-
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
-            $body = $response->json();
-
-            $code = $body['code'] ?? 0;
-            $isCodeOk = ($code === 200 || $code === '200');
-
-            if ($response->successful() && isset($body['code']) && $isCodeOk) {
-                Log::channel('machine_operations')->info('[MachineClient] 机台洗分成功 - 响应', [
-                    'machine_id' => $machineId,
-                    'player_id' => $playerId,
-                    'action' => $action,
-                    'wash_id' => $washId,
-                    'duration_ms' => $duration,
-                    'status_code' => $response->status(),
-                    'response_body' => $body,
-                ]);
-
-                return [
-                    'success' => true,
-                    'data' => $body['data'] ?? [],
-                    'message' => $body['msg'] ?? 'success',
-                ];
-            }
-
-            Log::channel('machine_operations')->warning('[MachineClient] 机台洗分失败 - 响应', [
-                'machine_id' => $machineId,
+        return $this->executeOperation(
+            $machineId,
+            'wash',
+            [
                 'player_id' => $playerId,
                 'action' => $action,
-                'wash_id' => $washId,
-                'status_code' => $response->status(),
-                'duration_ms' => $duration,
-                'response_body' => $body,
-            ]);
-
-            return [
-                'success' => false,
-                'data' => [],
-                'message' => $body['msg'] ?? 'Unknown error',
-            ];
-
-        } catch (RequestException $e) {
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
-
-            Log::channel('machine_operations')->error('[MachineClient] 机台洗分异常', [
-                'machine_id' => $machineId,
-                'player_id' => $playerId,
-                'action' => $action,
-                'wash_id' => $washId,
-                'duration_ms' => $duration,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            throw new Exception(trans('machine_wash_point_failed', [], 'message') . ': ' . $e->getMessage());
-        }
+                'has_lottery' => $hasLottery,
+            ],
+            $lang
+        );
     }
 
     /**

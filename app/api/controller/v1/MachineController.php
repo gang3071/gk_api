@@ -1034,6 +1034,17 @@ class MachineController
      * @return void
      * @throws Exception
      */
+    /**
+     * 机台上分 V2 - 简化版（ALL 业务逻辑在 gk_work）
+     *
+     * 架构原则：gk_api 只做必要验证，ALL 业务逻辑在 gk_work
+     *
+     * gk_work (machineOpenAnyFree函数) 包含：
+     * - 硬件指令发送
+     * - 数据库事务
+     * - 钱包操作
+     * - 游戏记录
+     */
     private function machineOpenAnyV2(
         Player                   $player,
         Machine                  $machine,
@@ -1041,318 +1052,40 @@ class MachineController
         float                    $giftScore,
         ?MachineCategoryGiveRule $machineCategoryGiveRule
     ): void {
-        // 增加业务锁（与 machineWashV2 使用同一把锁，防止上下分并发）
-        // 锁超时15秒 > gk_work超时5秒，防止锁提前释放导致并发冲突
-        $actionLockerKey = 'machine_operation_lock_' . $machine->id;
-        $lock = Locker::lock($actionLockerKey, 15, true);
+        $lang = locale() ?? 'zh_TW';
+        $lang = \Illuminate\Support\Str::replace('_', '-', $lang);
 
-        try {
-            if (!$lock->acquire()) {
-                throw new Exception(trans('machine_is_using_msg1', [], 'message'));
-            }
+        // 计算上分数量（游戏分 = 金额 * odds_y / odds_x）
+        $openScore = floor($money * ($machine->odds_y ?? 1) / ($machine->odds_x ?? 1)) + $giftScore;
 
-            Log::info('[MachineOpenAnyV2] 开始上分', [
-                'player_id' => $player->id,
-                'machine_id' => $machine->id,
-                'money' => $money,
-                'gift_score' => $giftScore,
-            ]);
+        Log::channel('machine_operations')->info('[MachineOpenAnyV2] 开始上分', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'money' => $money,
+            'gift_score' => $giftScore,
+            'open_score' => $openScore,
+        ]);
 
-            $lang = locale() ?? 'zh_TW';
-            $lang = \Illuminate\Support\Str::replace('_', '-', $lang);
-            $services = MachineServices::createServices($machine, $lang);
+        // 调用 gk_work 完整业务逻辑
+        // 超时30秒，因为要处理完整的数据库事务
+        $client = new MachineClient(null, 30);
 
-            // ========== 阶段 1: 业务校验 ==========
-            $giftCache = Cache::get('gift_cache_' . $machine->id . '_' . $player->id);
-            if ($giftCache) {
-                switch ($machine->type) {
-                    case GameType::TYPE_STEEL_BALL:
-                        if ($services->turn == 0) {
-                            $services->gift_bet = 0;
-                            Cache::delete('gift_cache_' . $machine->id . '_' . $player->id);
-                        } else {
-                            throw new Exception(trans('currently_remaining_score', [], 'message'));
-                        }
-                        break;
-                    case GameType::TYPE_SLOT:
-                        if ($services->reward_status == 1) {
-                            if ($services->point <= 0 && !empty($machineCategoryGiveRule)) {
-                                throw new Exception(trans('reward_again_open_give', [], 'message'));
-                            }
-                            if ($services->point > 0) {
-                                throw new Exception(trans('reward_point_zero_open_give', [], 'message'));
-                            }
-                        } else {
-                            if ($services->point > 0) {
-                                throw new Exception(trans('use_give_point_zero', [], 'message'));
-                            }
-                        }
-                        break;
-                }
-            }
+        $result = $client->openMachine(
+            $machine->id,
+            $player->id,
+            $openScore,
+            $lang
+        );
 
-            // 余额检查
-            $currentBalance = \app\service\WalletService::getBalance($player->id);
-            if ($currentBalance < $money) {
-                throw new Exception(trans('game_amount_insufficient', [], 'message'));
-            }
-
-            // 上分频率限制
-            if ($services->last_point_at + 5 >= time() && Cache::has('machine_open_point' . $machine->id . '_' . $player->id)) {
-                throw new Exception(trans('machine_open_wash_too_fast', [], 'message'));
-            }
-
-            // 可以玩多台检查
-            if ($player->machine_play_num > 1) {
-                $self_machine_count = Machine::query()->where('gaming_user_id', $player->id)->where('id', '!=',
-                    $machine->id)->count();
-                if ($player->machine_play_num <= $self_machine_count) {
-                    throw new Exception(trans('machine_only_msg1', [], 'message'));
-                }
-            }
-            Cache::set('machine_open_point' . $machine->id . '_' . $player->id, 1, 5);
-
-            // ========== 阶段 2: 准备清零指令列表 ==========
-            $preClearCommands = [];
-            if ($machine->gaming == 0 && $services->reward_status == 0) {
-                switch ($machine->type) {
-                    case GameType::TYPE_SLOT:
-                        if ($services->point > 0) {
-                            $preClearCommands[] = ['cmd' => 'WASH_ZERO', 'data' => 0];
-                        }
-                        break;
-                    case GameType::TYPE_STEEL_BALL:
-                        if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                            if ($services->score > 0) {
-                                $preClearCommands[] = ['cmd' => 'SCORE_TO_POINT', 'data' => 0];
-                            }
-                            if ($services->turn > 0) {
-                                $preClearCommands[] = ['cmd' => 'TURN_DOWN_ALL', 'data' => 0];
-                            }
-                            if ($services->point > 0) {
-                                $preClearCommands[] = ['cmd' => 'WASH_ZERO', 'data' => 0];
-                            }
-                        }
-                        if ($machine->control_type == Machine::CONTROL_TYPE_SONG) {
-                            $preClearCommands[] = ['cmd' => 'MACHINE_SCORE', 'data' => 0];
-                            if ($services->score > 0) {
-                                $preClearCommands[] = ['cmd' => 'SCORE_TO_POINT', 'data' => 0];
-                            }
-                            $preClearCommands[] = ['cmd' => 'MACHINE_TURN', 'data' => 0];
-                            if ($services->turn > 0) {
-                                $preClearCommands[] = ['cmd' => 'TURN_DOWN_ALL', 'data' => 0];
-                            }
-                            $preClearCommands[] = ['cmd' => 'MACHINE_POINT', 'data' => 0];
-                            if ($services->point > 0) {
-                                $preClearCommands[] = ['cmd' => 'WASH_ZERO', 'data' => 0];
-                            }
-                        }
-                        break;
-                }
-            }
-
-            // ========== 阶段 3: 业务校验（事务前） ==========
-            // 3.1 检查玩家开赠权限
-            if ($player->status_open_point == 0) {
-                throw new Exception(trans('machine_present_error_msg2', [], 'message'));
-            }
-
-            // 3.2 计算开分数量并校验
-            $openScore = checkMachineOpenAny($machine, $money, $giftScore);
-            if ($machine->min_point != 0 && $machine->min_point > $openScore) {
-                throw new Exception(trans('machine_min_open', [], 'message') . $machine->min_point);
-            }
-            if ($machine->max_point != 0 && ($machine->max_point < $services->point || $machine->max_point < $openScore || $machine->max_point < ($services->point + $openScore))) {
-                throw new Exception(trans('machine_max_open', [], 'message') . $machine->max_point);
-            }
-
-            // 3.3 斯洛分数限制
-            if ($machine->type == GameType::TYPE_SLOT) {
-                if ($services->point + $openScore > 4000) {
-                    throw new Exception(trans('machine_wash_limit_msg1', [], 'message'));
-                }
-            }
-
-            // ========== 阶段 4: 数据库事务 ==========
-            DB::beginTransaction();
-            $walletDeducted = false;  // 标记钱包是否已扣款
-            try {
-                // 4.1 扣除玩家钱包
-                $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
-                $afterGameAmount = \app\service\WalletService::deduct($player->id, $money, 1);
-                $walletDeducted = true;  // 标记已扣款
-
-                // 4.2 记录游戏局记录
-                /** @var PlayerGameRecord $gameRecord */
-                $gameRecord = PlayerGameRecord::query()->where('machine_id', $machine->id)
-                    ->where('player_id', $player->id)
-                    ->where('status', PlayerGameRecord::STATUS_START)
-                    ->orderBy('created_at', 'desc')
-                    ->first();
-
-                if (empty($gameRecord)) {
-                    // 首次上分，创建新的游戏记录
-                    $gameRecord = new PlayerGameRecord();
-                    $gameRecord->machine_id = $machine->id;
-                    $gameRecord->player_id = $player->id;
-                    $gameRecord->status = PlayerGameRecord::STATUS_START;
-                    $gameRecord->open_point = 0;
-                    $gameRecord->open_amount = 0;
-                    $gameRecord->give_amount = 0;
-                    $gameRecord->wash_point = 0;
-                    $gameRecord->wash_amount = 0;
-                    $gameRecord->after_game_amount = $beforeGameAmount;
-                    $gameRecord->created_at = date('Y-m-d H:i:s');
-                    $gameRecord->updated_at = date('Y-m-d H:i:s');
-                    // 先保存以获取 ID
-                    $gameRecord->save();
-
-                    Log::info('[MachineOpenAnyV2] 创建新的游戏记录', [
-                        'player_id' => $player->id,
-                        'machine_id' => $machine->id,
-                        'game_record_id' => $gameRecord->id,
-                    ]);
-                }
-
-                // 更新游戏记录
-                if (time() - strtotime($gameRecord->updated_at) > 24 * 60 * 60 * 2 && $machine->gaming_user_id != $player->id) {
-                    $gameRecord->status = PlayerGameRecord::STATUS_END;
-                }
-                $gameRecord->open_point = bcadd($gameRecord->open_point, $openScore, 2);
-                $gameRecord->open_amount = bcadd($gameRecord->open_amount, $money, 2);
-                $gameRecord->give_amount = bcadd($gameRecord->give_amount, $giftScore, 2);
-                $gameRecord->save();
-
-                // 4.3 创建游戏日志（现在 $gameRecord 一定不为 null）
-                $playerGameLog = createGameLog($gameRecord, $machine, $player, $openScore, $money, $afterGameAmount,
-                    $giftScore, $beforeGameAmount);
-
-                // 4.4 记录开赠记录
-                if ($machineCategoryGiveRule) {
-                    $playersGiftRecord = new PlayerGiftRecord();
-                    $playersGiftRecord->player_game_log_id = $playerGameLog->id;
-                    $playersGiftRecord->machine_category_give_rule_id = $machineCategoryGiveRule->id;
-                    $playersGiftRecord->machine_id = $machine->id;
-                    $playersGiftRecord->player_id = $player->id;
-                    $playersGiftRecord->player_name = $player->name;
-                    $playersGiftRecord->machine_name = $machine->name;
-                    $playersGiftRecord->machine_type = $machine->type;
-                    $playersGiftRecord->open_num = $machineCategoryGiveRule->open_num;
-                    $playersGiftRecord->give_num = $machineCategoryGiveRule->give_num;
-                    $playersGiftRecord->condition = $machineCategoryGiveRule->condition;
-                    $playersGiftRecord->created_at = date('Y-m-d H:i:s');
-                    $playersGiftRecord->updated_at = date('Y-m-d H:i:s');
-                    $playersGiftRecord->save();
-                }
-
-                // 4.5 更新机台状态
-                if ($machine->gaming == 0) {
-                    $machine->last_game_at = date('Y-m-d H:i:s');
-                }
-                $machine->gaming = 1;
-                $machine->gaming_user_id = $player->id;
-                $machine->last_point_at = date('Y-m-d H:i:s');
-                $machine->save();
-
-                // 4.6 写入金流明细
-                createPlayerDeliveryRecord($player, $playerGameLog, $machine, $money, $beforeGameAmount, $afterGameAmount);
-
-                // 4.7 活动记录
-                if ($player->channel && $player->channel->activity_status == 1) {
-                    $ActivityServices = new ActivityServices($machine, $player);
-                    $ActivityServices->addPlayerActivityRecord();
-                }
-
-                // ========== 阶段 5: 调用 gk_work 执行机台硬件操作（在 commit 之前）==========
-                // 设置gk_work超时为5秒（< 锁超时15秒），确保锁不会提前释放
-                $client = new MachineClient(null, 5);
-                $machineContext = [
-                    'type' => $machine->type,
-                    'control_type' => $machine->control_type,
-                    'gaming' => $machine->gaming,
-                    'reward_status' => $services->reward_status,
-                    'point' => $services->point,
-                    'score' => $services->score,
-                    'turn' => $services->turn,
-                ];
-
-                $result = $client->openMachine(
-                    $machine->id,
-                    $player->id,
-                    $openScore,
-                    $machineContext,
-                    $preClearCommands,
-                    $lang
-                );
-
-                if (!$result['success']) {
-                    // gk_work 失败，抛出异常触发回滚
-                    Log::error('[MachineOpenAnyV2] gk_work 机台指令发送失败，准备回滚', [
-                        'player_id' => $player->id,
-                        'machine_id' => $machine->id,
-                        'open_score' => $openScore,
-                        'error' => $result['message'],
-                    ]);
-
-                    throw new Exception(trans('machine_open_command_failed', [], 'message'));
-                }
-
-                // ========== 阶段 6: gk_work 成功后提交事务 ==========
-                DB::commit();
-
-                Log::info('[MachineOpenAnyV2] 上分完成（数据库已提交，硬件已上分）', [
-                    'player_id' => $player->id,
-                    'machine_id' => $machine->id,
-                    'open_score' => $openScore,
-                    'after_amount' => $afterGameAmount,
-                ]);
-
-            } catch (\Exception $e) {
-                DB::rollback();
-
-                Log::error('[MachineOpenAnyV2] 数据库事务失败', [
-                    'player_id' => $player->id,
-                    'machine_id' => $machine->id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                    'wallet_deducted' => $walletDeducted,
-                ]);
-
-                // 只有在已扣款的情况下才回滚 Redis 余额
-                if ($walletDeducted) {
-                    try {
-                        \app\service\WalletService::add($player->id, $money, 1);
-                        Log::info('[MachineOpenAnyV2] Redis余额回滚成功', [
-                            'player_id' => $player->id,
-                            'refund_amount' => $money
-                        ]);
-                    } catch (\Exception $refundError) {
-                        Log::critical('[MachineOpenAnyV2] Redis余额回滚失败，需人工介入', [
-                            'player_id' => $player->id,
-                            'machine_id' => $machine->id,
-                            'refund_amount' => $money,
-                            'error' => $refundError->getMessage()
-                        ]);
-                    }
-                }
-
-                throw $e;
-            }
-
-        } finally {
-            // 添加异常保护，防止锁释放失败导致死锁
-            try {
-                if ($lock->isAcquired()) {
-                    $lock->release();
-                }
-            } catch (\Exception $lockError) {
-                Log::critical('[MachineOpenAnyV2] 锁释放失败，可能导致死锁', [
-                    'machine_id' => $machine->id,
-                    'lock_key' => $actionLockerKey,
-                    'error' => $lockError->getMessage(),
-                ]);
-            }
+        if (!$result['success']) {
+            throw new Exception($result['message'] ?? trans('machine_open_point_failed', [], 'message'));
         }
+
+        Log::channel('machine_operations')->info('[MachineOpenAnyV2] 上分成功', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'open_score' => $openScore,
+        ]);
     }
 
     #[RateLimiter(limit: 5)]
@@ -2496,6 +2229,20 @@ class MachineController
      * @return bool|array
      * @throws Exception
      */
+    /**
+     * 机台洗分 V2 - 简化版（ALL 业务逻辑在 gk_work）
+     *
+     * 架构原则：gk_api 只做必要验证，ALL 业务逻辑在 gk_work
+     *
+     * gk_work (machineWash函数) 包含：
+     * - 硬件指令发送
+     * - 数据库事务
+     * - 钱包操作
+     * - 游戏记录
+     * - 彩金处理
+     * - 活动结算
+     * - Socket消息
+     */
     private function machineWashV2(
         Player  $player,
         Machine $machine,
@@ -2503,244 +2250,45 @@ class MachineController
         int     $is_system = 0,
         bool    $hasLottery = false
     ): bool|array {
-        // 添加分布式锁（与 machineOpenAnyV2 使用同一把锁，防止上下分并发）
-        // 锁超时15秒 > gk_work超时5秒，防止锁提前释放导致并发冲突
-        $actionLockerKey = 'machine_operation_lock_' . $machine->id;
-        $lock = Locker::lock($actionLockerKey, 15, true);
+        $lang = locale() ?? 'zh_TW';
+        $lang = \Illuminate\Support\Str::replace('_', '-', $lang);
 
-        try {
-            if (!$lock->acquire()) {
-                throw new Exception(trans('machine_is_using_msg1', [], 'message'));
-            }
+        Log::channel('machine_operations')->info('[MachineWashV2] 开始洗分', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'action' => $action,
+        ]);
 
-            $washId = uniqid('wash_', true);
-            $startTime = microtime(true);
+        // 调用 gk_work 完整业务逻辑
+        // 超时30秒，因为要处理完整的数据库事务
+        $client = new MachineClient(null, 30);
 
-            Log::channel('machine_operations')->info('[MachineWashV2] 开始洗分', [
-                'wash_id' => $washId,
-                'player_id' => $player->id,
-                'machine_id' => $machine->id,
-                'action' => $action,
-                'timestamp' => date('Y-m-d H:i:s'),
-            ]);
+        $result = $client->washMachine(
+            $machine->id,
+            $player->id,
+            $action,
+            $hasLottery,
+            $lang
+        );
 
-            $lang = locale() ?? 'zh_TW';
-            $lang = \Illuminate\Support\Str::replace('_', '-', $lang);
-            $services = MachineServices::createServices($machine, $lang);
-
-            // ========== 阶段 1: 业务校验 ==========
-            if ($services->last_point_at + 5 >= time()) {
-                throw new Exception(trans('exception_msg.point_must_5seconds', [], 'message', $lang));
-            }
-
-            // 赠点检查
-            $giftPoint = getGivePoints($player->id, $machine->id);
-            Log::channel('machine_operations')->info('[MachineWashV2] 赠点信息', [
-                'wash_id' => $washId,
-                'gift_point' => $giftPoint,
-            ]);
-
-            // ========== 阶段 2: 调用 gk_work 执行机台硬件操作并获取洗分数量 ==========
-            // 设置gk_work超时为5秒（< 锁超时15秒），确保锁不会提前释放
-            $client = new MachineClient(null, 5);
-            $machineContext = [
-                'type' => $machine->type,
-                'control_type' => $machine->control_type,
-                'gaming' => $machine->gaming,
-                'reward_status' => $services->reward_status,
-                'point' => $services->point,
-                'score' => $services->score,
-                'turn' => $services->turn,
-                'auto' => $services->auto ?? 0,
-                'move_point' => $services->move_point ?? 0,
-            ];
-
-            $result = $client->washMachine(
-                $machine->id,
-                $player->id,
-                $action,
-                $machineContext,
-                $washId,
-                $lang
-            );
-
-            if (!$result['success']) {
-                throw new Exception($result['message'] ?? trans('machine_wash_command_failed', [], 'message'));
-            }
-
-            // 从 gk_work 获取洗分数量
-            $washPoint = $result['data']['wash_point'] ?? 0;
-
-            Log::channel('machine_operations')->info('[MachineWashV2] gk_work 返回洗分数量', [
-                'wash_id' => $washId,
-                'wash_point' => $washPoint,
-            ]);
-
-            // ========== 阶段 3: 数据库事务处理 ==========
-            // 计算钱包加款金额（提到 try 外，避免 catch 块访问未定义变量）
-            $gameAmount = 0;
-            if ($washPoint > 0) {
-                $gameAmount = floor($washPoint * ($machine->odds_x ?? 1) / ($machine->odds_y ?? 1));
-            }
-
-            DB::beginTransaction();
-            $walletAdded = false;  // 标记钱包是否已加款
-            try {
-
-                // 获取余额并加款
-                $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
-                if ($gameAmount > 0) {
-                    $afterGameAmount = \app\service\WalletService::add($player->id, $gameAmount, 1);
-                    $walletAdded = true;  // 标记已加款
-                } else {
-                    $afterGameAmount = $beforeGameAmount;
-                }
-
-                // 记录游戏局
-                /** @var PlayerGameRecord $gameRecord */
-                $gameRecord = PlayerGameRecord::query()->where('machine_id', $machine->id)
-                    ->where('player_id', $player->id)
-                    ->where('status', PlayerGameRecord::STATUS_START)
-                    ->orderBy('created_at', 'desc')
-                    ->first();
-
-                // 防御性检查：理论上下分时必须有游戏记录
-                if (empty($gameRecord)) {
-                    Log::error('[MachineWashV2] 没有找到游戏记录，无法下分', [
-                        'wash_id' => $washId,
-                        'player_id' => $player->id,
-                        'machine_id' => $machine->id,
-                    ]);
-                    throw new Exception(trans('no_game_record_found', [], 'message'));
-                }
-
-                // 更新游戏记录
-                $gameRecord->wash_point = bcadd($gameRecord->wash_point, $washPoint, 2);
-                $gameRecord->wash_amount = bcadd($gameRecord->wash_amount, $gameAmount, 2);
-                $gameRecord->after_game_amount = $afterGameAmount;
-
-                if ($action == 'leave') {
-                    $gameRecord->status = PlayerGameRecord::STATUS_END;
-                    $diff = bcsub($gameRecord->wash_amount, $gameRecord->open_amount, 2);
-                    nationalPromoterSettlement([
-                        ['player_id' => $player->id, 'bet' => 0, 'diff' => $diff]
-                    ]);
-
-                    if (!empty($player->recommend_id)) {
-                        $recommendPromoter = Player::query()->find($player->recommend_id);
-                        $gameRecord->national_damage_ratio = $recommendPromoter->national_promoter->level_list->damage_rebate_ratio ?? 0;
-                    }
-                }
-                $gameRecord->save();
-
-                // 创建游戏日志（现在 $gameRecord 一定不为 null）
-                $playerGameLog = new PlayerGameLog();
-                $playerGameLog->game_record_id = $gameRecord->id;
-                $playerGameLog->player_id = $player->id;
-                $playerGameLog->machine_id = $machine->id;
-                $playerGameLog->turn_point = $washPoint;
-                $playerGameLog->turn_money = $gameAmount;
-                $playerGameLog->before_game_amount = $beforeGameAmount;
-                $playerGameLog->after_game_amount = $afterGameAmount;
-                $playerGameLog->bet_money = 0;
-                $playerGameLog->operate = $action == 'leave' ? '弃台' : '下分';
-                $playerGameLog->created_at = date('Y-m-d H:i:s');
-                $playerGameLog->updated_at = date('Y-m-d H:i:s');
-                $playerGameLog->save();
-
-                // 更新机台状态
-                if ($action == 'leave') {
-                    $machine->gaming = 0;
-                    $machine->gaming_user_id = 0;
-                    $machine->is_use = 0;
-                    $machine->last_wash_at = date('Y-m-d H:i:s');
-                }
-                $machine->save();
-
-                // 写入金流明细
-                createPlayerDeliveryRecord($player, $playerGameLog, $machine, $gameAmount, $beforeGameAmount, $afterGameAmount);
-
-                // 清除赠点缓存
-                if (!empty($giftPoint)) {
-                    Cache::delete('gift_cache_' . $machine->id . '_' . $player->id);
-                    Cache::delete('gift_cache_point_' . $machine->id . '_' . $player->id);
-                }
-
-                // 更新 Redis 缓存
-                $services->last_point_at = time();
-                $services->last_play_time = time();
-
-                DB::commit();
-
-                Log::channel('machine_operations')->info('[MachineWashV2] 洗分完成', [
-                    'wash_id' => $washId,
-                    'player_id' => $player->id,
-                    'machine_id' => $machine->id,
-                    'wash_point' => $washPoint,
-                    'game_amount' => $gameAmount,
-                    'duration_ms' => round((microtime(true) - $startTime) * 1000, 2),
-                ]);
-
-                // 发送 Socket 消息
-                if ($action == 'leave') {
-                    sendSocketMessage('player-' . $player->id . '-' . $machine->id, [
-                        'msg_type' => 'machine_leave',
-                        'machine_id' => $machine->id,
-                    ]);
-                    sendSocketMessage('player-' . $player->id, [
-                        'msg_type' => 'machine_leave',
-                        'machine_id' => $machine->id,
-                    ]);
-                }
-
-                return true;
-
-            } catch (\Exception $e) {
-                DB::rollback();
-
-                Log::error('[MachineWashV2] 数据库事务失败', [
-                    'wash_id' => $washId,
-                    'player_id' => $player->id,
-                    'machine_id' => $machine->id,
-                    'error' => $e->getMessage(),
-                    'wallet_added' => $walletAdded,
-                ]);
-
-                // 只有在已加款的情况下才回滚钱包
-                if ($walletAdded && $gameAmount > 0) {
-                    try {
-                        \app\service\WalletService::deduct($player->id, $gameAmount, 1);
-                        Log::info('[MachineWashV2] Redis余额回滚成功', [
-                            'wash_id' => $washId,
-                            'refund_amount' => $gameAmount
-                        ]);
-                    } catch (\Exception $refundError) {
-                        Log::critical('[MachineWashV2] Redis余额回滚失败，需人工介入', [
-                            'wash_id' => $washId,
-                            'player_id' => $player->id,
-                            'machine_id' => $machine->id,
-                            'refund_amount' => $gameAmount,
-                            'error' => $refundError->getMessage()
-                        ]);
-                    }
-                }
-
-                throw $e;
-            }
-
-        } finally {
-            // 添加异常保护，防止锁释放失败导致死锁
-            try {
-                if ($lock->isAcquired()) {
-                    $lock->release();
-                }
-            } catch (\Exception $lockError) {
-                Log::critical('[MachineWashV2] 锁释放失败，可能导致死锁', [
-                    'machine_id' => $machine->id,
-                    'lock_key' => $actionLockerKey,
-                    'error' => $lockError->getMessage(),
-                ]);
-            }
+        if (!$result['success']) {
+            throw new Exception($result['message'] ?? trans('machine_wash_command_failed', [], 'message'));
         }
+
+        Log::channel('machine_operations')->info('[MachineWashV2] 洗分成功', [
+            'player_id' => $player->id,
+            'machine_id' => $machine->id,
+            'has_lottery' => $result['data']['has_lottery'] ?? false,
+        ]);
+
+        // gk_work 已处理完所有逻辑，直接返回结果
+        $hasLotteryResult = $result['data']['has_lottery'] ?? false;
+        if ($hasLotteryResult) {
+            // 返回彩金记录
+            return $result['data']['lottery_record'] ?? [];
+        }
+
+        // 返回普通洗分结果
+        return $result['data'];
     }
 }
