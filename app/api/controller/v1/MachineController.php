@@ -908,7 +908,8 @@ class MachineController
         }
         /** @var Machine $machine */
         // 先查找机台是否存在（不限制类型）
-        $machine = Machine::find($data['machine_id']);
+        // ✅ 预加载 machineCategory 关系，避免 N+1 查询
+        $machine = Machine::with('machineCategory')->find($data['machine_id']);
 
         // 机台不存在
         if (!$machine) {
