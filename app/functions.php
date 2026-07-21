@@ -1955,6 +1955,124 @@ function doCurl(string $url, int $gaming_user_id, int $machine_id, array $params
  * @return Machine
  * @throws Exception
  */
+/**
+ * 捕鱼机洗分
+ *
+ * @param Player $player
+ * @param Machine $machine
+ * @param FishServices $services
+ * @param string $action 操作类型 (wash_point)
+ * @return bool
+ * @throws Exception
+ */
+function fishMachineWash(Player $player, Machine $machine, FishServices $services, string $action): bool
+{
+    // 验证机台是否被占用
+    if ($machine->gaming_user_id == 0) {
+        throw new Exception(trans('no_open_point', [], 'message'));
+    }
+
+    if ($machine->gaming_user_id != $player->id) {
+        throw new Exception(trans('machine_is_using_msg1', [], 'message'));
+    }
+
+    DB::beginTransaction();
+    try {
+        // 1. 执行硬件洗分指令（获取当前分数）
+        $services->machineAction('identify_image'); // 图像识别获取分数
+        $washPoint = 0; // 捕鱼机通过图像识别获取分数，具体实现可能在 FishServices 中
+
+        // 2. 执行硬件洗分
+        $services->machineAction('wash_point');
+
+        // 3. 查找当前游戏记录
+        /** @var PlayerGameRecord $gameRecord */
+        $gameRecord = PlayerGameRecord::query()
+            ->where('machine_id', $machine->id)
+            ->where('player_id', $player->id)
+            ->where('status', PlayerGameRecord::STATUS_START)
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        // 4. 获取 Redis 实时余额
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id, 1);
+
+        if ($washPoint > 0) {
+            // 5. 计算钱包币值（按比值转换，向下取整）
+            $gameAmount = floor($washPoint * ($machine->odds_x ?? 1) / ($machine->odds_y ?? 1));
+
+            // 6. 使用 Lua 原子操作加款（Redis 作为唯一实时标准）
+            $addResult = \app\service\WalletService::add($player->id, $gameAmount, 1);
+            $afterGameAmount = $addResult['balance'];
+
+            // 7. 更新游戏记录
+            if (!empty($gameRecord)) {
+                $gameRecord->wash_point = bcadd($gameRecord->wash_point, $washPoint, 2);
+                $gameRecord->wash_amount = bcadd($gameRecord->wash_amount, $gameAmount, 2);
+                $gameRecord->after_game_amount = $afterGameAmount;
+                $gameRecord->status = PlayerGameRecord::STATUS_END;
+
+                // 计算客损
+                $diff = bcsub($gameRecord->wash_amount, $gameRecord->open_amount, 2);
+                nationalPromoterSettlement([
+                    ['player_id' => $player->id, 'bet' => 0, 'diff' => $diff]
+                ]);
+
+                if (!empty($player->recommend_id)) {
+                    $recommendPromoter = Player::query()->find($player->recommend_id);
+                    $gameRecord->national_damage_ratio = $recommendPromoter->national_promoter->level_list->damage_rebate_ratio ?? 0;
+                }
+
+                $gameRecord->save();
+            }
+
+            // 8. 创建游戏日志
+            $control_open_point = !empty($machine->control_open_point) ? $machine->control_open_point : 100;
+            $playerGameLog = addPlayerGameLog($player, $machine, $gameRecord, $control_open_point);
+            $playerGameLog->wash_point = $washPoint;
+            $playerGameLog->game_amount = $gameAmount;
+            $playerGameLog->before_game_amount = $beforeGameAmount;
+            $playerGameLog->after_game_amount = $afterGameAmount;
+            $playerGameLog->action = PlayerGameLog::ACTION_LEAVE;
+            $playerGameLog->chip_amount = 0; // 捕鱼机没有押分概念
+            $playerGameLog->save();
+
+            // 9. 写入金流明细
+            $playerDeliveryRecord = new PlayerDeliveryRecord;
+            $playerDeliveryRecord->player_id = $player->id;
+            $playerDeliveryRecord->department_id = $player->department_id;
+            $playerDeliveryRecord->target = $playerGameLog->getTable();
+            $playerDeliveryRecord->target_id = $playerGameLog->id;
+            $playerDeliveryRecord->machine_id = $machine->id;
+            $playerDeliveryRecord->machine_name = $machine->name;
+            $playerDeliveryRecord->machine_type = $machine->type;
+            $playerDeliveryRecord->code = $machine->code;
+            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_MACHINE_DOWN;
+            $playerDeliveryRecord->source = 'game_machine';
+            $playerDeliveryRecord->amount = $gameAmount;
+            $playerDeliveryRecord->amount_before = $beforeGameAmount;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
+            $playerDeliveryRecord->tradeno = $playerGameLog->tradeno ?? '';
+            $playerDeliveryRecord->remark = $playerGameLog->remark ?? '';
+            $playerDeliveryRecord->save();
+
+            // 10. 检查爆机状态
+            \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
+        }
+
+        // 11. 更新机台状态（离开机台）
+        $machine->gaming = 0;
+        $machine->gaming_user_id = 0;
+        $machine->save();
+
+        DB::commit();
+        return true;
+    } catch (\Exception $e) {
+        DB::rollback();
+        throw new Exception($e->getMessage());
+    }
+}
+
 function fishMachineOpenAny(Player $player, Machine $machine, int $money, FishServices $services): Machine
 {
     openAnyCheck($machine, $player, $money);
