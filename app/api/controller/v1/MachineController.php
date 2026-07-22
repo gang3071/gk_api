@@ -95,7 +95,7 @@ class MachineController
         }
         /** @var GameType $gameType */
         $gameType = GameType::find($data['game_id']);
-        $lang = locale();
+        $lang = 'zh-CN';
         if (!$gameType) {
             return jsonFailResponse(trans('game_type_not_fount', [], 'message'));
         }
@@ -139,7 +139,7 @@ class MachineController
                     'machine.label_id',
                     'machine.type',
                     'machine_label.picture_url',
-                    'machine_label.name as label_name',  // ✅ 添加别名，避免与 machine_category.name 冲突
+                    'machine_label.name',
                     'machine_label.point',
                     'machine_label.turn',
                     'machine_label.score',
@@ -166,17 +166,7 @@ class MachineController
                     'machine.type',
                     'machine.odds_x',
                     'machine.cate_id',
-                    'machine.odds_y',
-                    'label_name',  // ✅ 使用别名
-                    'machine_label.picture_url',
-                    'machine_label.point',
-                    'machine_label.turn',
-                    'machine_label.score',
-                    'machine_label.courtyard',
-                    'machine_label.correct_rate',
-                    'cate_name',  // ✅ 使用别名
-                    'machine_category.turn_used_point'
-                )
+                    'machine.odds_y')
                 ->orderBy('machine_label.sort', 'desc')
                 ->orderBy('machine_label.id', 'desc')
                 ->when($data['cate_id'], function (Builder $q, $value) {
@@ -187,13 +177,6 @@ class MachineController
                 })
                 ->forPage($data['page'], $data['size'])
                 ->get();
-
-            // ✅ 调试日志：查看查询结果
-            \support\Log::info('[machineList] 查询结果', [
-                'count' => $list->count(),
-                'first_item' => $list->first() ? $list->first()->toArray() : null,
-            ]);
-
             if (empty($list)) {
                 return jsonFailResponse(trans('machine_not_found', [], 'message'));
             }
@@ -216,19 +199,18 @@ class MachineController
                 $data[] = [
                     'id' => $item['label_id'],
                     'type' => $item['type'],
-                    // ✅ 修复：使用 JOIN 查询的字段，而不是关系属性
-                    'picture_url' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['picture_url'] ?? '') : ($item['picture_url'] ?? ''),
-                    'point' => $item['point'] ?? 0,
-                    'turn' => $item['turn'] ?? 0,
-                    'score' => $item['score'] ?? 0,
-                    'courtyard' => $item['courtyard'] ?? '',
-                    'correct_rate' => $item['correct_rate'] ?? '',
+                    'picture_url' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['picture_url'] ?? '') : $item['machineLabel']['picture_url'],
+                    'point' => $item['machineLabel']['point'],
+                    'turn' => $item['machineLabel']['turn'],
+                    'score' => $item['machineLabel']['score'],
+                    'courtyard' => $item['machineLabel']['courtyard'],
+                    'correct_rate' => $item['machineLabel']['correct_rate'],
                     'odds_x' => $item['odds_x'],
                     'odds_y' => $item['odds_y'],
                     'use_num' => $item['use_num'],
                     'idle_num' => $item['idle_num'],
                     'cate_name' => $item['cate_name'],
-                    'name' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['name'] ?? '') : ($item['label_name'] ?? ''),  // ✅ 使用 label_name
+                    'name' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['name'] ?? '') : $item['machineLabel']['name'],
                     'turn_used_point' => rtrim(rtrim(number_format($item['turn_used_point'], 3, '.', ''), '0'), '.'),
                 ];
             }
