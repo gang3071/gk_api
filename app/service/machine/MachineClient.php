@@ -577,12 +577,12 @@ class MachineClient
     {
         $startTime = microtime(true);
         $requestPayload = [
-            'machine_ids' => $machineIds,
-            'lang' => $lang,
+            // ✅ 修复：调用新的 all-online-status 接口，不需要传 machine_ids
+            // 该接口返回所有机台状态，客户端按需过滤
         ];
 
         Log::info('[MachineClient] 批量检查机台在线状态 - 请求', [
-            'url' => $this->baseUrl . '/api/v1/machine/batch-check-online',
+            'url' => $this->baseUrl . '/api/admin/machine/all-online-status',
             'payload' => $requestPayload,
             'machine_count' => count($machineIds),
         ]);
@@ -591,9 +591,9 @@ class MachineClient
             $response = Http::timeout($this->timeout)
                 ->withHeaders([
                     'Accept-Language' => $lang,
-                    'X-Player-Id' => 0, // 批量检查在线状态不需要特定玩家ID
+                    'X-Admin-Id' => 0, // ✅ 修复：使用 X-Admin-Id
                 ])
-                ->post($this->baseUrl . '/api/v1/machine/batch-check-online', $requestPayload);
+                ->post($this->baseUrl . '/api/admin/machine/all-online-status', $requestPayload);
 
             $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
@@ -612,16 +612,20 @@ class MachineClient
             if ($response->successful() && isset($body['code']) && $isCodeOk) {
                 $rawData = $body['data'] ?? [];
 
-                // 处理返回数据格式，转换为 [机台ID => 状态] 格式
+                // ✅ 处理 all-online-status 接口返回格式
+                // 返回格式: [{"id": 1, "online": true, ...}, ...]
+                // 转换为: [机台ID => 状态] 格式，并只返回请求的机台ID
                 $processedData = [];
-                foreach ($rawData['machines'] ?? $rawData as $item) {
-                    if (is_array($item) && isset($item['machine_id'])) {
-                        $machineId = $item['machine_id'];
+                foreach ($rawData as $item) {
+                    if (is_array($item) && isset($item['id'])) {
+                        $machineId = $item['id'];
 
-                        // 宽松判断在线状态（兼容整数1和布尔值true）
-                        // 修复：使用正确的字段名 'is_online'（gk_work接口返回的字段）
-                        $online = !empty($item['is_online']);
-                        $processedData[$machineId] = $online ? 'online' : 'offline';
+                        // ✅ 只处理请求的机台ID
+                        if (in_array($machineId, $machineIds)) {
+                            // 使用 'online' 字段（all-online-status 返回的字段名）
+                            $online = !empty($item['online']);
+                            $processedData[$machineId] = $online ? 'online' : 'offline';
+                        }
                     }
                 }
 
