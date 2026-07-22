@@ -166,7 +166,17 @@ class MachineController
                     'machine.type',
                     'machine.odds_x',
                     'machine.cate_id',
-                    'machine.odds_y')
+                    'machine.odds_y',
+                    'machine_label.name',
+                    'machine_label.picture_url',
+                    'machine_label.point',
+                    'machine_label.turn',
+                    'machine_label.score',
+                    'machine_label.courtyard',
+                    'machine_label.correct_rate',
+                    'machine_category.name',
+                    'machine_category.turn_used_point'
+                )
                 ->orderBy('machine_label.sort', 'desc')
                 ->orderBy('machine_label.id', 'desc')
                 ->when($data['cate_id'], function (Builder $q, $value) {
