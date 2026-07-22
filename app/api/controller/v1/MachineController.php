@@ -139,7 +139,7 @@ class MachineController
                     'machine.label_id',
                     'machine.type',
                     'machine_label.picture_url',
-                    'machine_label.name',
+                    'machine_label.name as label_name',  // ✅ 添加别名，避免与 machine_category.name 冲突
                     'machine_label.point',
                     'machine_label.turn',
                     'machine_label.score',
@@ -167,14 +167,14 @@ class MachineController
                     'machine.odds_x',
                     'machine.cate_id',
                     'machine.odds_y',
-                    'machine_label.name',
+                    'label_name',  // ✅ 使用别名
                     'machine_label.picture_url',
                     'machine_label.point',
                     'machine_label.turn',
                     'machine_label.score',
                     'machine_label.courtyard',
                     'machine_label.correct_rate',
-                    'machine_category.name',
+                    'cate_name',  // ✅ 使用别名
                     'machine_category.turn_used_point'
                 )
                 ->orderBy('machine_label.sort', 'desc')
@@ -187,6 +187,13 @@ class MachineController
                 })
                 ->forPage($data['page'], $data['size'])
                 ->get();
+
+            // ✅ 调试日志：查看查询结果
+            \support\Log::info('[machineList] 查询结果', [
+                'count' => $list->count(),
+                'first_item' => $list->first() ? $list->first()->toArray() : null,
+            ]);
+
             if (empty($list)) {
                 return jsonFailResponse(trans('machine_not_found', [], 'message'));
             }
@@ -221,7 +228,7 @@ class MachineController
                     'use_num' => $item['use_num'],
                     'idle_num' => $item['idle_num'],
                     'cate_name' => $item['cate_name'],
-                    'name' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['name'] ?? '') : ($item['name'] ?? ''),
+                    'name' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['name'] ?? '') : ($item['label_name'] ?? ''),  // ✅ 使用 label_name
                     'turn_used_point' => rtrim(rtrim(number_format($item['turn_used_point'], 3, '.', ''), '0'), '.'),
                 ];
             }
