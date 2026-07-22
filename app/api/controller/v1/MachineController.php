@@ -1354,8 +1354,8 @@ class MachineController
                             ->first()
                             ->toArray();
 
-                        $services->sendCmd($services::READ_BET, 0, 'player', $player->id);
-                        $services->sendCmd($services::READ_WIN, 0, 'player', $player->id);
+                        $services->sendCmd($services::READ_BET, 0, 'player', $player->id, 0);
+                        $services->sendCmd($services::READ_WIN, 0, 'player', $player->id, 0);
 
                         // 玩家当局游戏压分
                         $gamingPressure = $services->bet - $services->player_pressure + (!empty($playerGameLog['total_pressure']) ? $playerGameLog['total_pressure'] : 0);
