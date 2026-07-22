@@ -577,12 +577,11 @@ class MachineClient
     {
         $startTime = microtime(true);
         $requestPayload = [
-            // ✅ 修复：调用新的 all-online-status 接口，不需要传 machine_ids
-            // 该接口返回所有机台状态，客户端按需过滤
+            'machine_ids' => $machineIds,  // ✅ 传递机台ID列表
         ];
 
         Log::info('[MachineClient] 批量检查机台在线状态 - 请求', [
-            'url' => $this->baseUrl . '/api/admin/machine/all-online-status',
+            'url' => $this->baseUrl . '/api/v1/machine/all-online-status',
             'payload' => $requestPayload,
             'machine_count' => count($machineIds),
         ]);
@@ -591,9 +590,9 @@ class MachineClient
             $response = Http::timeout($this->timeout)
                 ->withHeaders([
                     'Accept-Language' => $lang,
-                    'X-Admin-Id' => 0, // ✅ 修复：使用 X-Admin-Id
+                    'X-Player-Id' => 0,  // ✅ 玩家端接口
                 ])
-                ->post($this->baseUrl . '/api/admin/machine/all-online-status', $requestPayload);
+                ->post($this->baseUrl . '/api/v1/machine/all-online-status', $requestPayload);
 
             $duration = round((microtime(true) - $startTime) * 1000, 2);
             $body = $response->json();
@@ -614,18 +613,14 @@ class MachineClient
 
                 // ✅ 处理 all-online-status 接口返回格式
                 // 返回格式: [{"id": 1, "online": true, ...}, ...]
-                // 转换为: [机台ID => 状态] 格式，并只返回请求的机台ID
+                // 转换为: [机台ID => 状态] 格式
                 $processedData = [];
                 foreach ($rawData as $item) {
                     if (is_array($item) && isset($item['id'])) {
                         $machineId = $item['id'];
-
-                        // ✅ 只处理请求的机台ID
-                        if (in_array($machineId, $machineIds)) {
-                            // 使用 'online' 字段（all-online-status 返回的字段名）
-                            $online = !empty($item['online']);
-                            $processedData[$machineId] = $online ? 'online' : 'offline';
-                        }
+                        // 使用 'online' 字段
+                        $online = !empty($item['online']);
+                        $processedData[$machineId] = $online ? 'online' : 'offline';
                     }
                 }
 
