@@ -284,7 +284,8 @@ class MachineClient
                     }
 
                     // 调用单个指令发送（传递追踪上下文）
-                    $result = $this->sendCommand($machineId, $cmd, $data, $lang, $playerId, $traceContext);
+                    // ✅ 修复：参数顺序 - $isSystem 在 $traceContext 之前
+                    $result = $this->sendCommand($machineId, $cmd, $data, $lang, $playerId, 0, $traceContext);
                     $cmdDuration = round((microtime(true) - $cmdStartTime) * 1000, 2);
 
                     $results[] = [

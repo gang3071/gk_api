@@ -3099,7 +3099,7 @@ function machineWash(
 
                     if ($machine->control_type == Machine::CONTROL_TYPE_MEI) {
                         // PUSH_STOP
-                        $result = $client->sendCommand($machine->id, $services::PUSH . $services::PUSH_STOP, 0, $lang, $player->id, [
+                        $result = $client->sendCommand($machine->id, $services::PUSH . $services::PUSH_STOP, 0, $lang, $player->id, 0, [
                             'wash_id' => $washId,
                             'command_name' => 'PUSH_STOP',
                         ]);
@@ -3110,7 +3110,7 @@ function machineWash(
 
                         // AUTO_UP_TURN（如果需要）
                         if ($services->auto == 1) {
-                            $result = $client->sendCommand($machine->id, $services::AUTO_UP_TURN, 0, $lang, $player->id, [
+                            $result = $client->sendCommand($machine->id, $services::AUTO_UP_TURN, 0, $lang, $player->id, 0, [
                                 'wash_id' => $washId,
                                 'command_name' => 'AUTO_UP_TURN',
                             ]);
@@ -3122,7 +3122,7 @@ function machineWash(
 
                         // SCORE_TO_POINT（得分转分数）
                         if ($services->score > 0) {
-                            $result = $client->sendCommand($machine->id, $services::SCORE_TO_POINT, 0, $lang, $player->id, [
+                            $result = $client->sendCommand($machine->id, $services::SCORE_TO_POINT, 0, $lang, $player->id, 0, [
                                 'wash_id' => $washId,
                                 'command_name' => 'SCORE_TO_POINT',
                             ]);
@@ -3134,7 +3134,7 @@ function machineWash(
 
                         // TURN_DOWN_ALL（转数转分数）
                         if ($services->turn > 0) {
-                            $result = $client->sendCommand($machine->id, $services::TURN_DOWN_ALL, 0, $lang, $player->id, [
+                            $result = $client->sendCommand($machine->id, $services::TURN_DOWN_ALL, 0, $lang, $player->id, 0, [
                                 'wash_id' => $washId,
                                 'command_name' => 'TURN_DOWN_ALL',
                             ]);
@@ -3148,7 +3148,7 @@ function machineWash(
                     if ($machine->control_type == Machine::CONTROL_TYPE_SONG) {
                         // AUTO_UP_TURN（如果需要）
                         if ($services->auto == 1) {
-                            $result = $client->sendCommand($machine->id, $services::AUTO_UP_TURN, 0, $lang, $player->id, [
+                            $result = $client->sendCommand($machine->id, $services::AUTO_UP_TURN, 0, $lang, $player->id, 0, [
                                 'wash_id' => $washId,
                                 'command_name' => 'AUTO_UP_TURN',
                             ]);
@@ -3164,7 +3164,7 @@ function machineWash(
                         }
 
                         // MACHINE_TURN
-                        $result = $client->sendCommand($machine->id, $services::MACHINE_TURN, 0, $lang, $player->id, [
+                        $result = $client->sendCommand($machine->id, $services::MACHINE_TURN, 0, $lang, $player->id, 0, [
                             'wash_id' => $washId,
                             'command_name' => 'MACHINE_TURN',
                         ]);
@@ -3174,7 +3174,7 @@ function machineWash(
                         }
 
                         // MACHINE_SCORE
-                        $result = $client->sendCommand($machine->id, $services::MACHINE_SCORE, 0, $lang, $player->id, [
+                        $result = $client->sendCommand($machine->id, $services::MACHINE_SCORE, 0, $lang, $player->id, 0, [
                             'wash_id' => $washId,
                             'command_name' => 'MACHINE_SCORE',
                         ]);
@@ -3185,7 +3185,7 @@ function machineWash(
 
                         // SCORE_TO_POINT
                         if ($services->score > 0) {
-                            $result = $client->sendCommand($machine->id, $services::SCORE_TO_POINT, 0, $lang, $player->id, [
+                            $result = $client->sendCommand($machine->id, $services::SCORE_TO_POINT, 0, $lang, $player->id, 0, [
                                 'wash_id' => $washId,
                                 'command_name' => 'SCORE_TO_POINT',
                             ]);
@@ -3203,7 +3203,7 @@ function machineWash(
 
                         // TURN_DOWN_ALL
                         if ($services->turn > 0) {
-                            $result = $client->sendCommand($machine->id, $services::TURN_DOWN_ALL, 0, $lang, $player->id, [
+                            $result = $client->sendCommand($machine->id, $services::TURN_DOWN_ALL, 0, $lang, $player->id, 0, [
                                 'wash_id' => $washId,
                                 'command_name' => 'TURN_DOWN_ALL',
                             ]);
@@ -3230,7 +3230,7 @@ function machineWash(
                 $client = new MachineClient();
 
                 // MACHINE_POINT
-                $result = $client->sendCommand($machine->id, $services::MACHINE_POINT, 0, $lang, $player->id, [
+                $result = $client->sendCommand($machine->id, $services::MACHINE_POINT, 0, $lang, $player->id, 0, [
                     'wash_id' => $washId,
                     'command_name' => 'MACHINE_POINT',
                 ]);
@@ -3240,7 +3240,7 @@ function machineWash(
                 }
 
                 // WIN_NUMBER
-                $result = $client->sendCommand($machine->id, $services::WIN_NUMBER, 0, $lang, $player->id, [
+                $result = $client->sendCommand($machine->id, $services::WIN_NUMBER, 0, $lang, $player->id, 0, [
                     'wash_id' => $washId,
                     'command_name' => 'WIN_NUMBER',
                 ]);
@@ -3273,7 +3273,7 @@ function machineWash(
 
                 // 1. MOVE_POINT_OFF（如果需要）
                 if ($services->move_point == 1 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
-                    $result = $client->sendCommand($machine->id, $services::MOVE_POINT_OFF, 0, $lang, $player->id, [
+                    $result = $client->sendCommand($machine->id, $services::MOVE_POINT_OFF, 0, $lang, $player->id, 0, [
                         'wash_id' => $washId,
                         'command_name' => 'MOVE_POINT_OFF',
                     ]);
@@ -3285,7 +3285,7 @@ function machineWash(
 
                 // 2. OUT_OFF（如果需要）
                 if ($services->auto == 1) {
-                    $result = $client->sendCommand($machine->id, $services::OUT_OFF, 0, $lang, $player->id, [
+                    $result = $client->sendCommand($machine->id, $services::OUT_OFF, 0, $lang, $player->id, 0, [
                         'wash_id' => $washId,
                         'command_name' => 'OUT_OFF',
                     ]);
@@ -3296,7 +3296,7 @@ function machineWash(
                 }
 
                 // 3. STOP_ONE
-                $result = $client->sendCommand($machine->id, $services::STOP_ONE, 0, $lang, $player->id, [
+                $result = $client->sendCommand($machine->id, $services::STOP_ONE, 0, $lang, $player->id, 0, [
                     'wash_id' => $washId,
                     'command_name' => 'STOP_ONE',
                 ]);
@@ -3306,7 +3306,7 @@ function machineWash(
                 }
 
                 // 4. STOP_TWO
-                $result = $client->sendCommand($machine->id, $services::STOP_TWO, 0, $lang, $player->id, [
+                $result = $client->sendCommand($machine->id, $services::STOP_TWO, 0, $lang, $player->id, 0, [
                     'wash_id' => $washId,
                     'command_name' => 'STOP_TWO',
                 ]);
@@ -3316,7 +3316,7 @@ function machineWash(
                 }
 
                 // 5. STOP_THREE
-                $result = $client->sendCommand($machine->id, $services::STOP_THREE, 0, $lang, $player->id, [
+                $result = $client->sendCommand($machine->id, $services::STOP_THREE, 0, $lang, $player->id, 0, [
                     'wash_id' => $washId,
                     'command_name' => 'STOP_THREE',
                 ]);
@@ -3326,7 +3326,7 @@ function machineWash(
                 }
 
                 // 6. MACHINE_POINT
-                $result = $client->sendCommand($machine->id, $services::MACHINE_POINT, 0, $lang, $player->id, [
+                $result = $client->sendCommand($machine->id, $services::MACHINE_POINT, 0, $lang, $player->id, 0, [
                     'wash_id' => $washId,
                     'command_name' => 'MACHINE_POINT',
                 ]);
@@ -3430,7 +3430,7 @@ function machineWash(
 
             // ✅ 改为单个指令发送，关键指令失败立即终止
             // 1. WASH_ZERO（关键指令）
-            $result = $client->sendCommand($machine->id, $services::WASH_ZERO, 0, $lang, $player->id, [
+            $result = $client->sendCommand($machine->id, $services::WASH_ZERO, 0, $lang, $player->id, 0, [
                 'wash_id' => $washId,
                 'command_name' => 'WASH_ZERO',
             ]);
@@ -3440,7 +3440,7 @@ function machineWash(
             }
 
             // 2. CLEAR_LOG（关键指令）
-            $result = $client->sendCommand($machine->id, $services::CLEAR_LOG, 0, $lang, $player->id, [
+            $result = $client->sendCommand($machine->id, $services::CLEAR_LOG, 0, $lang, $player->id, 0, [
                 'wash_id' => $washId,
                 'command_name' => 'CLEAR_LOG',
             ]);
@@ -3471,7 +3471,7 @@ function machineWash(
 
             // ✅ 改为单个指令发送，关键指令失败立即终止
             // 1. WASH_ZERO（关键指令）
-            $result = $client->sendCommand($machine->id, $services::WASH_ZERO, 0, $lang, $player->id, [
+            $result = $client->sendCommand($machine->id, $services::WASH_ZERO, 0, $lang, $player->id, 0, [
                 'wash_id' => $washId,
                 'command_name' => 'WASH_ZERO',
             ]);
@@ -3486,7 +3486,7 @@ function machineWash(
             }
 
             // 2. ALL_DOWN（关键指令）
-            $result = $client->sendCommand($machine->id, $services::ALL_DOWN, 0, $lang, $player->id, [
+            $result = $client->sendCommand($machine->id, $services::ALL_DOWN, 0, $lang, $player->id, 0, [
                 'wash_id' => $washId,
                 'command_name' => 'ALL_DOWN',
             ]);
