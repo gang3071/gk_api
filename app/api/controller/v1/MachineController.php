@@ -199,18 +199,19 @@ class MachineController
                 $data[] = [
                     'id' => $item['label_id'],
                     'type' => $item['type'],
-                    'picture_url' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['picture_url'] ?? '') : $item['machineLabel']['picture_url'],
-                    'point' => $item['machineLabel']['point'],
-                    'turn' => $item['machineLabel']['turn'],
-                    'score' => $item['machineLabel']['score'],
-                    'courtyard' => $item['machineLabel']['courtyard'],
-                    'correct_rate' => $item['machineLabel']['correct_rate'],
+                    // ✅ 修复：使用 JOIN 查询的字段，而不是关系属性
+                    'picture_url' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['picture_url'] ?? '') : ($item['picture_url'] ?? ''),
+                    'point' => $item['point'] ?? 0,
+                    'turn' => $item['turn'] ?? 0,
+                    'score' => $item['score'] ?? 0,
+                    'courtyard' => $item['courtyard'] ?? '',
+                    'correct_rate' => $item['correct_rate'] ?? '',
                     'odds_x' => $item['odds_x'],
                     'odds_y' => $item['odds_y'],
                     'use_num' => $item['use_num'],
                     'idle_num' => $item['idle_num'],
                     'cate_name' => $item['cate_name'],
-                    'name' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['name'] ?? '') : $item['machineLabel']['name'],
+                    'name' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['name'] ?? '') : ($item['name'] ?? ''),
                     'turn_used_point' => rtrim(rtrim(number_format($item['turn_used_point'], 3, '.', ''), '0'), '.'),
                 ];
             }
@@ -1123,6 +1124,16 @@ class MachineController
                         }
                         if ($action == 'plc_open_times') {
                             $money = (int)$data['open_point'] ?? 0;
+
+                            // ✅ CRITICAL FIX: 限制玩家自定义上分金额（与后台一致）
+                            if ($money > 100000) {
+                                Log::warning('[slotAction] 玩家自定义上分超过限制', [
+                                    'player_id' => $player->id,
+                                    'machine_id' => $machine->id,
+                                    'requested_amount' => $money,
+                                ]);
+                                throw new Exception(trans('open_amount_too_large', [], 'message') . '（单次最多10万元）');
+                            }
                         }
                         if ($money <= 0) {
                             if (empty($data['give_rule_id'])) {
