@@ -80,6 +80,7 @@ class MachineClient
         int $data = 0,
         string $lang = 'zh_TW',
         ?int $playerId = null,
+        int $isSystem = 0,  // ✅ 新增 isSystem 参数
         ?array $traceContext = null
     ): array {
         $startTime = microtime(true);
@@ -88,6 +89,7 @@ class MachineClient
             'cmd' => $cmd,
             'data' => $data,
             'lang' => $lang,
+            'is_system' => $isSystem,  // ✅ 添加到请求参数
         ];
 
         // 构建请求headers

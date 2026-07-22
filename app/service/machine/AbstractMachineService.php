@@ -366,7 +366,8 @@ abstract class AbstractMachineService implements BaseMachine
         string $cmd,
         int $data = 0,
         string $source = 'player',
-        int $source_id = 0
+        int $source_id = 0,
+        int $isSystem = 0
     ): bool {
         try {
             // 使用 MachineClient 调用 gk_work 的机台操作接口
@@ -378,7 +379,8 @@ abstract class AbstractMachineService implements BaseMachine
                 $cmd,
                 $data,
                 $this->lang,
-                $playerId
+                $playerId,
+                $isSystem  // ✅ 传递 isSystem 参数
             );
 
             if (!$result['success']) {
