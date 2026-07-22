@@ -550,4 +550,15 @@ return [
     'machine_wash_point_failed' => '机台洗分操作失败',
     'machine_wash_command_failed' => '机台洗分指令发送失败，请联系客服',
     'no_game_record_found' => '未找到游戏记录，请先上分',
+
+    // 数据校验相关
+    'data_error' => '数据异常',
+    'crc8_check_failed' => 'CRC8校验失败',
+    'xor55_check_failed' => 'XOR55校验失败',
+
+    // 机台业务规则
+    'machine_wash_point_limit_exceeded' => '机台洗分限制，累计分数不能超过4000',
+    'amount_calculation_zero_or_negative' => '计算金额异常：结果为0或负数',
+    'amount_calculation_too_large' => '计算金额异常：超过单次限制（100万元），请检查机台赔率配置',
+    'machine_odds_config_error' => '机台赔率配置错误',
 ];

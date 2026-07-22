@@ -536,4 +536,15 @@ return [
     'machine_wash_point_failed' => 'マシンポイント精算操作失敗',
     'machine_wash_command_failed' => 'マシンポイント精算コマンド送信失敗、サポートに連絡してください',
     'no_game_record_found' => 'ゲーム記録が見つかりません。まず入金してください',
+
+    // データ検証関連
+    'data_error' => 'データ異常',
+    'crc8_check_failed' => 'CRC8チェックサム失敗',
+    'xor55_check_failed' => 'XOR55チェックサム失敗',
+
+    // マシンビジネスルール
+    'machine_wash_point_limit_exceeded' => 'マシン精算制限、累計スコアは4000を超えることはできません',
+    'amount_calculation_zero_or_negative' => '金額計算異常：結果がゼロまたは負数',
+    'amount_calculation_too_large' => '金額計算異常：単回限度（100万円）を超えました、マシンオッズ設定を確認してください',
+    'machine_odds_config_error' => 'マシンオッズ設定エラー',
 ];

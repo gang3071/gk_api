@@ -540,4 +540,15 @@ return [
     'machine_wash_point_failed' => '機台洗分操作失敗',
     'machine_wash_command_failed' => '機台洗分指令發送失敗，請聯繫客服',
     'no_game_record_found' => '未找到遊戲記錄，請先上分',
+
+    // 數據校驗相關
+    'data_error' => '數據異常',
+    'crc8_check_failed' => 'CRC8校驗失敗',
+    'xor55_check_failed' => 'XOR55校驗失敗',
+
+    // 機台業務規則
+    'machine_wash_point_limit_exceeded' => '機台洗分限制，累計分數不能超過4000',
+    'amount_calculation_zero_or_negative' => '計算金額異常：結果為0或負數',
+    'amount_calculation_too_large' => '計算金額異常：超過單次限制（100萬元），請檢查機台賠率配置',
+    'machine_odds_config_error' => '機台賠率配置錯誤',
 ];

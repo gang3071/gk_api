@@ -539,4 +539,15 @@ return [
     'machine_wash_point_failed' => 'Machine wash point operation failed',
     'machine_wash_command_failed' => 'Machine wash point command failed, please contact support',
     'no_game_record_found' => 'No game record found, please deposit first',
+
+    // Data Validation
+    'data_error' => 'Data error',
+    'crc8_check_failed' => 'CRC8 checksum failed',
+    'xor55_check_failed' => 'XOR55 checksum failed',
+
+    // Machine Business Rules
+    'machine_wash_point_limit_exceeded' => 'Machine wash point limit exceeded, total score cannot exceed 4000',
+    'amount_calculation_zero_or_negative' => 'Amount calculation error: result is zero or negative',
+    'amount_calculation_too_large' => 'Amount calculation error: exceeds single operation limit (1 million yuan), please check machine odds configuration',
+    'machine_odds_config_error' => 'Machine odds configuration error',
 ];
