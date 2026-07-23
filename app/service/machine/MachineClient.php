@@ -506,14 +506,16 @@ class MachineClient
      *
      * @param int $machineId 机台ID
      * @param int $playerId 玩家ID
-     * @param float $openScore 上分数量
+     * @param float $money 上分金额（gk_work 会根据兑换比例转换为游戏分数）
+     * @param float $giftScore 赠送分数
+     * @param int|null $giveRuleId 赠送规则ID
      * @param string $lang 语言
      * @return array ['success' => bool, 'data' => array, 'message' => string]
      */
     public function openMachine(
         int $machineId,
         int $playerId,
-        float $openScore,
+        float $money,
         float $giftScore = 0,
         ?int $giveRuleId = null,
         string $lang = 'zh_TW'
@@ -523,7 +525,7 @@ class MachineClient
             'open',
             [
                 'player_id' => $playerId,
-                'open_score' => $openScore,
+                'open_score' => $money,  // ✅ 传递金额（gk_work会转换为分数）
                 'gift_score' => $giftScore,
                 'give_rule_id' => $giveRuleId,
             ],
