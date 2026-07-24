@@ -1034,25 +1034,26 @@ class MachineController
         $lang = locale() ?? 'zh_TW';
         $lang = \Illuminate\Support\Str::replace('_', '-', $lang);
 
-        // 计算上分数量（游戏分 = 金额 * odds_y / odds_x）
-        $openScore = floor($money * ($machine->odds_y ?? 1) / ($machine->odds_x ?? 1)) + $giftScore;
+        // ✅ 不再在 gk_api 中计算兑换比例，直接传金额给 gk_work
+        // gk_work 的 checkMachineOpenAny() 会根据机台兑换比例转换为游戏分数
+        // 修复问题：上分100元(1:2比例) → gk_api计算200分 → gk_work再计算400分 ❌
 
         Log::channel('machine_operations')->info('[MachineOpenAnyV2] 开始上分', [
             'player_id' => $player->id,
             'machine_id' => $machine->id,
             'money' => $money,
             'gift_score' => $giftScore,
-            'open_score' => $openScore,
         ]);
 
         // 调用 gk_work 完整业务逻辑
         // 超时30秒，因为要处理完整的数据库事务
         $client = new MachineClient(null, 30);
 
+        // ✅ 传递金额（money），不是分数（openScore）
         $result = $client->openMachine(
             $machine->id,
             $player->id,
-            $openScore,
+            $money,  // ← 改为传金额
             $giftScore,
             $machineCategoryGiveRule?->id,
             $lang
@@ -1065,7 +1066,8 @@ class MachineController
         Log::channel('machine_operations')->info('[MachineOpenAnyV2] 上分成功', [
             'player_id' => $player->id,
             'machine_id' => $machine->id,
-            'open_score' => $openScore,
+            'money' => $money,
+            'gift_score' => $giftScore,
         ]);
     }
 

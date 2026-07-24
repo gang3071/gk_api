@@ -64,13 +64,15 @@ class MachineClient
     }
 
     /**
-     * 发送机台指令
+     * 发送机台指令（统一走 /execute 接口）
      *
      * @param int $machineId 机台ID
      * @param string $cmd 指令代码
      * @param int $data 指令数据
      * @param string $lang 语言
      * @param int|null $playerId 玩家ID（可选，用于日志追踪）
+     * @param int $isSystem 是否系统指令
+     * @param array|null $traceContext 追踪上下文
      * @return array 返回格式: ['success' => bool, 'data' => array, 'message' => string]
      * @throws Exception
      */
@@ -80,110 +82,21 @@ class MachineClient
         int $data = 0,
         string $lang = 'zh_TW',
         ?int $playerId = null,
-        int $isSystem = 0,  // ✅ 新增 isSystem 参数
+        int $isSystem = 0,
         ?array $traceContext = null
     ): array {
-        $startTime = microtime(true);
-        $requestPayload = [
-            'machine_id' => $machineId,
-            'cmd' => $cmd,
-            'data' => $data,
-            'lang' => $lang,
-            'is_system' => $isSystem,  // ✅ 添加到请求参数
-        ];
-
-        // 构建请求headers
-        $headers = [
-            'Accept-Language' => $lang,
-        ];
-
-        // 只在playerId有效时才添加header（避免传递null或0）
-        if ($playerId !== null && $playerId > 0) {
-            $headers['X-Player-Id'] = $playerId;
-        }
-
-        // 添加追踪上下文（用于跨项目日志关联）
-        if ($traceContext !== null) {
-            if (isset($traceContext['batch_id'])) {
-                $headers['X-Batch-Id'] = $traceContext['batch_id'];
-            }
-            if (isset($traceContext['command_index'])) {
-                $headers['X-Command-Index'] = $traceContext['command_index'];
-            }
-            if (isset($traceContext['command_id'])) {
-                $headers['X-Command-Id'] = $traceContext['command_id'];
-            }
-            if (isset($traceContext['wash_id'])) {
-                $headers['X-Wash-Id'] = $traceContext['wash_id'];
-            }
-        }
-
-        Log::channel('machine_operations')->info('[MachineClient] 发送机台指令 - 请求', [
-            'url' => $this->baseUrl . '/api/v1/machine/send-cmd',
-            'payload' => $requestPayload,
-            'headers' => $headers,
-            'player_id' => $playerId,
-            'trace_context' => $traceContext,
-        ]);
-
-        try {
-            // 修复：每次请求使用新的客户端实例，避免 header 累积
-            $response = Http::timeout($this->timeout)
-                ->withHeaders($headers)
-                ->post($this->baseUrl . '/api/v1/machine/send-cmd', $requestPayload);
-
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
-            $body = $response->json();
-
-            // 改进的成功判断（兼容多种类型）
-            $code = $body['code'] ?? 0;
-            $isCodeOk = ($code === 200 || $code === '200');
-
-            if ($response->successful() && isset($body['code']) && $isCodeOk) {
-                Log::channel('machine_operations')->info('[MachineClient] 指令执行成功 - 响应', [
-                    'machine_id' => $machineId,
-                    'cmd' => $cmd,
-                    'player_id' => $playerId,
-                    'duration_ms' => $duration,
-                    'status_code' => $response->status(),
-                    'response_body' => $body,
-                ]);
-
-                return [
-                    'success' => true,
-                    'data' => $body['data'] ?? [],
-                    'message' => $body['msg'] ?? 'success',
-                ];
-            }
-
-            Log::channel('machine_operations')->warning('[MachineClient] 指令执行失败 - 响应', [
-                'machine_id' => $machineId,
+        // ✅ 统一走 /execute 接口，使用 send_raw_cmd action
+        return $this->executeOperation(
+            $machineId,
+            'send_raw_cmd',
+            [
                 'cmd' => $cmd,
-                'status_code' => $response->status(),
-                'duration_ms' => $duration,
-                'response_body' => $body,
-            ]);
-
-            return [
-                'success' => false,
-                'data' => [],
-                'message' => $body['msg'] ?? 'Unknown error',
-            ];
-
-        } catch (RequestException $e) {
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
-
-            Log::channel('machine_operations')->error('[MachineClient] HTTP请求异常', [
-                'machine_id' => $machineId,
-                'cmd' => $cmd,
-                'player_id' => $playerId,
-                'duration_ms' => $duration,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            throw new Exception(trans('machine_command_failed', [], 'message') . ': ' . $e->getMessage());
-        }
+                'data' => $data,
+                'is_system' => $isSystem,
+            ],
+            $lang,
+            $playerId
+        );
     }
 
     /**
@@ -400,99 +313,6 @@ class MachineClient
     }
 
     /**
-     * 批量发送机台指令（原始实现，暂时保留但不使用）
-     * @deprecated 玩家端暂不支持批量API，使用batchSendCommands逐个发送
-     */
-    private function batchSendCommandsOld(
-        int $machineId,
-        array $commands,
-        string $lang = 'zh_TW',
-        ?int $playerId = null
-    ): array {
-        if (empty($commands)) {
-            throw new Exception('批量指令列表不能为空');
-        }
-
-        $startTime = microtime(true);
-        $requestPayload = [
-            'machine_id' => $machineId,
-            'commands' => $commands,
-            'lang' => $lang,
-        ];
-
-        Log::info('[MachineClient] 批量发送机台指令 - 请求', [
-            'url' => $this->baseUrl . '/api/v1/machine/batch-send-cmd',
-            'payload' => $requestPayload,
-            'commands_count' => count($commands),
-            'player_id' => $playerId,
-        ]);
-
-        try {
-            $response = Http::timeout($this->timeout)
-                ->withHeaders([
-                    'Accept-Language' => $lang,
-                    'X-Player-Id' => $playerId,
-                ])
-                ->post($this->baseUrl . '/api/v1/machine/batch-send-cmd', $requestPayload);
-
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
-            $body = $response->json();
-
-            // 改进的成功判断（兼容多种类型）
-            $code = $body['code'] ?? 0;
-            $isCodeOk = ($code === 200 || $code === '200');
-
-            if ($response->successful() && isset($body['code']) && $isCodeOk) {
-                $successCount = $body['data']['success_count'] ?? 0;
-                $failedCount = $body['data']['failed_count'] ?? 0;
-
-                Log::info('[MachineClient] 批量指令执行完成 - 响应', [
-                    'machine_id' => $machineId,
-                    'commands_count' => count($commands),
-                    'success_count' => $successCount,
-                    'failed_count' => $failedCount,
-                    'duration_ms' => $duration,
-                    'status_code' => $response->status(),
-                    'response_body' => $body,
-                ]);
-
-                return [
-                    'success' => true,
-                    'data' => $body['data'] ?? [],
-                    'message' => $body['msg'] ?? 'success',
-                ];
-            }
-
-            Log::warning('[MachineClient] 批量指令执行失败 - 响应', [
-                'machine_id' => $machineId,
-                'commands_count' => count($commands),
-                'duration_ms' => $duration,
-                'status_code' => $response->status(),
-                'response_body' => $body,
-            ]);
-
-            return [
-                'success' => false,
-                'data' => [],
-                'message' => $body['msg'] ?? 'Unknown error',
-            ];
-
-        } catch (RequestException $e) {
-            $duration = round((microtime(true) - $startTime) * 1000, 2);
-
-            Log::error('[MachineClient] 批量指令HTTP请求异常', [
-                'machine_id' => $machineId,
-                'commands_count' => count($commands),
-                'duration_ms' => $duration,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            throw new Exception(trans('machine_command_failed', [], 'message') . ': ' . $e->getMessage());
-        }
-    }
-
-    /**
      * 检查机台是否在线
      *
      * 在线状态由 gk_work 计算并返回
@@ -686,14 +506,16 @@ class MachineClient
      *
      * @param int $machineId 机台ID
      * @param int $playerId 玩家ID
-     * @param float $openScore 上分数量
+     * @param float $money 上分金额（gk_work 会根据兑换比例转换为游戏分数）
+     * @param float $giftScore 赠送分数
+     * @param int|null $giveRuleId 赠送规则ID
      * @param string $lang 语言
      * @return array ['success' => bool, 'data' => array, 'message' => string]
      */
     public function openMachine(
         int $machineId,
         int $playerId,
-        float $openScore,
+        float $money,
         float $giftScore = 0,
         ?int $giveRuleId = null,
         string $lang = 'zh_TW'
@@ -703,7 +525,7 @@ class MachineClient
             'open',
             [
                 'player_id' => $playerId,
-                'open_score' => $openScore,
+                'open_score' => $money,  // ✅ 传递金额（gk_work会转换为分数）
                 'gift_score' => $giftScore,
                 'give_rule_id' => $giveRuleId,
             ],
