@@ -414,6 +414,7 @@ return [
     'gb_payment_withdraw_closed' => '渠道已关闭购宝提现',
     'reverse_water' => '电子游戏返水',
     'reverse_water_insufficient' => '领取金额不足最低领取额',
+    'reverse_water_min_not_set' => '当前等级未设置最低领取金额，暂不可领取',
     'coin_modify' => '币商加点/扣点',
     'gb_recharge' => '购宝钱包充值',
     'gb_withdrawal' => '购宝钱包提现',

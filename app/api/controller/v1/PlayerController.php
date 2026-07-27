@@ -214,11 +214,11 @@ class PlayerController
             ->where('switch', 1)
             ->sum('reverse_water');
         $minClaimAmount = $vipLevel->min_claim_amount ?? 0;
-        if ($minClaimAmount > 0) {
-            $reverseWaterPoolClaimable = floor($reverseWaterPoolPending / $minClaimAmount) * $minClaimAmount;
-        } else {
-            $reverseWaterPoolClaimable = $reverseWaterPoolPending;
-        }
+        // 未设置最低领取额则不可领取，否则取最低额的整数倍
+        $reverseWaterPoolClaimable = $minClaimAmount > 0
+            ? floor($reverseWaterPoolPending / $minClaimAmount) * $minClaimAmount
+            : 0;
+        $reverseWaterPoolRemaining = $reverseWaterPoolPending - $reverseWaterPoolClaimable;
 
         return jsonSuccessResponse('success', [
             'id' => $player->id,
@@ -275,8 +275,8 @@ class PlayerController
             'yesterday_game_bet_amount' => $this->formatAmount($yesterdayGameBetAmount), // 昨日电子游戏打码量
             'reverse_water_pool_pending' => $this->formatAmount($reverseWaterPoolPending), // 反水池待领取总额
             'reverse_water_pool_claimable' => $this->formatAmount($reverseWaterPoolClaimable), // 反水池可领取额度
-            'reverse_water_pool_remaining' => $this->formatAmount($reverseWaterPoolPending - $reverseWaterPoolClaimable), // 剩余待领取金额
-            'reverse_water_pool_min_claim' => $this->formatAmount($minClaimAmount), // 当前等级最低领取金额
+            'reverse_water_pool_remaining' => $this->formatAmount($reverseWaterPoolRemaining), // 剩余待领取金额（不足最低额部分）
+            'reverse_water_pool_min_claim' => $minClaimAmount > 0 ? $this->formatAmount($minClaimAmount) : 0, // 当前等级最低领取金额，未设置返回0
         ]);
     }
 
@@ -3561,11 +3561,13 @@ class PlayerController
         // 获取当前用户VIP等级的最低领取额，计算可领取金额（取最低额的整数倍）
         $player->load('vipLevel');
         $minClaimAmount = $player->vipLevel->min_claim_amount ?? 0;
-        if ($minClaimAmount > 0) {
-            $claimableAmount = floor($reverseWater / $minClaimAmount) * $minClaimAmount;
-        } else {
-            $claimableAmount = $reverseWater;
+
+        if ($minClaimAmount <= 0) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('reverse_water_min_not_set', [], 'message'));
         }
+
+        $claimableAmount = floor($reverseWater / $minClaimAmount) * $minClaimAmount;
 
         if ($claimableAmount <= 0) {
             $this->releaseIdempotent($requestId);
