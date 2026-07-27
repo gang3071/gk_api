@@ -275,6 +275,8 @@ class PlayerController
             'yesterday_game_bet_amount' => $this->formatAmount($yesterdayGameBetAmount), // 昨日电子游戏打码量
             'reverse_water_pool_pending' => $this->formatAmount($reverseWaterPoolPending), // 反水池待领取总额
             'reverse_water_pool_claimable' => $this->formatAmount($reverseWaterPoolClaimable), // 反水池可领取额度
+            'reverse_water_pool_remaining' => $this->formatAmount($reverseWaterPoolPending - $reverseWaterPoolClaimable), // 剩余待领取金额
+            'reverse_water_pool_min_claim' => $this->formatAmount($minClaimAmount), // 当前等级最低领取金额
         ]);
     }
 
