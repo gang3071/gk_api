@@ -81,6 +81,7 @@ class PlayerDeliveryRecord extends Model
     const TYPE_LOTTERY_TICKET_REWARD = 33; // ⭐ 摸奖券中奖奖励 (支出类型)
     const TYPE_BIRTHDAY_BONUS = 34; // VIP生日礼金
     const TYPE_VIP_UPGRADE_BONUS = 35; // VIP升级礼金
+    const TYPE_REVERSE_WATER_POOL = 36; // 反水池反水领取
 
     protected $fillable = [
         'player_id',

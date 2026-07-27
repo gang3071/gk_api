@@ -253,6 +253,8 @@ Route::group('/api', function () {
         Route::post('/getReverseWaterDetail', [\app\api\controller\v1\PlayerController::class, 'getReverseWaterDetail']);
         // 领取反水两级
         Route::post('/receiveReverseWater', [\app\api\controller\v1\PlayerController::class, 'receiveReverseWater']);
+        // 领取反水（VIP最低额校验 + 账变记录）
+        Route::post('/claimReverseWater', [\app\api\controller\v1\PlayerController::class, 'claimReverseWater']);
         // 平台反水列表
         Route::post('/reverseWaterSetting', [\app\api\controller\v1\GamePlatformController::class, 'reverseWaterSetting']);
         // 验证密码

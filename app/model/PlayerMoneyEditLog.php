@@ -66,6 +66,8 @@ class PlayerMoneyEditLog extends Model
     const COIN_WITHDRAWAL = 16; // 币商提现
     const DEPOSIT_BONUS_GRANT = 17; // 充值满赠发放
     const DEPOSIT_BONUS_CANCEL = 18; // 充值满赠取消
+    const REVERSE_WATER = 19; // 电子游戏反水
+    const REVERSE_WATER_POOL = 20; // 反水池反水领取
     protected $table = 'player_money_edit_log';
 
     /**

@@ -407,6 +407,7 @@ return [
     'gb_payment_recharge_close' => '通路已關閉購寶充值',
     'gb_payment_withdraw_closed' => '通路已關閉購寶提現',
     'reverse_water' => '電子遊戲返水',
+    'reverse_water_insufficient' => '領取金額不足最低領取額',
     'coin_modify' => '幣商加點/扣點',
     'gb_recharge' => '購寶錢包充值',
     'gb_withdrawal' => '購寶錢包提現',

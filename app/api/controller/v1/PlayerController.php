@@ -25,6 +25,7 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerFavoriteMachine;
 use app\model\PlayerGameRecord;
 use app\model\PlayerLotteryRecord;
+use app\model\PlayerMoneyEditLog;
 use app\model\PlayerPlatformCash;
 use app\model\PlayerPresentRecord;
 use app\model\PlayerRechargeRecord;
@@ -205,6 +206,20 @@ class PlayerController
             ->whereNotIn('platform_id', $this->getExcludedPlatformIds())
             ->sum('bet');
 
+        // 反水池待领取总额 & 可领取额度
+        $reverseWaterPoolPending = PlayerReverseWaterDetail::query()
+            ->where('player_id', $player->id)
+            ->where('status', PlayerReverseWaterDetail::STATUS_UNRECEIVED)
+            ->where('is_settled', 1)
+            ->where('switch', 1)
+            ->sum('reverse_water');
+        $minClaimAmount = $vipLevel->min_claim_amount ?? 0;
+        if ($minClaimAmount > 0) {
+            $reverseWaterPoolClaimable = floor($reverseWaterPoolPending / $minClaimAmount) * $minClaimAmount;
+        } else {
+            $reverseWaterPoolClaimable = $reverseWaterPoolPending;
+        }
+
         return jsonSuccessResponse('success', [
             'id' => $player->id,
             'phone' => $player->phone,
@@ -258,6 +273,8 @@ class PlayerController
             'valid_lottery_ticket_count' => $validLotteryTicketCount, // 有效摸奖券数量
             'today_game_bet_amount' => $this->formatAmount($todayGameBetAmount), // 当天电子游戏打码量
             'yesterday_game_bet_amount' => $this->formatAmount($yesterdayGameBetAmount), // 昨日电子游戏打码量
+            'reverse_water_pool_pending' => $this->formatAmount($reverseWaterPoolPending), // 反水池待领取总额
+            'reverse_water_pool_claimable' => $this->formatAmount($reverseWaterPoolClaimable), // 反水池可领取额度
         ]);
     }
 
@@ -3484,6 +3501,153 @@ class PlayerController
         }
     }
     
+    /**
+     * 领取反水（根据VIP最低领取额计算可领取金额，记录账变）
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException|\Throwable
+     */
+    public function claimReverseWater(Request $request): Response
+    {
+        $data = $request->all();
+        $player = checkPlayer();
+
+        // 幂等性检查
+        $requestId = $data['request_id'] ?? null;
+        $idempotentResponse = $this->checkIdempotent($requestId, 'claim-reverse-water:' . ($data['id'] ?? ''), $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        // 提前占位（防止并发）
+        if (!$this->reserveIdempotent($requestId, 'claim-reverse-water:' . ($data['id'] ?? ''), $player->id)) {
+            $response = $this->checkIdempotent($requestId, 'claim-reverse-water:' . ($data['id'] ?? ''), $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // 查找反水日期
+        $id = Notice::query()->where('id', $data['id'])->value('source_id');
+        if (empty($id)) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('notice_not_found', [], 'message'));
+        }
+
+        $playerReverseWaterDetail = PlayerReverseWaterDetail::query()
+            ->where('id', $id)
+            ->first();
+
+        if (empty($playerReverseWaterDetail)) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('reverse_water_detail_not_found', [], 'message'));
+        }
+
+        // 获取用户该日期的所有待领取反水金额
+        $reverseWater = PlayerReverseWaterDetail::query()
+            ->where('player_id', $player->id)
+            ->where('settled_date', $playerReverseWaterDetail->settled_date)
+            ->where('status', PlayerReverseWaterDetail::STATUS_UNRECEIVED)
+            ->where('is_settled', 1)
+            ->where('switch', 1)
+            ->sum('reverse_water');
+
+        if ($reverseWater <= 0) {
+            $response = jsonSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, 'claim-reverse-water:' . ($data['id'] ?? ''), $player->id);
+            return $response;
+        }
+
+        // 获取当前用户VIP等级的最低领取额，计算可领取金额（取最低额的整数倍）
+        $player->load('vipLevel');
+        $minClaimAmount = $player->vipLevel->min_claim_amount ?? 0;
+        if ($minClaimAmount > 0) {
+            $claimableAmount = floor($reverseWater / $minClaimAmount) * $minClaimAmount;
+        } else {
+            $claimableAmount = $reverseWater;
+        }
+
+        if ($claimableAmount <= 0) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('reverse_water_insufficient', [], 'message'));
+        }
+
+        DB::beginTransaction();
+        try {
+            // ✅ 从 Redis 读取余额（唯一可信源）
+            $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+
+            // ✅ Lua 原子性加款（自动同步数据库）
+            $incrementResult = \app\service\WalletService::atomicIncrement(
+                $player->id,
+                $claimableAmount
+            );
+            $afterGameAmount = $incrementResult['balance'];
+
+            // 寫入賬變記錄
+            $playerMoneyEditLog = new PlayerMoneyEditLog;
+            $playerMoneyEditLog->player_id = $player->id;
+            $playerMoneyEditLog->department_id = $player->department_id;
+            $playerMoneyEditLog->type = PlayerMoneyEditLog::TYPE_INCREASE;
+            $playerMoneyEditLog->action = PlayerMoneyEditLog::REVERSE_WATER_POOL;
+            $playerMoneyEditLog->tradeno = date('YmdHis') . rand(10000, 99999);
+            $playerMoneyEditLog->currency = $player->currency;
+            $playerMoneyEditLog->money = $claimableAmount;
+            $playerMoneyEditLog->inmoney = $claimableAmount;
+            $playerMoneyEditLog->remark = '电子游戏反水领取';
+            $playerMoneyEditLog->user_id = 0;
+            $playerMoneyEditLog->user_name = trans('system_automatic', [], 'message');
+            $playerMoneyEditLog->save();
+
+            // 寫入金流明細
+            $playerDeliveryRecord = new PlayerDeliveryRecord;
+            $playerDeliveryRecord->player_id = $player->id;
+            $playerDeliveryRecord->department_id = $player->department_id;
+            $playerDeliveryRecord->target = $playerMoneyEditLog->getTable();
+            $playerDeliveryRecord->target_id = $playerMoneyEditLog->id;
+            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_REVERSE_WATER_POOL;
+            $playerDeliveryRecord->source = 'reverse_water_pool';
+            $playerDeliveryRecord->amount = $claimableAmount;
+            $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
+            $playerDeliveryRecord->tradeno = $playerMoneyEditLog->tradeno;
+            $playerDeliveryRecord->remark = '电子游戏反水领取';
+            $playerDeliveryRecord->save();
+
+            // 按明细逐条累加更新状态，只将已领取金额对应的明细标记为已领取
+            $details = PlayerReverseWaterDetail::query()
+                ->where('player_id', $player->id)
+                ->where('settled_date', $playerReverseWaterDetail->settled_date)
+                ->where('status', PlayerReverseWaterDetail::STATUS_UNRECEIVED)
+                ->where('is_settled', 1)
+                ->where('switch', 1)
+                ->orderBy('id')
+                ->get();
+
+            $accumulated = 0;
+            foreach ($details as $detail) {
+                if ($accumulated >= $claimableAmount) {
+                    break;
+                }
+                $accumulated += $detail->reverse_water;
+                $detail->update([
+                    'status' => PlayerReverseWaterDetail::STATUS_RECEIVED,
+                    'receive_time' => Carbon::now()
+                ]);
+            }
+
+            DB::commit();
+
+            // 保存幂等性记录（覆盖占位）
+            $response = jsonSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, 'claim-reverse-water:' . ($data['id'] ?? ''), $player->id);
+
+            return $response;
+        } catch (Exception) {
+            DB::rollBack();
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('system_error', [], 'message'));
+        }
+    }
+
     /**
      * 增加观看人数
      * @param Request $request
