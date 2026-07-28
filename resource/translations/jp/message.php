@@ -403,6 +403,7 @@ return [
     'gb_payment_recharge_close' => 'ルートが閉鎖された宝の購入チャージ',
     'gb_payment_withdraw_closed' => 'ルートはすでに閉鎖されており、宝を購入して現金を引き出す',
     'reverse_water' => 'ゲームリターンウォーター',
+    'reverse_water_min_not_set' => '現在のレベルでは最低受取金額が設定されていないため、受取できません',
     'coin_modify' => '貨幣商プラスマイナス点',
     'gb_recharge' => '宝の財布のチャージ',
     'gb_withdrawal' => '宝の財布を買って現金を引き出す',
