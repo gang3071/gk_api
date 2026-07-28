@@ -152,6 +152,7 @@ class MachineController
                     'machine_category.turn_used_point',
                     DB::raw('COUNT(DISTINCT CASE WHEN machine.gaming = 1 OR machine.is_use = 1 THEN machine.id END) as use_num'),
                     DB::raw('COUNT(DISTINCT CASE WHEN machine.gaming = 0 and machine.is_use = 0 THEN machine.id END) as idle_num'),
+                    DB::raw('COUNT(DISTINCT CASE WHEN machine.gaming_user_id = ' . (int)$player->id . ' THEN machine.id END) as self_using_num'),
                 ])
                 ->leftjoin('machine_label', 'machine.label_id', '=', 'machine_label.id')
                 ->leftjoin('machine_label_extend', 'machine_label_extend.label_id', '=', 'machine_label.id')
@@ -209,6 +210,7 @@ class MachineController
                     'odds_y' => $item['odds_y'],
                     'use_num' => $item['use_num'],
                     'idle_num' => $item['idle_num'],
+                    'is_self_using' => ($item['self_using_num'] > 0),
                     'cate_name' => $item['cate_name'],
                     'name' => $lang != 'zh-CN' ? ($labelExtendList[$item['label_id']]['name'] ?? '') : $item['machineLabel']['name'],
                     'turn_used_point' => rtrim(rtrim(number_format($item['turn_used_point'], 3, '.', ''), '0'), '.'),
