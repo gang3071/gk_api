@@ -407,7 +407,7 @@ return [
     'gb_payment_recharge_close' => '通路已關閉購寶充值',
     'gb_payment_withdraw_closed' => '通路已關閉購寶提現',
     'reverse_water' => '電子遊戲返水',
-    'reverse_water_pool' => '反水池反水',
+    'reverse_water_pool' => '能量池領取',
     'reverse_water_insufficient' => '領取金額不足最低領取額',
     'reverse_water_min_not_set' => '當前等級未設置最低領取金額，暫不可領取',
     'coin_modify' => '幣商加點/扣點',
