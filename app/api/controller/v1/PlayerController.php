@@ -207,12 +207,7 @@ class PlayerController
             ->sum('bet');
 
         // 反水池待领取总额 & 可领取额度
-        $reverseWaterPoolPending = PlayerReverseWaterDetail::query()
-            ->where('player_id', $player->id)
-            ->where('status', PlayerReverseWaterDetail::STATUS_UNRECEIVED)
-            ->where('is_settled', 1)
-            ->where('switch', 1)
-            ->sum('reverse_water');
+        $reverseWaterPoolPending = $player->player_extend->pending_cashback_amount ?? 0;
         $minClaimAmount = $vipLevel->min_claim_amount ?? 0;
         // 未设置最低领取额则不可领取，否则取最低额的整数倍
         $reverseWaterPoolClaimable = $minClaimAmount > 0
@@ -3543,14 +3538,8 @@ class PlayerController
             return jsonFailResponse(trans('reverse_water_detail_not_found', [], 'message'));
         }
 
-        // 获取用户该日期的所有待领取反水金额
-        $reverseWater = PlayerReverseWaterDetail::query()
-            ->where('player_id', $player->id)
-            ->where('settled_date', $playerReverseWaterDetail->settled_date)
-            ->where('status', PlayerReverseWaterDetail::STATUS_UNRECEIVED)
-            ->where('is_settled', 1)
-            ->where('switch', 1)
-            ->sum('reverse_water');
+        // 获取待领取反水金额（从player_extend获取）
+        $reverseWater = $player->player_extend->pending_cashback_amount ?? 0;
 
         if ($reverseWater <= 0) {
             $response = jsonSuccessResponse('success');
@@ -3637,6 +3626,9 @@ class PlayerController
                     'receive_time' => Carbon::now()
                 ]);
             }
+
+            // 扣减player_extend待领取反水金额
+            $player->player_extend()->decrement('pending_cashback_amount', $claimableAmount);
 
             DB::commit();
 

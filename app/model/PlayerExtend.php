@@ -35,6 +35,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property float machine_put_point 机器投钞总点数
  * @property float team_machine_put_point 机器投钞总点数(团队)
  * @property float team_machine_put_amount 机器投钞总金额(团队)
+ * @property float pending_cashback_amount 反水池待领取金额
  * @property string created_at 创建时间
  * @property string updated_at 最后一次修改时间
  *
