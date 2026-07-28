@@ -3511,31 +3511,15 @@ class PlayerController
 
         // 幂等性检查
         $requestId = $data['request_id'] ?? null;
-        $idempotentResponse = $this->checkIdempotent($requestId, 'claim-reverse-water:' . ($data['id'] ?? ''), $player->id);
+        $idempotentResponse = $this->checkIdempotent($requestId, 'claim-reverse-water', $player->id);
         if ($idempotentResponse !== null) {
             return $idempotentResponse;
         }
 
         // 提前占位（防止并发）
-        if (!$this->reserveIdempotent($requestId, 'claim-reverse-water:' . ($data['id'] ?? ''), $player->id)) {
-            $response = $this->checkIdempotent($requestId, 'claim-reverse-water:' . ($data['id'] ?? ''), $player->id);
+        if (!$this->reserveIdempotent($requestId, 'claim-reverse-water', $player->id)) {
+            $response = $this->checkIdempotent($requestId, 'claim-reverse-water', $player->id);
             return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
-        }
-
-        // 查找反水日期
-        $id = Notice::query()->where('id', $data['id'])->value('source_id');
-        if (empty($id)) {
-            $this->releaseIdempotent($requestId);
-            return jsonFailResponse(trans('notice_not_found', [], 'message'));
-        }
-
-        $playerReverseWaterDetail = PlayerReverseWaterDetail::query()
-            ->where('id', $id)
-            ->first();
-
-        if (empty($playerReverseWaterDetail)) {
-            $this->releaseIdempotent($requestId);
-            return jsonFailResponse(trans('reverse_water_detail_not_found', [], 'message'));
         }
 
         // 获取待领取反水金额（从player_extend获取）
@@ -3543,7 +3527,7 @@ class PlayerController
 
         if ($reverseWater <= 0) {
             $response = jsonSuccessResponse('success');
-            $this->saveIdempotent($requestId, $response, 'claim-reverse-water:' . ($data['id'] ?? ''), $player->id);
+            $this->saveIdempotent($requestId, $response, 'claim-reverse-water', $player->id);
             return $response;
         }
 
@@ -3608,7 +3592,6 @@ class PlayerController
             // 按明细逐条累加更新状态，只将已领取金额对应的明细标记为已领取
             $details = PlayerReverseWaterDetail::query()
                 ->where('player_id', $player->id)
-                ->where('settled_date', $playerReverseWaterDetail->settled_date)
                 ->where('status', PlayerReverseWaterDetail::STATUS_UNRECEIVED)
                 ->where('is_settled', 1)
                 ->where('switch', 1)
@@ -3634,7 +3617,7 @@ class PlayerController
 
             // 保存幂等性记录（覆盖占位）
             $response = jsonSuccessResponse('success');
-            $this->saveIdempotent($requestId, $response, 'claim-reverse-water:' . ($data['id'] ?? ''), $player->id);
+            $this->saveIdempotent($requestId, $response, 'claim-reverse-water', $player->id);
 
             return $response;
         } catch (Exception) {
