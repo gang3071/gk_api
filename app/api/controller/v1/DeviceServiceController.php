@@ -48,11 +48,7 @@ class DeviceServiceController
             try {
                 $validator->assert($data);
             } catch (\Respect\Validation\Exceptions\AllOfException $e) {
-                return json([
-                    'code' => 400,
-                    'msg' => $e->getFullMessage(),
-                    'data' => null
-                ]);
+                return jsonFailResponse(getValidationMessages($e));
             }
 
             $deviceNo = $data['device_no'];
@@ -63,20 +59,12 @@ class DeviceServiceController
                 ->first();
 
             if (!$device) {
-                return json([
-                    'code' => 404,
-                    'msg' => '设备不存在或已禁用',
-                    'data' => null
-                ]);
+                return jsonFailResponse('设备不存在或已禁用', [], 404);
             }
 
             // 检查设备是否绑定店家
             if (empty($device->store_admin_id)) {
-                return json([
-                    'code' => 403,
-                    'msg' => '设备未绑定店家，无法呼叫服务',
-                    'data' => null
-                ]);
+                return jsonFailResponse('设备未绑定店家，无法呼叫服务', [], 403);
             }
 
             // ========== 3. 防重复检查（Redis 锁） ==========
@@ -90,13 +78,9 @@ class DeviceServiceController
                 // 获取锁失败 = 5 秒内已经请求过
                 $remainingTtl = Cache::ttl($lockKey);
 
-                return json([
-                    'code' => 429,
-                    'msg' => '已呼叫服务员，请耐心等待',
-                    'data' => [
-                        'retry_after' => $remainingTtl
-                    ]
-                ]);
+                return jsonFailResponse('已呼叫服务员，请耐心等待', [
+                    'retry_after' => $remainingTtl
+                ], 429);
             }
 
             // ========== 4. 推送消息到店家后台 ==========
@@ -156,21 +140,13 @@ class DeviceServiceController
                     'trace' => $e->getTraceAsString(),
                 ]);
 
-                return json([
-                    'code' => 500,
-                    'msg' => '服务铃推送失败，请稍后重试',
-                    'data' => null
-                ]);
+                return jsonFailResponse('服务铃推送失败，请稍后重试');
             }
 
             // ========== 5. 返回成功响应 ==========
-            return json([
-                'code' => 0,
-                'msg' => '服务铃已呼叫，请稍等',
-                'data' => [
-                    'device_name' => $device->device_name,
-                    'retry_after' => $lockTtl, // 告知前端多久后可以再次请求
-                ]
+            return jsonSuccessResponse('服务铃已呼叫，请稍等', [
+                'device_name' => $device->device_name,
+                'retry_after' => $lockTtl, // 告知前端多久后可以再次请求
             ]);
 
         } catch (Exception $e) {
@@ -180,11 +156,7 @@ class DeviceServiceController
                 'request' => $request->all(),
             ]);
 
-            return json([
-                'code' => 500,
-                'msg' => '服务器错误',
-                'data' => null
-            ]);
+            return jsonFailResponse('服务器错误');
         }
     }
 }
