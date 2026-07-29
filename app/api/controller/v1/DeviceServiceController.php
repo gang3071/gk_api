@@ -95,15 +95,11 @@ class DeviceServiceController
                 // 格式：private-store-{department_id}-{user_id}
                 $channelName = "private-store-{$storeAdmin->department_id}-{$storeAdmin->id}";
 
-                // 推送数据
+                // 推送数据（只保留播报必要的字段）
                 $pushData = [
                     'type' => 'service_call',
-                    'device_id' => $device->id,
                     'device_name' => $device->device_name,
-                    'device_no' => $device->device_no,
                     'voice_url' => $device->voice_url,
-                    'message' => "{$device->device_name}呼叫服务",
-                    'timestamp' => time(),
                 ];
 
                 // 使用项目标准方法发送 WebSocket 推送
