@@ -92,6 +92,17 @@ class DeviceServiceController
                     throw new Exception('店家管理员不存在');
                 }
 
+                // 数据一致性校验：设备和店家管理员必须属于同一部门
+                if ($device->department_id != $storeAdmin->department_id) {
+                    Log::error('设备和店家管理员部门不一致', [
+                        'device_id' => $device->id,
+                        'device_department_id' => $device->department_id,
+                        'store_admin_id' => $storeAdmin->id,
+                        'store_admin_department_id' => $storeAdmin->department_id,
+                    ]);
+                    throw new Exception('设备和店家管理员部门不一致，数据异常');
+                }
+
                 // WebSocket 频道名称
                 // 格式：private-store-{department_id}-{user_id}
                 $channelName = "private-store-{$storeAdmin->department_id}-{$storeAdmin->id}";
@@ -111,8 +122,9 @@ class DeviceServiceController
                 }
 
                 // 保存消息到数据库（用于消息列表展示）
+                // 注意：使用设备的 department_id，确保数据一致性
                 Notice::create([
-                    'department_id' => $storeAdmin->department_id,
+                    'department_id' => $device->department_id,  // 使用设备的部门ID（与店家管理员必须一致）
                     'source_id' => $device->id, // 设备ID
                     'type' => Notice::TYPE_SERVICE_CALL,
                     'receiver' => Notice::RECEIVER_DEPARTMENT, // 子站（店家后台）
