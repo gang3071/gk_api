@@ -59,12 +59,12 @@ class DeviceServiceController
                 ->first();
 
             if (!$device) {
-                return jsonFailResponse('设备不存在或已禁用', [], 404);
+                return jsonFailResponse(trans('device_not_found', [], 'message'));
             }
 
             // 检查设备是否绑定店家
             if (empty($device->store_admin_id)) {
-                return jsonFailResponse('设备未绑定店家，无法呼叫服务', [], 403);
+                return jsonFailResponse(trans('device_not_bind_store', [], 'message'));
             }
 
             // ========== 3. 防重复检查（Redis 锁） ==========
@@ -78,9 +78,9 @@ class DeviceServiceController
                 // 获取锁失败 = 5 秒内已经请求过
                 $remainingTtl = Cache::ttl($lockKey);
 
-                return jsonFailResponse('已呼叫服务员，请耐心等待', [
+                return jsonFailResponse(trans('service_call_waiting', [], 'message'), [
                     'retry_after' => $remainingTtl
-                ], 429);
+                ]);
             }
 
             // ========== 4. 推送消息到店家后台 ==========
@@ -140,11 +140,11 @@ class DeviceServiceController
                     'trace' => $e->getTraceAsString(),
                 ]);
 
-                return jsonFailResponse('服务铃推送失败，请稍后重试');
+                return jsonFailResponse(trans('service_call_push_failed', [], 'message'));
             }
 
             // ========== 5. 返回成功响应 ==========
-            return jsonSuccessResponse('服务铃已呼叫，请稍等', [
+            return jsonSuccessResponse(trans('service_call_success', [], 'message'), [
                 'device_name' => $device->device_name,
                 'retry_after' => $lockTtl, // 告知前端多久后可以再次请求
             ]);

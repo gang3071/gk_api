@@ -152,6 +152,13 @@ return [
         'machine_type_not_found' => 'Machine type does not exist',
         'gift_down_must_turn' => 'Players can participate in the bonus points for opening points, please place your points first (transfer to ALL)',
     ],
+
+    // Device Service Bell
+    'device_not_found' => 'Device not found or disabled',
+    'device_not_bind_store' => 'Device not bound to store, cannot call service',
+    'service_call_waiting' => 'Service has been called, please wait patiently',
+    'service_call_success' => 'Service bell has been called, please wait',
+    'service_call_push_failed' => 'Service bell push failed, please try again later',
     'media' => [
         'media_stream_url_error' => 'Media stream format error!',
         'media_stream_pull_error' => 'Video stream publishing failed!',
@@ -503,7 +510,6 @@ return [
     'custom_amount' => 'Custom Amount',
     'game_service_unavailable' => 'Game service is temporarily unavailable, please try again later',
     'device_store_mismatch' => 'Current account does not belong to the same store',
-    'device_not_found' => 'Device not found',
     'device_disabled' => 'Device is disabled',
     'device_cross_store_not_allowed' => 'This device does not allow cross-store login',
     'device_cpu_id_required' => 'Device identifier is required',
