@@ -10,7 +10,6 @@ use support\Cache;
 use support\Log;
 use support\Request;
 use support\Response;
-use Webman\Push\Api\Client;
 use yzh52521\WebmanLock\Locker;
 
 /**
@@ -107,17 +106,12 @@ class DeviceServiceController
                     'timestamp' => time(),
                 ];
 
-                // 获取 Push 配置（使用配置文件）
-                $pushConfig = config('plugin.webman.push.app');
-                $appKey = $pushConfig['app_key'] ?? '';
-                $appSecret = $pushConfig['app_secret'] ?? '';
+                // 使用项目标准方法发送 WebSocket 推送
+                $result = sendSocketMessage($channelName, $pushData, 'service_bell');
 
-                if (empty($appKey) || empty($appSecret)) {
-                    throw new Exception('Push 服务未配置');
+                if ($result === false) {
+                    throw new Exception('WebSocket 推送失败');
                 }
-
-                // 发送 WebSocket 推送
-                Client::publish($channelName, $pushData, $appKey, $appSecret);
 
                 // 记录日志
                 Log::info('设备服务铃请求成功', [
