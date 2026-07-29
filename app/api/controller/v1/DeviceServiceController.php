@@ -71,15 +71,15 @@ class DeviceServiceController
             $lockKey = "service:call:device:{$device->id}";
             $lockTtl = 5; // 5 秒内只能请求一次
 
-            // 尝试获取锁（非阻塞）
-            $lock = Locker::lock($lockKey, $lockTtl, false);
+            // 尝试获取锁（阻塞模式）
+            $lock = Locker::lock($lockKey, $lockTtl, true);
 
-            if (!$lock) {
+            if (!$lock->acquire()) {
                 // 获取锁失败 = 5 秒内已经请求过
                 $remainingTtl = Cache::ttl($lockKey);
 
                 return jsonFailResponse(trans('service_call_waiting', [], 'message'), [
-                    'retry_after' => $remainingTtl
+                    'retry_after' => $remainingTtl > 0 ? $remainingTtl : 0
                 ]);
             }
 
@@ -90,17 +90,6 @@ class DeviceServiceController
 
                 if (!$storeAdmin) {
                     throw new Exception('店家管理员不存在');
-                }
-
-                // 数据一致性校验：设备和店家管理员必须属于同一部门
-                if ($device->department_id != $storeAdmin->department_id) {
-                    Log::error('设备和店家管理员部门不一致', [
-                        'device_id' => $device->id,
-                        'device_department_id' => $device->department_id,
-                        'store_admin_id' => $storeAdmin->id,
-                        'store_admin_department_id' => $storeAdmin->department_id,
-                    ]);
-                    throw new Exception('设备和店家管理员部门不一致，数据异常');
                 }
 
                 // WebSocket 频道名称
@@ -147,7 +136,7 @@ class DeviceServiceController
 
             } catch (Exception $e) {
                 // 推送失败，释放锁（允许重试）
-                Locker::unlock($lock);
+                $lock->release();
 
                 Log::error('设备服务铃推送失败', [
                     'device_id' => $device->id,
