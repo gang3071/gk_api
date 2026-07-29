@@ -110,18 +110,6 @@ class DeviceServiceController
                     throw new Exception('WebSocket 推送失败');
                 }
 
-                // 保存消息到数据库（用于消息列表展示）
-                // 注意：使用设备的 department_id，确保数据一致性
-                Notice::create([
-                    'department_id' => $device->department_id,  // 使用设备的部门ID（与店家管理员必须一致）
-                    'source_id' => $device->id, // 设备ID
-                    'type' => Notice::TYPE_SERVICE_CALL,
-                    'receiver' => Notice::RECEIVER_DEPARTMENT, // 子站（店家后台）
-                    'admin_id' => $storeAdmin->id,
-                    'admin_name' => $storeAdmin->nickname,
-                    'status' => 0, // 未读
-                ]);
-
                 // 记录日志
                 Log::info('设备服务铃请求成功', [
                     'device_id' => $device->id,
@@ -147,7 +135,26 @@ class DeviceServiceController
                 return jsonFailResponse(trans('service_call_push_failed', [], 'message'));
             }
 
-            // ========== 5. 返回成功响应 ==========
+            // ========== 5. 保存消息记录到数据库（独立处理，不影响推送结果） ==========
+            try {
+                $notice = new Notice();
+                $notice->department_id = $device->department_id;  // 使用设备的部门ID
+                $notice->source_id = $device->id;                 // 设备ID
+                $notice->type = Notice::TYPE_SERVICE_CALL;        // 类型：服务铃
+                $notice->receiver = Notice::RECEIVER_DEPARTMENT;  // 接收方：子站（店家后台）
+                $notice->admin_id = $storeAdmin->id;              // 店家管理员ID
+                $notice->admin_name = $storeAdmin->nickname;      // 管理员昵称
+                $notice->status = 0;                               // 未读
+                $notice->save();
+            } catch (Exception $e) {
+                // Notice 保存失败不影响主流程，只记录日志
+                Log::warning('设备服务铃消息记录保存失败', [
+                    'device_id' => $device->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // ========== 6. 返回成功响应 ==========
             return jsonSuccessResponse(trans('service_call_success', [], 'message'), [
                 'device_name' => $device->device_name,
                 'retry_after' => $lockTtl, // 告知前端多久后可以再次请求
