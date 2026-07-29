@@ -152,6 +152,13 @@ return [
         'machine_type_not_found' => '機器型別不存在',
         'gift_down_must_turn' => '玩家參加開分贈點，下分請先（下轉ALL)',
     ],
+
+    // 设备服务铃
+    'device_not_found' => '設備不存在或已禁用',
+    'device_not_bind_store' => '設備未綁定店家，無法呼叫服務',
+    'service_call_waiting' => '已呼叫服務員，請耐心等待',
+    'service_call_success' => '服務鈴已呼叫，請稍等',
+    'service_call_push_failed' => '服務鈴推送失敗，請稍後重試',
     'media' => [
         'media_stream_url_error' => '媒體串流格式錯誤!',
         'media_stream_pull_error' => '視訊串流發布失敗!',
@@ -509,7 +516,6 @@ return [
     'custom_amount' => '自訂金額',
     'game_service_unavailable' => '遊戲服務暫時不可用，請稍後重試',
     'device_store_mismatch' => '當前帳號不屬於同一門市',
-    'device_not_found' => '設備不存在',
     'device_disabled' => '設備已禁用',
     'device_cross_store_not_allowed' => '該設備不允許跨店登錄',
     'device_cpu_id_required' => '缺少設備標識',

@@ -152,6 +152,13 @@ return [
         'machine_type_not_found' => 'マシンタイプが存在しません',
         'gift_down_must_turn' => 'プレイヤーが参加してポイントを与え、ポイントを下げてください（ALLを下げてください）',
     ],
+
+    // デバイスサービスベル
+    'device_not_found' => 'デバイスが見つからないか無効になっています',
+    'device_not_bind_store' => 'デバイスがストアにバインドされていないため、サービスを呼び出せません',
+    'service_call_waiting' => 'サービスが呼び出されました。お待ちください',
+    'service_call_success' => 'サービスベルが呼び出されました。お待ちください',
+    'service_call_push_failed' => 'サービスベルのプッシュに失敗しました。後でもう一度お試しください',
     'media' => [
         'media_stream_url_error' => 'メディア ストリーム形式エラー!',
         'media_stream_pull_error' => 'ビデオ ストリームの公開に失敗しました!',
@@ -500,7 +507,6 @@ return [
     'custom_amount' => 'カスタム金額',
     'game_service_unavailable' => 'ゲームサービスは一時的に利用できません。後でもう一度お試しください',
     'device_store_mismatch' => '現在のアカウントは同じ店舗に属していません',
-    'device_not_found' => 'デバイスが見つかりません',
     'device_disabled' => 'デバイスが無効です',
     'device_cross_store_not_allowed' => 'このデバイスは跨店舗ログインを許可していません',
     'device_cpu_id_required' => 'デバイス識別子が必要です',

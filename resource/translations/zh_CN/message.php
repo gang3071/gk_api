@@ -152,6 +152,13 @@ return [
         'machine_type_not_found' => '机台类型不存在',
         'gift_down_must_turn' => '玩家参加开分赠点, 下分请先(下转ALL)',
     ],
+
+    // 设备服务铃
+    'device_not_found' => '设备不存在或已禁用',
+    'device_not_bind_store' => '设备未绑定店家，无法呼叫服务',
+    'service_call_waiting' => '已呼叫服务员，请耐心等待',
+    'service_call_success' => '服务铃已呼叫，请稍等',
+    'service_call_push_failed' => '服务铃推送失败，请稍后重试',
     'media' => [
         'media_stream_url_error' => '媒体流格式错误!',
         'media_stream_pull_error' => '视频流发布失败!',
@@ -519,7 +526,6 @@ return [
     'custom_amount' => '自定义金额',
     'game_service_unavailable' => '游戏服务暂时不可用，请稍后重试',
     'device_store_mismatch' => '当前账号不属于同一门市',
-    'device_not_found' => '设备不存在',
     'device_disabled' => '设备已禁用',
     'device_cross_store_not_allowed' => '该设备不允许跨店登录',
     'device_cpu_id_required' => '缺少设备标识',

@@ -44,6 +44,8 @@ Route::group('/api', function () {
         Route::post('/machine-list', [\app\api\controller\v1\MachineController::class, 'machineList']);
         // 机台详情
         Route::post('/machine-info', [\app\api\controller\v1\MachineController::class, 'machineInfo']);
+        // 设备呼叫服务铃（H5 玩家端）
+        Route::post('/call-service', [\app\api\controller\v1\DeviceServiceController::class, 'callService']);
         // 钢珠操作
         Route::post('/jackpot-action', [\app\api\controller\v1\MachineController::class, 'jackPotAction']);
         // 斯洛机台操作
