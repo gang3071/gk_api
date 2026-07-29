@@ -4,6 +4,7 @@ namespace app\api\controller\v1;
 
 use app\model\AdminDevice;
 use app\model\AdminUser;
+use app\model\Notice;
 use Exception;
 use Respect\Validation\Validator as v;
 use support\Cache;
@@ -108,6 +109,17 @@ class DeviceServiceController
                 if ($result === false) {
                     throw new Exception('WebSocket 推送失败');
                 }
+
+                // 保存消息到数据库（用于消息列表展示）
+                Notice::create([
+                    'department_id' => $storeAdmin->department_id,
+                    'source_id' => $device->id, // 设备ID
+                    'type' => Notice::TYPE_SERVICE_CALL,
+                    'receiver' => Notice::RECEIVER_DEPARTMENT, // 子站（店家后台）
+                    'admin_id' => $storeAdmin->id,
+                    'admin_name' => $storeAdmin->nickname,
+                    'status' => 0, // 未读
+                ]);
 
                 // 记录日志
                 Log::info('设备服务铃请求成功', [

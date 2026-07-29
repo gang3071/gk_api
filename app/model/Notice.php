@@ -61,6 +61,7 @@ class Notice extends Model
     const TYPE_MACHINE_CRASH = 21; // 设备爆机通知
     const TYPE_VIP_LEVEL_CHANGE_UPGRADE = 22; // VIP等级升级通知
     const TYPE_VIP_BIRTHDAY_BONUS = 24; // VIP生日礼金通知
+    const TYPE_SERVICE_CALL = 25; // 设备服务铃呼叫
 
     const RECEIVER_PLAYER = 1; // 玩家
     const RECEIVER_ADMIN = 2; // 总站
