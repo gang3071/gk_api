@@ -107,9 +107,10 @@ class DeviceServiceController
                     'timestamp' => time(),
                 ];
 
-                // 获取 Push 配置
-                $appKey = env('PUSH_APP_KEY');
-                $appSecret = env('PUSH_APP_SECRET');
+                // 获取 Push 配置（使用配置文件）
+                $pushConfig = config('plugin.webman.push.app');
+                $appKey = $pushConfig['app_key'] ?? '';
+                $appSecret = $pushConfig['app_secret'] ?? '';
 
                 if (empty($appKey) || empty($appSecret)) {
                     throw new Exception('Push 服务未配置');
