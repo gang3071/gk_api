@@ -151,7 +151,7 @@ class DeviceServiceController
                 'request' => $request->all(),
             ]);
 
-            return jsonFailResponse('服务器错误');
+            return jsonFailResponse(trans('system_error', [], 'message'));
         }
     }
 }
