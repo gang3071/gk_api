@@ -632,7 +632,7 @@ class MachineController
             }
             //尚未綁定位子僅能操作上分功能
             if ($machine->gaming_user_id == 0 && !in_array($action,
-                    ['plc_open_1', 'plc_open_10', 'plc_open_times', 'reward_switch', 'plc_push_5hz', 'plc_push_stop'])) {
+                    ['plc_open_1', 'plc_open_10', 'plc_open_times', 'reward_switch'])) {
                 return jsonFailResponse(trans('no_open_point', [], 'message'));
             }
             /** @var Player $gaming_player */
