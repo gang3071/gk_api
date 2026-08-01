@@ -11,12 +11,15 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $activity_id
  * @property string $activity_name
  * @property int $player_id
+ * @property int $department_id
+ * @property int $ticket_id
  * @property string $ticket_no
- * @property int $prize_level
- * @property string $prize_level_name
+ * @property int $prize_level_id 奖品等级ID
+ * @property string $prize_type
+ * @property string $prize_name
  * @property float $prize_amount
  * @property int $status 状态
- * @property string|null $granted_at 发放时间
+ * @property string|null $remark
  * @property string $created_at
  * @property string $updated_at
  */
