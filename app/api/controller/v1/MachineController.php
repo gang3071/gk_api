@@ -2252,6 +2252,7 @@ class MachineController
             'player_id' => $player->id,
             'machine_id' => $machine->id,
             'action' => $action,
+            'lang' => $lang
         ]);
 
         // 调用 gk_work 完整业务逻辑
