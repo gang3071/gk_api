@@ -36,18 +36,18 @@ class RenameStoreDeviceMenuToPlayer extends AbstractMigration
         $childMenuId = $childMenu['id'];
         $parentMenuId = $childMenu['pid'];
 
-        // 第二步：更新父级菜单名称为多语言翻译键
+        // 第二步：更新父级菜单名称为翻译键（不带 menu. 前缀）
         $this->execute("
             UPDATE `admin_menus`
-            SET `name` = 'menu.store_player',
+            SET `name` = 'store_player',
                 `updated_at` = NOW()
             WHERE `id` = {$parentMenuId}
         ");
 
-        // 第三步：更新子菜单名称为多语言翻译键
+        // 第三步：更新子菜单名称为翻译键（不带 menu. 前缀）
         $this->execute("
             UPDATE `admin_menus`
-            SET `name` = 'menu.store_player_list',
+            SET `name` = 'store_player_list',
                 `updated_at` = NOW()
             WHERE `id` = {$childMenuId}
         ");
@@ -75,18 +75,18 @@ class RenameStoreDeviceMenuToPlayer extends AbstractMigration
         $childMenuId = $childMenu['id'];
         $parentMenuId = $childMenu['pid'];
 
-        // 恢复父级菜单名称
+        // 恢复父级菜单名称（假设之前是 store_device）
         $this->execute("
             UPDATE `admin_menus`
-            SET `name` = 'menu.store_device',
+            SET `name` = 'store_device',
                 `updated_at` = NOW()
             WHERE `id` = {$parentMenuId}
         ");
 
-        // 恢复子菜单名称
+        // 恢复子菜单名称（假设之前是 store_device_list）
         $this->execute("
             UPDATE `admin_menus`
-            SET `name` = 'menu.store_device_list',
+            SET `name` = 'store_device_list',
                 `updated_at` = NOW()
             WHERE `id` = {$childMenuId}
         ");
