@@ -13,20 +13,12 @@ use Phinx\Migration\AbstractMigration;
 class ModifyLotteryPoolRatioPrecision extends AbstractMigration
 {
     /**
-     * 获取表名（带前缀）
-     */
-    private function getTable(string $tableName): string
-    {
-        return 'yjb_' . $tableName;
-    }
-
-    /**
      * Change Method.
      */
     public function change()
     {
         // 修改 lottery 表（实体机台彩金）
-        $lotteryTable = $this->table($this->getTable('lottery'));
+        $lotteryTable = $this->table('lottery');
 
         $lotteryTable->changeColumn('pool_ratio', 'decimal', [
                 'precision' => 10,
@@ -38,7 +30,7 @@ class ModifyLotteryPoolRatioPrecision extends AbstractMigration
             ->update();
 
         // 修改 game_lottery 表（电子游戏彩金）- 暂不修改，按照用户要求只改实体机台
-        // $gameLotteryTable = $this->table($this->getTable('game_lottery'));
+        // $gameLotteryTable = $this->table('game_lottery');
         // $gameLotteryTable->changeColumn('pool_ratio', 'decimal', [
         //         'precision' => 10,
         //         'scale' => 4,
