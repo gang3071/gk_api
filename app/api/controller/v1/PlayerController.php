@@ -4224,6 +4224,21 @@ class PlayerController
      */
     private static function getWashPointConfig(int $storeAdminId): float
     {
+        // 优先从洗分配置表获取
+        $washSetting = \app\model\WashPointSetting::query()
+            ->where('admin_user_id', $storeAdminId)
+            ->first();
+
+        if ($washSetting) {
+            $effectiveWashPoint = $washSetting->getEffectiveWashPoint();
+            Log::debug('PlayerController: Using wash point config from setting table', [
+                'store_admin_id' => $storeAdminId,
+                'wash_point' => $effectiveWashPoint,
+            ]);
+            return $effectiveWashPoint;
+        }
+
+        // 兜底：从admin_users表获取旧值
         $config = AdminUser::query()
             ->where('id', $storeAdminId)
             ->value('wash_point_config');
@@ -4237,6 +4252,11 @@ class PlayerController
             ]);
             return 100.00;
         }
+
+        Log::debug('PlayerController: Using wash point config from admin_users (fallback)', [
+            'store_admin_id' => $storeAdminId,
+            'wash_point' => $config,
+        ]);
 
         return floatval($config);
     }
