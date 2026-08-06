@@ -74,6 +74,8 @@ Route::group('/api', function () {
         Route::post('/present-not-password', [\app\api\controller\v1\PlayerController::class, 'presentNoPassword']);
         // 竖版玩家洗分
         Route::post('/present-auto', [\app\api\controller\v1\PlayerController::class, 'presentAuto']);
+        // 获取洗分配置
+        Route::post('/get-wash-point-setting', [\app\api\controller\v1\PlayerController::class, 'getWashPointSetting']);
         // 玩家账单信息
         Route::post('/player-billing-record', [\app\api\controller\v1\PlayerController::class, 'playerBillingRecord']);
         // Q-talk充值回调
