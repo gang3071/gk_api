@@ -551,6 +551,10 @@ return [
     'ticket_open_score_success' => '上分成功',
     'ticket_open_score_failed' => '上分失败',
     'ticket_scan_success' => '扫码开分成功',
+    'ticket_amount_must_positive' => '出票金额必须大于0',
+    'ticket_amount_less_than_base' => '出票金额 :amount 不能小于洗分基数 :base',
+    'ticket_amount_not_multiple' => '出票金额 :amount 必须是洗分基数 :base 的整数倍',
+    'ticket_balance_insufficient' => '余额不足，当前余额：:current，需要：:required',
 
     // 机台指令相关
     'machine_command_failed' => '机台指令发送失败',

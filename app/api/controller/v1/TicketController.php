@@ -57,7 +57,7 @@ class TicketController
 
             // 金额必须大于0
             if ($requestedAmount <= 0) {
-                return jsonFailResponse('出票金额必须大于0');
+                return jsonFailResponse(trans('ticket_amount_must_positive', [], 'message'));
             }
         }
 
@@ -105,18 +105,33 @@ class TicketController
 
         // 🆕 如果客户端指定了金额，验证金额是否符合洗分基数
         if ($requestedAmount !== null) {
+            // 检查金额是否小于洗分基数
+            if ($requestedAmount < $washPointConfig) {
+                $this->releaseIdempotent($requestId);
+                return jsonFailResponse(trans('ticket_amount_less_than_base', [
+                    'amount' => number_format($requestedAmount, 2),
+                    'base' => number_format($washPointConfig, 2)
+                ], 'message'));
+            }
+
             // 检查金额是否为洗分基数的整数倍
             $remainder = fmod($requestedAmount, $washPointConfig);
             if (abs($remainder) > 0.01) { // 允许0.01的浮点误差
                 $this->releaseIdempotent($requestId);
-                return jsonFailResponse("出票金额必须是洗分基数 {$washPointConfig} 的整数倍，当前金额：{$requestedAmount}");
+                return jsonFailResponse(trans('ticket_amount_not_multiple', [
+                    'amount' => number_format($requestedAmount, 2),
+                    'base' => number_format($washPointConfig, 2)
+                ], 'message'));
             }
 
             // 检查余额是否足够
             $currentBalance = WalletService::getBalance($player->id);
             if ($currentBalance < $requestedAmount) {
                 $this->releaseIdempotent($requestId);
-                return jsonFailResponse("余额不足，当前余额：" . number_format($currentBalance, 2) . "，需要：" . number_format($requestedAmount, 2));
+                return jsonFailResponse(trans('ticket_balance_insufficient', [
+                    'current' => number_format($currentBalance, 2),
+                    'required' => number_format($requestedAmount, 2)
+                ], 'message'));
             }
         }
 
