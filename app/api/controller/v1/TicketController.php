@@ -50,6 +50,17 @@ class TicketController
             return jsonFailResponse(trans('player_withdraw_closed', [], 'message'));
         }
 
+        // 🆕 获取客户端传入的出票金额
+        $requestedAmount = $request->post('amount');
+        if ($requestedAmount !== null && $requestedAmount !== '') {
+            $requestedAmount = floatval($requestedAmount);
+
+            // 金额必须大于0
+            if ($requestedAmount <= 0) {
+                return jsonFailResponse('出票金额必须大于0');
+            }
+        }
+
         // ==================== 阶段2：幂等性处理 ====================
         // 幂等性检查
         $requestId = $request->post('request_id');
@@ -89,18 +100,41 @@ class TicketController
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
 
-        // 🔥 原子性洗分操作（完全避免 TOCTOU 问题）
-        // 获取后台配置的洗分数值
+        // 🔥 获取后台配置的洗分数值
         $washPointConfig = self::getWashPointConfig($player->store_admin_id);
+
+        // 🆕 如果客户端指定了金额，验证金额是否符合洗分基数
+        if ($requestedAmount !== null) {
+            // 检查金额是否为洗分基数的整数倍
+            $remainder = fmod($requestedAmount, $washPointConfig);
+            if (abs($remainder) > 0.01) { // 允许0.01的浮点误差
+                $this->releaseIdempotent($requestId);
+                return jsonFailResponse("出票金额必须是洗分基数 {$washPointConfig} 的整数倍，当前金额：{$requestedAmount}");
+            }
+
+            // 检查余额是否足够
+            $currentBalance = WalletService::getBalance($player->id);
+            if ($currentBalance < $requestedAmount) {
+                $this->releaseIdempotent($requestId);
+                return jsonFailResponse("余额不足，当前余额：" . number_format($currentBalance, 2) . "，需要：" . number_format($requestedAmount, 2));
+            }
+        }
 
         // 在 Redis 中原子性完成：读取余额 → 根据配置计算洗分金额 → 扣款
         try {
-            $washResult = WalletService::atomicWash($player->id, $washPointConfig);
+            if ($requestedAmount !== null) {
+                // 使用指定金额扣款
+                $washResult = WalletService::atomicWashWithAmount($player->id, $requestedAmount, $washPointConfig);
+            } else {
+                // 使用自动计算（全部洗分）
+                $washResult = WalletService::atomicWash($player->id, $washPointConfig);
+            }
         } catch (\Throwable $e) {
             // Lua 脚本执行失败 - 释放占位
             $this->releaseIdempotent($requestId);
             Log::error('TicketController: Wash operation failed', [
                 'player_id' => $player->id,
+                'requested_amount' => $requestedAmount ?? 'auto',
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
