@@ -1,14 +1,13 @@
 <?php
 
-use think\migration\Migrator;
-use think\migration\db\Column;
+use Phinx\Migration\AbstractMigration;
 
-class CreateWashPointSettingTable extends Migrator
+class CreateWashPointSettingTable extends AbstractMigration
 {
     /**
      * 创建洗分配置表
      */
-    public function change()
+    public function change(): void
     {
         $table = $this->table('wash_point_setting', [
             'engine' => 'InnoDB',

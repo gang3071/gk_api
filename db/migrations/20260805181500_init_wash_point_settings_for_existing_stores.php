@@ -1,14 +1,13 @@
 <?php
 
-use think\migration\Migrator;
-use think\migration\db\Column;
+use Phinx\Migration\AbstractMigration;
 
-class InitWashPointSettingsForExistingStores extends Migrator
+class InitWashPointSettingsForExistingStores extends AbstractMigration
 {
     /**
      * 为存量店家初始化洗分配置
      */
-    public function up()
+    public function up(): void
     {
         // 获取所有店家类型的admin_user（type=4）
         $stores = $this->fetchAll("
@@ -19,7 +18,7 @@ class InitWashPointSettingsForExistingStores extends Migrator
         ");
 
         if (empty($stores)) {
-            echo "没有找到需要迁移的店家\n";
+            $this->output->writeln("没有找到需要迁移的店家");
             return;
         }
 
@@ -39,7 +38,7 @@ class InitWashPointSettingsForExistingStores extends Migrator
 
             if ($exists) {
                 $skipped++;
-                echo "跳过店家ID {$storeId}：已有洗分配置\n";
+                $this->output->writeln("跳过店家ID {$storeId}：已有洗分配置");
                 continue;
             }
 
@@ -58,22 +57,22 @@ class InitWashPointSettingsForExistingStores extends Migrator
             ");
 
             $migrated++;
-            echo "为店家ID {$storeId} 创建洗分配置（默认基数: {$defaultWashPoint}）\n";
+            $this->output->writeln("为店家ID {$storeId} 创建洗分配置（默认基数: {$defaultWashPoint}）");
         }
 
-        echo "\n迁移完成！\n";
-        echo "成功: {$migrated} 个店家\n";
-        echo "跳过: {$skipped} 个店家（已有配置）\n";
+        $this->output->writeln("");
+        $this->output->writeln("迁移完成！");
+        $this->output->writeln("成功: {$migrated} 个店家");
+        $this->output->writeln("跳过: {$skipped} 个店家（已有配置）");
     }
 
     /**
      * 回滚：删除所有自动创建的洗分配置
      */
-    public function down()
+    public function down(): void
     {
-        // 注意：此操作会删除所有洗分配置，请谨慎使用！
-        echo "警告：此操作将删除所有洗分配置\n";
-        echo "回滚已取消，请手动处理\n";
+        $this->output->writeln("警告：此操作将删除所有洗分配置");
+        $this->output->writeln("回滚已取消，请手动处理");
 
         // 如果确实需要回滚，取消下面的注释
         // $this->execute("TRUNCATE TABLE wash_point_setting");
