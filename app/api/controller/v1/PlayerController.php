@@ -4257,7 +4257,7 @@ class PlayerController
      */
     private static function getWashPointConfig(int $storeAdminId): float
     {
-        // 优先从洗分配置表获取
+        // 从洗分配置表获取
         $washSetting = \app\model\WashPointSetting::query()
             ->where('admin_user_id', $storeAdminId)
             ->first();
@@ -4271,27 +4271,12 @@ class PlayerController
             return $effectiveWashPoint;
         }
 
-        // 兜底：从admin_users表获取旧值
-        $config = AdminUser::query()
-            ->where('id', $storeAdminId)
-            ->value('wash_point_config');
-
-        // 配置为 null、0 或 0.00 时使用默认值100
-        if (empty($config) || $config <= 0) {
-            Log::debug('PlayerController: Using default wash point config', [
-                'store_admin_id' => $storeAdminId,
-                'original_config' => $config,
-                'default_value' => 100.00,
-            ]);
-            return 100.00;
-        }
-
-        Log::debug('PlayerController: Using wash point config from admin_users (fallback)', [
+        // 未配置时使用默认值100
+        Log::debug('PlayerController: Using default wash point config', [
             'store_admin_id' => $storeAdminId,
-            'wash_point' => $config,
+            'default_value' => 100.00,
         ]);
-
-        return floatval($config);
+        return 100.00;
     }
 
     /**
