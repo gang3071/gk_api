@@ -533,6 +533,7 @@ return [
     'ticket_open_score_failed' => 'スコア追加失敗',
     'ticket_scan_success' => 'QRコードスキャン成功',
     'ticket_amount_must_positive' => '出票金額は0より大きい必要があります',
+    'ticket_amount_must_be_integer' => '出票金額は整数である必要があります（小数を含まない）',
     'ticket_amount_less_than_base' => '出票金額 :amount はウォッシュポイント基数 :base より小さくできません',
     'ticket_amount_not_multiple' => '出票金額 :amount はウォッシュポイント基数 :base の整数倍である必要があります',
     'ticket_balance_insufficient' => '残高不足、現在の残高：:current、必要：:required',

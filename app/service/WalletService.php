@@ -864,28 +864,42 @@ local key = KEYS[1]
 local washPointConfigInCents = math.floor(tonumber(ARGV[1]) + 0.5)  -- 洗分配置（分，整数）
 local ttl = tonumber(ARGV[2]) or 3600
 
--- 防御性检查：确保配置值大于0
-if washPointConfigInCents <= 0 then
-    washPointConfigInCents = 10000  -- 默认 100 元
-end
-
 -- Redis 存储的是"分"（整数）
 local currentBalanceInCents = tonumber(redis.call('GET', key)) or 0
 
--- 🎯 根据配置计算可洗分金额：取配置的整倍数（整数运算）
--- 例如：配置 60000 分（600元），余额 160000 分（1600元） → washAmount = 120000 分（1200元）
--- 例如：配置 50000 分（500元），余额 160000 分（1600元） → washAmount = 150000 分（1500元）
-local washAmountInCents = math.floor(currentBalanceInCents / washPointConfigInCents) * washPointConfigInCents
+local washAmountInCents = 0
 
--- 检查是否达到最小洗分金额（至少要有1倍配置金额）
-if washAmountInCents < washPointConfigInCents then
-    return cjson.encode({
-        ok = 0,
-        error = "insufficient_wash_amount",
-        balance = currentBalanceInCents,
-        wash_amount = 0,
-        min_required = washPointConfigInCents
-    })
+-- 🎯 特殊处理：配置为 0 时，只洗整数部分（小数部分保留）
+if washPointConfigInCents == 0 then
+    -- 例如：余额 12345 分（123.45元） → 洗 12300 分（123元），保留 45 分（0.45元）
+    washAmountInCents = math.floor(currentBalanceInCents / 100) * 100
+
+    -- 至少要有 1 元才能洗分
+    if washAmountInCents < 100 then
+        return cjson.encode({
+            ok = 0,
+            error = "insufficient_wash_amount",
+            balance = currentBalanceInCents,
+            wash_amount = 0,
+            min_required = 100
+        })
+    end
+else
+    -- 🎯 正常配置：取配置的整倍数（整数运算）
+    -- 例如：配置 10000 分（100元），余额 16000 分（160元） → washAmount = 10000 分（100元）
+    -- 例如：配置 50000 分（500元），余额 160000 分（1600元） → washAmount = 150000 分（1500元）
+    washAmountInCents = math.floor(currentBalanceInCents / washPointConfigInCents) * washPointConfigInCents
+
+    -- 检查是否达到最小洗分金额（至少要有1倍配置金额）
+    if washAmountInCents < washPointConfigInCents then
+        return cjson.encode({
+            ok = 0,
+            error = "insufficient_wash_amount",
+            balance = currentBalanceInCents,
+            wash_amount = 0,
+            min_required = washPointConfigInCents
+        })
+    end
 end
 
 -- 检查余额是否足够（整数比较，无需容差）
@@ -1278,11 +1292,6 @@ if washAmountInCents <= 0 then
     })
 end
 
--- 防御性检查：确保配置值大于0
-if washPointConfigInCents <= 0 then
-    washPointConfigInCents = 10000  -- 默认 100 元
-end
-
 -- Redis 存储的是"分"（整数）
 local currentBalanceInCents = tonumber(redis.call('GET', key)) or 0
 
@@ -1296,17 +1305,30 @@ if currentBalanceInCents < washAmountInCents then
     })
 end
 
--- 检查金额是否为洗分基数的整数倍
-local multiplier = math.floor(washAmountInCents / washPointConfigInCents + 0.5)
-local expectedAmount = multiplier * washPointConfigInCents
-if math.abs(washAmountInCents - expectedAmount) > 1 then  -- 允许1分的误差
-    return cjson.encode({
-        ok = 0,
-        error = "amount_not_multiple",
-        balance = currentBalanceInCents,
-        wash_amount = 0,
-        expected_amount = expectedAmount
-    })
+-- 🎯 特殊处理：配置为 0 时，只允许洗整数金额
+if washPointConfigInCents == 0 then
+    -- 检查金额是否为整数（100分的倍数，即整元）
+    if washAmountInCents % 100 ~= 0 then
+        return cjson.encode({
+            ok = 0,
+            error = "amount_must_be_integer",
+            balance = currentBalanceInCents,
+            wash_amount = 0
+        })
+    end
+else
+    -- 检查金额是否为洗分基数的整数倍
+    local multiplier = math.floor(washAmountInCents / washPointConfigInCents + 0.5)
+    local expectedAmount = multiplier * washPointConfigInCents
+    if math.abs(washAmountInCents - expectedAmount) > 1 then  -- 允许1分的误差
+        return cjson.encode({
+            ok = 0,
+            error = "amount_not_multiple",
+            balance = currentBalanceInCents,
+            wash_amount = 0,
+            expected_amount = expectedAmount
+        })
+    end
 end
 
 -- 扣除洗分金额（整数减法）

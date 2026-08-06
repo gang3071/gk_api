@@ -536,6 +536,7 @@ return [
     'ticket_open_score_failed' => 'Failed to add score',
     'ticket_scan_success' => 'QR code scanned and score added successfully',
     'ticket_amount_must_positive' => 'Ticket amount must be greater than 0',
+    'ticket_amount_must_be_integer' => 'Ticket amount must be an integer (no decimals)',
     'ticket_amount_less_than_base' => 'Ticket amount :amount cannot be less than wash point base :base',
     'ticket_amount_not_multiple' => 'Ticket amount :amount must be a multiple of wash point base :base',
     'ticket_balance_insufficient' => 'Insufficient balance, current: :current, required: :required',

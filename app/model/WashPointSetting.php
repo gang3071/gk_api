@@ -77,21 +77,27 @@ class WashPointSetting extends Model
     }
 
     /**
-     * 获取有效的洗分基数（优先使用配置，否则返回默认值100）
+     * 获取有效的洗分基数
+     *
+     * 特殊规则：
+     * - 配置为 0：表示只洗整数部分（小数保留）
+     * - 配置为 正数：按配置值的倍数洗分
+     * - 未配置：返回默认值 100
+     *
      * @return float
      */
     public function getEffectiveWashPoint(): float
     {
-        // 优先返回默认洗分基数
-        if ($this->default_wash_point > 0) {
-            return $this->default_wash_point;
+        // 优先返回默认洗分基数（包括显式配置的0）
+        if ($this->default_wash_point !== null) {
+            return floatval($this->default_wash_point);
         }
 
-        // 如果没有默认值，返回第一个非零的洗分选项
+        // 如果没有默认值，返回第一个设置的洗分选项（包括0）
         for ($i = 1; $i <= 6; $i++) {
             $key = 'wash_' . $i;
-            if ($this->$key > 0) {
-                return $this->$key;
+            if ($this->$key !== null && $this->$key >= 0) {
+                return floatval($this->$key);
             }
         }
 
