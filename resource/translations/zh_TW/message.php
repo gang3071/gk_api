@@ -546,6 +546,11 @@ return [
     'wallet_locked' => '錢包已鎖定，請先下分或等待餘額低於100分後解鎖',
     'ticket_locked_insufficient_balance' => '錢包鎖定中，餘額需達到5000分才能出票',
     'welfare_activity_expired' => '福利卷/體驗卷活動已結束，無法使用',
+    'ticket_amount_must_positive' => '出票金額必須大於0',
+    'ticket_amount_must_be_integer' => '出票金額必須是整數（不含小數）',
+    'ticket_amount_less_than_base' => '出票金額 :amount 不能小於洗分基數 :base',
+    'ticket_amount_not_multiple' => '出票金額 :amount 必須是洗分基數 :base 的整數倍',
+    'ticket_balance_insufficient' => '餘額不足，當前餘額：:current，需要：:required',
 
     // 機台指令相關
     'machine_command_failed' => '機台指令發送失敗',

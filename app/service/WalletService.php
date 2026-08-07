@@ -864,28 +864,42 @@ local key = KEYS[1]
 local washPointConfigInCents = math.floor(tonumber(ARGV[1]) + 0.5)  -- 洗分配置（分，整数）
 local ttl = tonumber(ARGV[2]) or 3600
 
--- 防御性检查：确保配置值大于0
-if washPointConfigInCents <= 0 then
-    washPointConfigInCents = 10000  -- 默认 100 元
-end
-
 -- Redis 存储的是"分"（整数）
 local currentBalanceInCents = tonumber(redis.call('GET', key)) or 0
 
--- 🎯 根据配置计算可洗分金额：取配置的整倍数（整数运算）
--- 例如：配置 60000 分（600元），余额 160000 分（1600元） → washAmount = 120000 分（1200元）
--- 例如：配置 50000 分（500元），余额 160000 分（1600元） → washAmount = 150000 分（1500元）
-local washAmountInCents = math.floor(currentBalanceInCents / washPointConfigInCents) * washPointConfigInCents
+local washAmountInCents = 0
 
--- 检查是否达到最小洗分金额（至少要有1倍配置金额）
-if washAmountInCents < washPointConfigInCents then
-    return cjson.encode({
-        ok = 0,
-        error = "insufficient_wash_amount",
-        balance = currentBalanceInCents,
-        wash_amount = 0,
-        min_required = washPointConfigInCents
-    })
+-- 🎯 特殊处理：配置为 0 时，只洗整数部分（小数部分保留）
+if washPointConfigInCents == 0 then
+    -- 例如：余额 12345 分（123.45元） → 洗 12300 分（123元），保留 45 分（0.45元）
+    washAmountInCents = math.floor(currentBalanceInCents / 100) * 100
+
+    -- 至少要有 1 元才能洗分
+    if washAmountInCents < 100 then
+        return cjson.encode({
+            ok = 0,
+            error = "insufficient_wash_amount",
+            balance = currentBalanceInCents,
+            wash_amount = 0,
+            min_required = 100
+        })
+    end
+else
+    -- 🎯 正常配置：取配置的整倍数（整数运算）
+    -- 例如：配置 10000 分（100元），余额 16000 分（160元） → washAmount = 10000 分（100元）
+    -- 例如：配置 50000 分（500元），余额 160000 分（1600元） → washAmount = 150000 分（1500元）
+    washAmountInCents = math.floor(currentBalanceInCents / washPointConfigInCents) * washPointConfigInCents
+
+    -- 检查是否达到最小洗分金额（至少要有1倍配置金额）
+    if washAmountInCents < washPointConfigInCents then
+        return cjson.encode({
+            ok = 0,
+            error = "insufficient_wash_amount",
+            balance = currentBalanceInCents,
+            wash_amount = 0,
+            min_required = washPointConfigInCents
+        })
+    end
 end
 
 -- 检查余额是否足够（整数比较，无需容差）
@@ -1187,6 +1201,154 @@ LUA;
             throw $e;
         }
     }
+
+    /**
+     * 原子性洗分操作（指定金额版本）
+     *
+     * @param int $playerId 玩家ID
+     * @param float $washAmount 指定的洗分金额（元）
+     * @param float $washPointConfig 洗分基数配置（用于验证）
+     * @param int $ttl 缓存过期时间（秒，0 = 永不过期）
+     * @return array 返回格式：['ok' => 1/0, 'balance' => 新余额, 'old_balance' => 旧余额, 'wash_amount' => 洗分金额, 'error' => 错误信息]
+     * @throws \Throwable
+     */
+    public static function atomicWashWithAmount(int $playerId, float $washAmount, float $washPointConfig = 100, int $ttl = 0): array
+    {
+        try {
+            $cacheKey = self::getCacheKey($playerId);
+
+            // 🔧 转换为"分"（整数）
+            $washAmountInCents = (int)round($washAmount * 100);
+            $washPointConfigInCents = (int)round($washPointConfig * 100);
+
+            // 执行 Lua 脚本，原子性完成洗分操作
+            $resultJson = Redis::eval(
+                self::LUA_ATOMIC_WASH_WITH_AMOUNT,
+                1,  // KEYS 数量
+                $cacheKey,                 // KEYS[1]
+                $washAmountInCents,        // ARGV[1] - 指定洗分金额（分，整数）
+                $washPointConfigInCents,   // ARGV[2] - 洗分配置（分，整数）
+                $ttl                       // ARGV[3]
+            );
+
+            $result = json_decode($resultJson, true);
+
+            // 🔧 转换为"元"（浮点）
+            if (isset($result['balance'])) {
+                $result['balance'] = round($result['balance'] / 100, 2);
+            }
+            if (isset($result['old_balance'])) {
+                $result['old_balance'] = round($result['old_balance'] / 100, 2);
+            }
+            if (isset($result['wash_amount'])) {
+                $result['wash_amount'] = round($result['wash_amount'] / 100, 2);
+            }
+
+            if ($result['ok'] == 1) {
+                Log::info('WalletService: Atomic wash with amount success', [
+                    'player_id' => $playerId,
+                    'requested_amount' => $washAmount,
+                    'old_balance' => $result['old_balance'],
+                    'wash_amount' => $result['wash_amount'],
+                    'new_balance' => $result['balance'],
+                ]);
+            } else {
+                Log::warning('WalletService: Atomic wash with amount failed', [
+                    'player_id' => $playerId,
+                    'requested_amount' => $washAmount,
+                    'error' => $result['error'] ?? 'unknown',
+                    'current_balance' => $result['balance'] ?? 0,
+                ]);
+            }
+
+            return $result;
+
+        } catch (\Throwable $e) {
+            Log::error('WalletService: Atomic wash with amount exception', [
+                'player_id' => $playerId,
+                'wash_amount' => $washAmount,
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Lua 脚本：原子性洗分（指定金额版本）
+     */
+    private const LUA_ATOMIC_WASH_WITH_AMOUNT = <<<'LUA'
+local key = KEYS[1]
+local washAmountInCents = math.floor(tonumber(ARGV[1]) + 0.5)      -- 指定洗分金额（分，整数）
+local washPointConfigInCents = math.floor(tonumber(ARGV[2]) + 0.5) -- 洗分配置（分，整数）
+local ttl = tonumber(ARGV[3]) or 3600
+
+-- 防御性检查：确保金额大于0
+if washAmountInCents <= 0 then
+    return cjson.encode({
+        ok = 0,
+        error = "invalid_amount",
+        balance = tonumber(redis.call('GET', key)) or 0,
+        wash_amount = 0
+    })
+end
+
+-- Redis 存储的是"分"（整数）
+local currentBalanceInCents = tonumber(redis.call('GET', key)) or 0
+
+-- 检查余额是否足够
+if currentBalanceInCents < washAmountInCents then
+    return cjson.encode({
+        ok = 0,
+        error = "insufficient_balance",
+        balance = currentBalanceInCents,
+        wash_amount = washAmountInCents
+    })
+end
+
+-- 🎯 特殊处理：配置为 0 时，只允许洗整数金额
+if washPointConfigInCents == 0 then
+    -- 检查金额是否为整数（100分的倍数，即整元）
+    if washAmountInCents % 100 ~= 0 then
+        return cjson.encode({
+            ok = 0,
+            error = "amount_must_be_integer",
+            balance = currentBalanceInCents,
+            wash_amount = 0
+        })
+    end
+else
+    -- 检查金额是否为洗分基数的整数倍
+    local multiplier = math.floor(washAmountInCents / washPointConfigInCents + 0.5)
+    local expectedAmount = multiplier * washPointConfigInCents
+    if math.abs(washAmountInCents - expectedAmount) > 1 then  -- 允许1分的误差
+        return cjson.encode({
+            ok = 0,
+            error = "amount_not_multiple",
+            balance = currentBalanceInCents,
+            wash_amount = 0,
+            expected_amount = expectedAmount
+        })
+    end
+end
+
+-- 扣除洗分金额（整数减法）
+local newBalanceInCents = currentBalanceInCents - washAmountInCents
+
+-- 防止负数余额
+if newBalanceInCents < 0 then
+    newBalanceInCents = 0
+end
+
+-- ⚠️ 永不过期：Redis 是余额的唯一实时标准
+redis.call('SET', key, newBalanceInCents)
+
+return cjson.encode({
+    ok = 1,
+    balance = newBalanceInCents,           -- 扣款后余额（分）
+    old_balance = currentBalanceInCents,   -- 扣款前余额（分）
+    wash_amount = washAmountInCents        -- 实际洗分金额（分）
+})
+LUA;
 
     // ==================== 钱包锁定管理 ====================
 

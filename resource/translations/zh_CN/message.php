@@ -556,6 +556,11 @@ return [
     'wallet_locked' => '钱包已锁定，请先下分或等待余额低于100分后解锁',
     'ticket_locked_insufficient_balance' => '钱包锁定中，余额需达到5000分才能出票',
     'welfare_activity_expired' => '福利卷/体验卷活动已结束，无法使用',
+    'ticket_amount_must_positive' => '出票金额必须大于0',
+    'ticket_amount_must_be_integer' => '出票金额必须是整数（不含小数）',
+    'ticket_amount_less_than_base' => '出票金额 :amount 不能小于洗分基数 :base',
+    'ticket_amount_not_multiple' => '出票金额 :amount 必须是洗分基数 :base 的整数倍',
+    'ticket_balance_insufficient' => '余额不足，当前余额：:current，需要：:required',
 
     // 机台指令相关
     'machine_command_failed' => '机台指令发送失败',

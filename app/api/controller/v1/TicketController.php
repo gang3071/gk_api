@@ -50,6 +50,17 @@ class TicketController
             return jsonFailResponse(trans('player_withdraw_closed', [], 'message'));
         }
 
+        // 🆕 获取客户端传入的出票金额
+        $requestedAmount = $request->post('amount');
+        if ($requestedAmount !== null && $requestedAmount !== '') {
+            $requestedAmount = floatval($requestedAmount);
+
+            // 金额必须大于0
+            if ($requestedAmount <= 0) {
+                return jsonFailResponse(trans('ticket_amount_must_positive', [], 'message'));
+            }
+        }
+
         // ==================== 阶段2：幂等性处理 ====================
         // 幂等性检查
         $requestId = $request->post('request_id');
@@ -104,18 +115,77 @@ class TicketController
             return jsonFailResponse(trans('currency_no_setting', [], 'message'));
         }
 
-        // 🔥 原子性洗分操作（完全避免 TOCTOU 问题）
-        // 获取后台配置的洗分数值
+        // 🔥 获取后台配置的洗分数值
         $washPointConfig = self::getWashPointConfig($player->store_admin_id);
+
+        // 🆕 如果客户端指定了金额，验证金额是否符合洗分基数
+        if ($requestedAmount !== null) {
+            // 🎯 特殊处理：配置为 0 时，只允许洗整数金额
+            if ($washPointConfig == 0) {
+                // 检查金额是否为整数（整元）
+                if (fmod($requestedAmount, 1) > 0.01) {
+                    $this->releaseIdempotent($requestId);
+                    return jsonFailResponse(trans('ticket_amount_must_be_integer', [], 'message'));
+                }
+
+                // 检查余额是否足够
+                $currentBalance = WalletService::getBalance($player->id);
+                if ($currentBalance < $requestedAmount) {
+                    $this->releaseIdempotent($requestId);
+                    return jsonFailResponse(trans('ticket_balance_insufficient', [
+                        'current' => number_format($currentBalance, 2),
+                        'required' => number_format($requestedAmount, 2)
+                    ], 'message'));
+                }
+            } else {
+                // 正常配置：验证倍数关系
+
+                // 检查金额是否小于洗分基数
+                if ($requestedAmount < $washPointConfig) {
+                    $this->releaseIdempotent($requestId);
+                    return jsonFailResponse(trans('ticket_amount_less_than_base', [
+                        'amount' => number_format($requestedAmount, 2),
+                        'base' => number_format($washPointConfig, 2)
+                    ], 'message'));
+                }
+
+                // 检查金额是否为洗分基数的整数倍
+                $remainder = fmod($requestedAmount, $washPointConfig);
+                if (abs($remainder) > 0.01) { // 允许0.01的浮点误差
+                    $this->releaseIdempotent($requestId);
+                    return jsonFailResponse(trans('ticket_amount_not_multiple', [
+                        'amount' => number_format($requestedAmount, 2),
+                        'base' => number_format($washPointConfig, 2)
+                    ], 'message'));
+                }
+
+                // 检查余额是否足够
+                $currentBalance = WalletService::getBalance($player->id);
+                if ($currentBalance < $requestedAmount) {
+                    $this->releaseIdempotent($requestId);
+                    return jsonFailResponse(trans('ticket_balance_insufficient', [
+                        'current' => number_format($currentBalance, 2),
+                        'required' => number_format($requestedAmount, 2)
+                    ], 'message'));
+                }
+            }
+        }
 
         // 在 Redis 中原子性完成：读取余额 → 根据配置计算洗分金额 → 扣款
         try {
-            $washResult = WalletService::atomicWash($player->id, $washPointConfig);
+            if ($requestedAmount !== null) {
+                // 使用指定金额扣款
+                $washResult = WalletService::atomicWashWithAmount($player->id, $requestedAmount, $washPointConfig);
+            } else {
+                // 使用自动计算（全部洗分）
+                $washResult = WalletService::atomicWash($player->id, $washPointConfig);
+            }
         } catch (\Throwable $e) {
             // Lua 脚本执行失败 - 释放占位
             $this->releaseIdempotent($requestId);
             Log::error('TicketController: Wash operation failed', [
                 'player_id' => $player->id,
+                'requested_amount' => $requestedAmount ?? 'auto',
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -638,27 +708,32 @@ class TicketController
     }
 
     /**
-     * 获取洗分配置
+     * 获取店家的洗分配置
      *
-     * @param int $storeAdminId 店家后台账号ID
-     * @return float 洗分基数
+     * @param int $storeAdminId 店家管理员ID
+     * @return float 洗分配置值，如果未配置或配置为0则返回默认值100
      */
     private static function getWashPointConfig(int $storeAdminId): float
     {
-        $config = AdminUser::query()
-            ->where('id', $storeAdminId)
-            ->value('wash_point_config');
+        // 从洗分配置表获取
+        $washSetting = \app\model\WashPointSetting::query()
+            ->where('admin_user_id', $storeAdminId)
+            ->first();
 
-        // 配置为 null、0 或 0.00 时使用默认值100
-        if (empty($config) || $config <= 0) {
-            Log::debug('TicketController: Using default wash point config', [
+        if ($washSetting) {
+            $effectiveWashPoint = $washSetting->getEffectiveWashPoint();
+            Log::debug('TicketController: Using wash point config from setting table', [
                 'store_admin_id' => $storeAdminId,
-                'original_config' => $config,
-                'default_value' => 100.00,
+                'wash_point' => $effectiveWashPoint,
             ]);
-            return 100.00;
+            return $effectiveWashPoint;
         }
 
-        return floatval($config);
+        // 未配置时使用默认值100
+        Log::debug('TicketController: Using default wash point config', [
+            'store_admin_id' => $storeAdminId,
+            'default_value' => 100.00,
+        ]);
+        return 100.00;
     }
 }

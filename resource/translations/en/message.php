@@ -540,6 +540,11 @@ return [
     'wallet_locked' => 'Wallet is locked. Please withdraw or wait until balance drops below 100 to unlock',
     'ticket_locked_insufficient_balance' => 'Wallet locked. Balance must reach 5000 to issue tickets',
     'welfare_activity_expired' => 'Welfare/Experience ticket activity has ended',
+    'ticket_amount_must_positive' => 'Ticket amount must be greater than 0',
+    'ticket_amount_must_be_integer' => 'Ticket amount must be an integer (no decimals)',
+    'ticket_amount_less_than_base' => 'Ticket amount :amount cannot be less than wash point base :base',
+    'ticket_amount_not_multiple' => 'Ticket amount :amount must be a multiple of wash point base :base',
+    'ticket_balance_insufficient' => 'Insufficient balance, current: :current, required: :required',
 
     // Machine Commands
     'machine_command_failed' => 'Machine command failed',
