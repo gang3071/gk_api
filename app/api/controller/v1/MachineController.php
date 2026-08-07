@@ -939,8 +939,6 @@ class MachineController
             throw new Exception(trans('machine_maintaining', [], 'message'));
         }
         // ✅ 删除在线检查：gk_work 的 sendCmd 内部已统一检查 Gateway::isUidOnline()
-        // 避免重复的 HTTP 请求，减少 5-10ms 延迟
-
         $lang = locale() ?? 'zh_TW';
         $lang = Str::replace('_', '-', $lang);
         
