@@ -73,6 +73,21 @@ class TicketController
             return jsonFailResponse(trans('machine_crashed_cannot_wash_score', [], 'message'));
         }
 
+        // 🔒 钱包锁定状态下，余额需达到配置分数才能出票
+        if (\app\service\WalletService::isWalletLocked($player->id)) {
+            $issueThreshold = (int) config('welfare_ticket.issue_threshold', 5000);
+            $currentBalance = \app\service\WalletService::getBalance($player->id);
+            if ($currentBalance < $issueThreshold) {
+                $this->releaseIdempotent($requestId);
+                Log::warning('redeemTicket: 钱包锁定，余额不足无法出票', [
+                    'player_id' => $player->id,
+                    'balance' => $currentBalance,
+                    'threshold' => $issueThreshold,
+                ]);
+                return jsonFailResponse(trans('ticket_locked_insufficient_balance', [], 'message'));
+            }
+        }
+
         // 渠道和货币验证
         /** @var Channel $channel */
         $channel = Channel::query()->where('department_id', \request()->department_id)->first();
@@ -353,6 +368,16 @@ class TicketController
                     return jsonFailResponse(trans('ticket_already_used', [], 'message'));
                 }
 
+                // 🔒 检查钱包是否被锁定（福利卷/体验卷锁定后不能开分）
+                if (\app\service\WalletService::isWalletLocked($player->id)) {
+                    $this->releaseIdempotent($requestId);
+                    Log::warning('scanOpenScore: 钱包已锁定，无法开分', [
+                        'player_id' => $player->id,
+                        'order_id' => $orderId,
+                    ]);
+                    return jsonFailResponse(trans('wallet_locked', [], 'message'));
+                }
+
                 // 验证玩家绑定关系
                 // player_id = 0: 未绑定，任何人都能扫码
                 // player_id > 0: 已绑定，只有绑定玩家能扫码
@@ -364,6 +389,48 @@ class TicketController
                         'order_id' => $orderId,
                     ]);
                     return jsonFailResponse(trans('ticket_bound_other_player', [], 'message'));
+                }
+
+                // 福利卷/体验卷特殊验证
+                if ($ticket->isWelfareOrExperience()) {
+                    // 检查活动是否在有效期内
+                    $activityEndTime = (string) config('welfare_ticket.activity_end_time', '');
+                    if (!empty($activityEndTime) && time() > strtotime($activityEndTime)) {
+                        $this->releaseIdempotent($requestId);
+                        Log::warning('scanOpenScore: 福利卷/体验卷活动已结束', [
+                            'player_id' => $player->id,
+                            'order_id' => $orderId,
+                            'activity_end_time' => $activityEndTime,
+                        ]);
+                        return jsonFailResponse(trans('welfare_activity_expired', [], 'message'));
+                    }
+
+                    // 检查是否已过期
+                    if ($ticket->isExpired()) {
+                        $this->releaseIdempotent($requestId);
+                        Log::warning('scanOpenScore: 福利卷/体验卷已过期', [
+                            'player_id' => $player->id,
+                            'order_id' => $orderId,
+                            'ticket_type' => $ticket->ticket_type,
+                            'created_at' => $ticket->created_at,
+                        ]);
+                        return jsonFailResponse(trans('ticket_expired', [], 'message'));
+                    }
+
+                    // 检查钱包余额：余额必须低于配置值才能使用福利卷/体验卷
+                    $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
+                    $currentWalletBalance = WalletService::getBalance($player->id);
+                    if ($currentWalletBalance >= $openScoreLimit) {
+                        $this->releaseIdempotent($requestId);
+                        Log::warning('scanOpenScore: 钱包余额超过限制，无法使用福利卷/体验卷', [
+                            'player_id' => $player->id,
+                            'order_id' => $orderId,
+                            'ticket_type' => $ticket->ticket_type,
+                            'wallet_balance' => $currentWalletBalance,
+                            'open_score_limit' => $openScoreLimit,
+                        ]);
+                        return jsonFailResponse(trans('ticket_wallet_balance_too_high', [], 'message'));
+                    }
                 }
 
                 Db::beginTransaction();
@@ -449,6 +516,11 @@ class TicketController
 
                 // ✅ 事务提交后更新爆机状态
                 \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $playerDeliveryRecord->amount_after, $playerDeliveryRecord->amount_before);
+
+                // 🔒 福利卷/体验卷使用后锁定钱包
+                if ($ticket->isWelfareOrExperience()) {
+                    \app\service\WalletService::lockWallet($player->id, 'ticket_type_' . $ticket->ticket_type);
+                }
 
                 // 保存幂等性记录（覆盖占位）
                 $response = jsonSuccessResponse(trans('ticket_open_score_success', [], 'message'), [

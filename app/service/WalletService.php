@@ -1187,4 +1187,116 @@ LUA;
             throw $e;
         }
     }
+
+    // ==================== 钱包锁定管理 ====================
+
+    /**
+     * 锁定钱包（使用福利卷/体验卷后触发）
+     *
+     * @param int $playerId 玩家ID
+     * @param string $reason 锁定原因
+     * @return bool
+     */
+    public static function lockWallet(int $playerId, string $reason = ''): bool
+    {
+        try {
+            \app\model\PlayerPlatformCash::query()
+                ->where('player_id', $playerId)
+                ->where('platform_id', \app\model\PlayerPlatformCash::PLATFORM_SELF)
+                ->update(['wallet_locked' => 1]);
+
+            Log::info('WalletService: 钱包已锁定', [
+                'player_id' => $playerId,
+                'reason' => $reason,
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('WalletService: 锁定钱包失败', [
+                'player_id' => $playerId,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * 解锁钱包
+     *
+     * @param int $playerId 玩家ID
+     * @return bool
+     */
+    public static function unlockWallet(int $playerId): bool
+    {
+        try {
+            \app\model\PlayerPlatformCash::query()
+                ->where('player_id', $playerId)
+                ->where('platform_id', \app\model\PlayerPlatformCash::PLATFORM_SELF)
+                ->update(['wallet_locked' => 0]);
+
+            Log::info('WalletService: 钱包已解锁', [
+                'player_id' => $playerId,
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('WalletService: 解锁钱包失败', [
+                'player_id' => $playerId,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * 检查钱包是否被锁定
+     *
+     * @param int $playerId 玩家ID
+     * @return bool
+     */
+    public static function isWalletLocked(int $playerId): bool
+    {
+        try {
+            return \app\model\PlayerPlatformCash::query()
+                ->where('player_id', $playerId)
+                ->where('platform_id', \app\model\PlayerPlatformCash::PLATFORM_SELF)
+                ->value('wallet_locked') == 1;
+        } catch (\Throwable $e) {
+            Log::error('WalletService: 检查钱包锁定状态失败', [
+                'player_id' => $playerId,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * 扣款后自动检查是否需要解锁（余额低于配置值自动解锁）
+     *
+     * @param int $playerId 玩家ID
+     * @return void
+     */
+    public static function autoUnlockIfNeeded(int $playerId): void
+    {
+        try {
+            if (!self::isWalletLocked($playerId)) {
+                return;
+            }
+
+            $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
+            $balance = self::getBalance($playerId);
+            if ($balance < $openScoreLimit) {
+                self::unlockWallet($playerId);
+                Log::info('WalletService: 余额低于限制，自动解锁钱包', [
+                    'player_id' => $playerId,
+                    'balance' => $balance,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::error('WalletService: 自动解锁检查失败', [
+                'player_id' => $playerId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
 }

@@ -551,6 +551,11 @@ return [
     'ticket_open_score_success' => '上分成功',
     'ticket_open_score_failed' => '上分失败',
     'ticket_scan_success' => '扫码开分成功',
+    'ticket_expired' => '福利卷/体验卷已过期，有效期为出票后24小时',
+    'ticket_wallet_balance_too_high' => '钱包余额需低于100分才能使用福利卷/体验卷',
+    'wallet_locked' => '钱包已锁定，请先下分或等待余额低于100分后解锁',
+    'ticket_locked_insufficient_balance' => '钱包锁定中，余额需达到5000分才能出票',
+    'welfare_activity_expired' => '福利卷/体验卷活动已结束，无法使用',
 
     // 机台指令相关
     'machine_command_failed' => '机台指令发送失败',

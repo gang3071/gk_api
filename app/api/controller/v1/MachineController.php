@@ -662,6 +662,11 @@ class MachineController
 
                     // 业务校验和逻辑执行（包裹在 try-catch 中）
                     try {
+                        // 🔒 检查钱包是否被锁定
+                        if (\app\service\WalletService::isWalletLocked($player->id)) {
+                            throw new Exception(trans('wallet_locked', [], 'message'));
+                        }
+
                         if ($services->reward_status == 1) {
                             throw new Exception(trans('machine_reward_drawing', ['{code}' => $machine->code], 'message'));
                         }
@@ -1115,6 +1120,11 @@ class MachineController
 
                     // 业务校验和逻辑执行（包裹在 try-catch 中）
                     try {
+                        // 🔒 检查钱包是否被锁定
+                        if (\app\service\WalletService::isWalletLocked($player->id)) {
+                            throw new Exception(trans('wallet_locked', [], 'message'));
+                        }
+
                         if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
                             throw new Exception(trans('machine_is_using_msg1', [], 'message'));
                         }
@@ -1446,6 +1456,11 @@ class MachineController
 
                     // 业务校验和逻辑执行（包裹在 try-catch 中）
                     try {
+                        // 🔒 检查钱包是否被锁定
+                        if (\app\service\WalletService::isWalletLocked($player->id)) {
+                            throw new Exception(trans('wallet_locked', [], 'message'));
+                        }
+
                         $money = $data['open_point'] ?? 0;
                         if ($money <= 0) {
                             throw new Exception(trans('machine_open_amount_error', [], 'message'));
@@ -1661,6 +1676,12 @@ class MachineController
         if ($crashCheck['crashed']) {
             $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('machine_crashed_cannot_recharge', [], 'message'));
+        }
+
+        // 🔒 检查钱包是否被锁定
+        if (\app\service\WalletService::isWalletLocked($player->id)) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('wallet_locked', [], 'message'));
         }
 
         // 渠道检查

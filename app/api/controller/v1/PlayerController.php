@@ -1243,11 +1243,14 @@ class PlayerController
             // ✅ 事务提交后更新爆机状态
             \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
 
+            // 🔓 洗分成功后解锁钱包（如果余额低于100）
+            \app\service\WalletService::autoUnlockIfNeeded($player->id);
+
             // 保存幂等性记录（覆盖占位）
             $response = jsonSuccessResponse('success', [
                 'amount' => $playerDeliveryRecord->amount,
                 'created_at' => date('Y-m-d H:i:s', strtotime($playerDeliveryRecord->created_at)),
-                'tradeno' => $playerDeliveryRecord->tradeno,
+                'tradeno' => $playerWithdrawRecord->tradeno,
                 'name' => $player->name
             ]);
             $this->saveIdempotent($requestId, $response, 'present-auto', $player->id);
@@ -2724,6 +2727,12 @@ class PlayerController
             ChannelRechargeMethod::TYPE_BANK)->exists()) {
             return jsonFailResponse(trans('bind_bank_card', [], 'message'));
         }
+
+        // 🔒 检查钱包是否被锁定
+        if (\app\service\WalletService::isWalletLocked($player->id)) {
+            return jsonFailResponse(trans('wallet_locked', [], 'message'));
+        }
+
         $data = $request->all();
         $validator = v::key('amount', v::notEmpty()->intVal()->min(0)->setName(trans('recharge_amount', [], 'message')))
             ->key('method_id', v::notEmpty()->intVal()->setName(trans('method_id', [], 'message')));
@@ -3732,6 +3741,12 @@ class PlayerController
         if ($crashCheck['crashed']) {
             $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('machine_crashed_cannot_open_score', [], 'message'));
+        }
+
+        // 🔒 检查钱包是否被锁定
+        if (\app\service\WalletService::isWalletLocked($player->id)) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('wallet_locked', [], 'message'));
         }
 
         // 渠道检查

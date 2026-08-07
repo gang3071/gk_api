@@ -52,6 +52,8 @@ class TicketRecord extends Model
     // 票据类型常量
     const TYPE_RECHARGE = 1;   // 开分
     const TYPE_WITHDRAW = 2;   // 洗分
+    const TYPE_EXPERIENCE = 3; // 体验卷
+    const TYPE_WELFARE = 4;    // 福利卷
 
     // 状态常量
     const STATUS_DISABLED = 0;       // 禁用
@@ -67,6 +69,8 @@ class TicketRecord extends Model
         return match ($this->ticket_type) {
             self::TYPE_RECHARGE => '开分',
             self::TYPE_WITHDRAW => '洗分',
+            self::TYPE_EXPERIENCE => '体验卷',
+            self::TYPE_WELFARE => '福利卷',
             default => '未知',
         };
     }
@@ -111,11 +115,25 @@ class TicketRecord extends Model
 
     /**
      * 生成订单号
-     * 格式：TK + 6位日期(YYMMDD) + 6位时间(HHMMSS) + 2位随机数 = 16字符
+     * 格式：前缀 + 6位日期(YYMMDD) + 6位时间(HHMMSS) + 2位随机数 = 16字符
+     *
+     * 前缀规则：
+     * - 福利卷 (TYPE_WELFARE): FL
+     * - 体验卷 (TYPE_EXPERIENCE): TY
+     * - 其他 (开分/洗分): TK
+     *
+     * @param int $ticketType 票据类型
+     * @return string
      */
-    public static function generateOrderId(): string
+    public static function generateOrderId(int $ticketType = self::TYPE_RECHARGE): string
     {
-        return 'TK' . date('ymdHis') . str_pad((string) mt_rand(1, 99), 2, '0', STR_PAD_LEFT);
+        $prefix = match ($ticketType) {
+            self::TYPE_WELFARE => 'FL',
+            self::TYPE_EXPERIENCE => 'TY',
+            default => 'TK',
+        };
+
+        return $prefix . date('ymdHis') . str_pad((string) mt_rand(1, 99), 2, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -124,5 +142,33 @@ class TicketRecord extends Model
     public static function generateQrCodeNo(): string
     {
         return date('YmdHis') . str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * 判断是否为福利卷或体验卷
+     *
+     * @return bool
+     */
+    public function isWelfareOrExperience(): bool
+    {
+        return in_array((int)$this->ticket_type, [self::TYPE_WELFARE, self::TYPE_EXPERIENCE]);
+    }
+
+    /**
+     * 检查福利卷/体验卷是否已过期
+     *
+     * @return bool true=已过期, false=未过期
+     */
+    public function isExpired(): bool
+    {
+        if (!$this->isWelfareOrExperience()) {
+            return false;
+        }
+
+        $expireHours = (int) config('welfare_ticket.expire_hours', 24);
+        $createdAt = strtotime($this->created_at);
+        $expireTime = $createdAt + ($expireHours * 60 * 60);
+
+        return time() > $expireTime;
     }
 }
