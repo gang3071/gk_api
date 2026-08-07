@@ -419,6 +419,7 @@ return [
     'vip_upgrade_bonus' => 'VIP升級禮金',
     'vip_birthday_bonus' => 'VIP生日禮金',
     'reverse_water_pool' => '能量池領取',
+    'reverse_water_different' => '領取金額錯誤',
     'reverse_water_insufficient' => '領取金額不足最低領取額',
     'reverse_water_min_not_set' => '當前等級未設置最低領取金額，暫不可領取',
     'coin_modify' => '幣商加點/扣點',

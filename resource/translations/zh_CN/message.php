@@ -425,6 +425,7 @@ return [
     'vip_upgrade_bonus' => 'VIP升级礼金',
     'vip_birthday_bonus' => 'VIP生日礼金',
     'reverse_water_pool' => '能量池领取',
+    'reverse_water_different' => '领取金额错误',
     'reverse_water_insufficient' => '领取金额不足最低领取额',
     'reverse_water_min_not_set' => '当前等级未设置最低领取金额，暂不可领取',
     'coin_modify' => '币商加点/扣点',

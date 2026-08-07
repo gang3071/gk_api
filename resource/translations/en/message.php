@@ -414,6 +414,7 @@ return [
     'gb_payment_recharge_close' => 'The channel has been closed for purchasing treasure and recharging',
     'gb_payment_withdraw_closed' => 'The channel has been closed for withdrawing funds through purchasing treasure',
     'reverse_water' => 'Electronic game cashback',
+    'reverse_water_different' => 'Incorrect amount received',
     'reverse_water_min_not_set' => 'The minimum claim amount is not set for the current level, cannot claim yet',
     'coin_modify' => 'Coin merchants add and deduct points',
     'gb_recharge' => 'Recharge with Goubao Wallet',
