@@ -91,6 +91,41 @@ function jsonFailResponse(string $message = '', array $data = [], int $code = 10
 }
 
 /**
+ * 規格書格式成功響應（手機板 API）
+ * @param string $message
+ * @param array $data
+ * @param string $requestId
+ * @return Response
+ */
+function apiSuccessResponse(string $message = 'ok', array $data = [], string $requestId = ''): Response
+{
+    return new Response(200, ['Content-Type' => 'application/json'], json_encode([
+        'code' => 0,
+        'message' => $message,
+        'data' => empty($data) ? new stdClass() : $data,
+        'requestId' => $requestId ?: request()->header('X-Request-Id', ''),
+    ], JSON_UNESCAPED_UNICODE));
+}
+
+/**
+ * 規格書格式失敗響應（手機板 API）
+ * @param string $message
+ * @param array $data
+ * @param string $code
+ * @param string $requestId
+ * @return Response
+ */
+function apiFailResponse(string $message = '', array $data = [], string $code = 'ERROR', string $requestId = ''): Response
+{
+    return new Response(200, ['Content-Type' => 'application/json'], json_encode([
+        'code' => $code,
+        'message' => $message,
+        'data' => empty($data) ? new stdClass() : $data,
+        'requestId' => $requestId ?: request()->header('X-Request-Id', ''),
+    ], JSON_UNESCAPED_UNICODE));
+}
+
+/**
  * 检查用户
  * @param bool $hasTransfer
  * @return Player

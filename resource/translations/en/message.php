@@ -51,6 +51,7 @@ return [
     'phone' => 'Mobile phone number',
     'phone_code' => 'Verification code',
     'country_code' => 'Country code',
+    'account' => 'Account',
     'password' => 'password',
     'new_password' => 'New password',
     're_password' => 'Confirm password',

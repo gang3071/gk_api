@@ -51,6 +51,7 @@ return [
     'phone' => '携帯電話番号',
     'phone_code' => '確認コード',
     'country_code' => '国コード',
+    'account' => 'アカウント',
     'password' => '「パスワード」',
     'new_password' => '新しいパスワード',
     're_password' => 'パスワードを確認',

@@ -51,6 +51,7 @@ return [
     'phone' => '手機號碼',
     'phone_code' => '驗證碼',
     'country_code' => '國家編碼',
+    'account' => '帳號',
     'password' => '密碼',
     'new_password' => '新密碼',
     're_password' => '確認密碼',

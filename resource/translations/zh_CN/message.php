@@ -51,6 +51,7 @@ return [
     'phone' => '手机号',
     'phone_code' => '验证码',
     'country_code' => '国家编码',
+    'account' => '账号',
     'password' => '密码',
     'new_password' => '新密码',
     're_password' => '确认密码',
