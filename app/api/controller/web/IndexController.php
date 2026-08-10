@@ -1,6 +1,6 @@
 <?php
 
-namespace app\api\controller\v1\mobile;
+namespace app\api\controller\web;
 
 use app\model\AdminDevice;
 use app\model\Channel;
@@ -18,10 +18,10 @@ use Webman\RateLimiter\Annotation\RateLimiter;
 
 /**
  * 手機板玩家控制器
- * Class MobileIndexController
- * @package app\api\controller\v1\mobile
+ * Class IndexController
+ * @package app\api\controller\web
  */
-class MobileIndexController
+class IndexController
 {
     /** 排除 */
     protected $noNeedSign = [];

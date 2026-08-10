@@ -19,27 +19,32 @@ Route::options('[{path:.+}]', function () {
 });
 
 Route::group('/api', function () {
+    Route::group('/web', function () {
+        // 发送短信验证码
+        Route::post('/auth/sms/send', [\app\api\controller\web\IndexController::class, 'smsSend']);
+        // 短信验证码登录
+        Route::post('/auth/sms/login', [\app\api\controller\web\IndexController::class, 'smsLogin']);
+        // 账号密码登录
+        Route::post('/auth/password/login', [\app\api\controller\web\IndexController::class, 'passwordLogin']);
+        // 刷新 Token
+        Route::post('/auth/refresh', [\app\api\controller\web\IndexController::class, 'refresh']);
+        // 账号登出
+        Route::post('/auth/logout', [\app\api\controller\web\IndexController::class, 'authLogout']);
+        // 個人資料
+        Route::get('/me/profile', [\app\api\controller\web\PlayerController::class, 'profile']);
+        // 錢包點數
+        Route::get('/me/wallet', [\app\api\controller\web\PlayerController::class, 'wallet']);
+        // 返水資訊
+        Route::get('/me/rebate', [\app\api\controller\web\PlayerController::class, 'rebate']);
+        // 領取返水
+        Route::post('/me/rebate/claim', [\app\api\controller\web\PlayerController::class, 'rebateClaim']);
+    });
+});
+
+Route::group('/api', function () {
     Route::group('/v1', function () {
         // 玩家登录
         Route::post('/login', [\app\api\controller\v1\IndexController::class, 'login']);
-        // 发送短信验证码
-        Route::post('/auth/sms/send', [\app\api\controller\v1\mobile\MobileIndexController::class, 'smsSend']);
-        // 短信验证码登录
-        Route::post('/auth/sms/login', [\app\api\controller\v1\mobile\MobileIndexController::class, 'smsLogin']);
-        // 账号密码登录
-        Route::post('/auth/password/login', [\app\api\controller\v1\mobile\MobileIndexController::class, 'passwordLogin']);
-        // 刷新 Token
-        Route::post('/auth/refresh', [\app\api\controller\v1\mobile\MobileIndexController::class, 'refresh']);
-        // 账号登出
-        Route::post('/auth/logout', [\app\api\controller\v1\mobile\MobileIndexController::class, 'authLogout']);
-        // 個人資料
-        Route::get('/me/profile', [\app\api\controller\v1\mobile\MobilePlayerController::class, 'profile']);
-        // 錢包點數
-        Route::get('/me/wallet', [\app\api\controller\v1\mobile\MobilePlayerController::class, 'wallet']);
-        // 返水資訊
-        Route::get('/me/rebate', [\app\api\controller\v1\mobile\MobilePlayerController::class, 'rebate']);
-        // 領取返水
-        Route::post('/me/rebate/claim', [\app\api\controller\v1\mobile\MobilePlayerController::class, 'rebateClaim']);
         // 获取离线推送通知
         Route::post('/offline-notifications', [\app\api\controller\v1\IndexController::class, 'offlineNotifications']);
         // 刷新token

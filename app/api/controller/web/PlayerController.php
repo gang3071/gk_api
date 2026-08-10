@@ -1,6 +1,6 @@
 <?php
 
-namespace app\api\controller\v1\mobile;
+namespace app\api\controller\web;
 
 use app\exception\PlayerCheckException;
 use app\model\GamePlatform;
@@ -19,7 +19,7 @@ use support\Db;
 use support\Request;
 use support\Response;
 
-class MobilePlayerController
+class PlayerController
 {
     use \support\IdempotentTrait;
 
