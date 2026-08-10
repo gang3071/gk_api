@@ -45,7 +45,7 @@ jobs:
             echo ""
             echo "🧪 目标环境: 测试线 (Test)"
             echo "   服务器: 34.81.124.226"
-            WEBHOOK_URL="https://34.81.124.226:14842/hook?access_key=o8vlHTWmnMomlurYawaeYAoOJ0r3qTOxdCu4RsyoMMXYwLyn&param=$BRANCH_PARAM"
+            WEBHOOK_URL="https://34.81.124.226:14843/hook?access_key=o8vlHTWmnMomlurYawaeYAoOJ0r3qTOxdCu4RsyoMMXYwLyn&param=$BRANCH_PARAM"
           fi
 
           echo ""
