@@ -252,7 +252,6 @@ class PlayerController
             'status_baccarat' => $player->status_baccarat,
             'status_offline_open' => $player->status_offline_open,
             'status_game_platform' => $player->status_game_platform,
-            'wash_point_config' => self::getWashPointConfig($player->store_admin_id),
             'store_name' => $storeName, // 店家名称
             'store_settings' => $storeSettings, // 店家配置
             'vip_info' => [
@@ -1243,11 +1242,14 @@ class PlayerController
             // ✅ 事务提交后更新爆机状态
             \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
 
+            // 🔓 洗分成功后解锁钱包（如果余额低于100）
+            \app\service\WalletService::autoUnlockIfNeeded($player->id);
+
             // 保存幂等性记录（覆盖占位）
             $response = jsonSuccessResponse('success', [
                 'amount' => $playerDeliveryRecord->amount,
                 'created_at' => date('Y-m-d H:i:s', strtotime($playerDeliveryRecord->created_at)),
-                'tradeno' => $playerDeliveryRecord->tradeno,
+                'tradeno' => $playerWithdrawRecord->tradeno,
                 'name' => $player->name
             ]);
             $this->saveIdempotent($requestId, $response, 'present-auto', $player->id);
@@ -2724,6 +2726,12 @@ class PlayerController
             ChannelRechargeMethod::TYPE_BANK)->exists()) {
             return jsonFailResponse(trans('bind_bank_card', [], 'message'));
         }
+
+        // 🔒 检查钱包是否被锁定
+        if (\app\service\WalletService::isWalletLocked($player->id)) {
+            return jsonFailResponse(trans('wallet_locked', [], 'message'));
+        }
+
         $data = $request->all();
         $validator = v::key('amount', v::notEmpty()->intVal()->min(0)->setName(trans('recharge_amount', [], 'message')))
             ->key('method_id', v::notEmpty()->intVal()->setName(trans('method_id', [], 'message')));
@@ -3734,6 +3742,12 @@ class PlayerController
             return jsonFailResponse(trans('machine_crashed_cannot_open_score', [], 'message'));
         }
 
+        // 🔒 检查钱包是否被锁定
+        if (\app\service\WalletService::isWalletLocked($player->id)) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('wallet_locked', [], 'message'));
+        }
+
         // 渠道检查
         /** @var Channel $channel */
         $channel = Channel::query()->where('department_id', \request()->department_id)->first();
@@ -4217,6 +4231,40 @@ class PlayerController
     }
 
     /**
+     * 获取洗分配置（供客户端调用）
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function getWashPointSetting(): Response
+    {
+        $player = checkPlayer();
+
+        // 获取玩家所属店家的洗分配置
+        $washPointConfig = self::getWashPointConfig($player->store_admin_id);
+
+        // 获取完整的洗分配置信息（包含6个洗分选项）
+        $washSetting = \app\model\WashPointSetting::query()
+            ->where('admin_user_id', $player->store_admin_id)
+            ->first();
+
+        $washOptions = [];
+        if ($washSetting) {
+            // 返回所有非零的洗分选项
+            for ($i = 1; $i <= 6; $i++) {
+                $key = 'wash_' . $i;
+                if ($washSetting->$key > 0) {
+                    $washOptions[] = floatval($washSetting->$key);
+                }
+            }
+        }
+
+        return jsonSuccessResponse('success', [
+            'default_wash_point' => $washPointConfig,  // 默认洗分基数
+            'wash_options' => $washOptions,            // 洗分选项数组
+        ]);
+    }
+
+    /**
      * 获取店家的洗分配置
      *
      * @param int $storeAdminId 店家管理员ID
@@ -4224,21 +4272,26 @@ class PlayerController
      */
     private static function getWashPointConfig(int $storeAdminId): float
     {
-        $config = AdminUser::query()
-            ->where('id', $storeAdminId)
-            ->value('wash_point_config');
+        // 从洗分配置表获取
+        $washSetting = \app\model\WashPointSetting::query()
+            ->where('admin_user_id', $storeAdminId)
+            ->first();
 
-        // 配置为 null、0 或 0.00 时使用默认值100
-        if (empty($config) || $config <= 0) {
-            Log::debug('PlayerController: Using default wash point config', [
+        if ($washSetting) {
+            $effectiveWashPoint = $washSetting->getEffectiveWashPoint();
+            Log::debug('PlayerController: Using wash point config from setting table', [
                 'store_admin_id' => $storeAdminId,
-                'original_config' => $config,
-                'default_value' => 100.00,
+                'wash_point' => $effectiveWashPoint,
             ]);
-            return 100.00;
+            return $effectiveWashPoint;
         }
 
-        return floatval($config);
+        // 未配置时使用默认值100
+        Log::debug('PlayerController: Using default wash point config', [
+            'store_admin_id' => $storeAdminId,
+            'default_value' => 100.00,
+        ]);
+        return 100.00;
     }
 
     /**

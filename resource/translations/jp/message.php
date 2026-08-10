@@ -534,6 +534,16 @@ return [
     'ticket_open_score_success' => 'スコア追加成功',
     'ticket_open_score_failed' => 'スコア追加失敗',
     'ticket_scan_success' => 'QRコードスキャン成功',
+    'ticket_expired' => '福利券/体験券の有効期限が切れています。発行から24時間有効です',
+    'ticket_wallet_balance_too_high' => '福利券/体験券を使用するにはウォレット残高が100未満である必要があります',
+    'wallet_locked' => 'ウォレットがロックされています。まず出金するか、残高が100未満になるまで待ってください',
+    'ticket_locked_insufficient_balance' => 'ウォレットロック中、残高が5000に達しないとチケットを発行できません',
+    'welfare_activity_expired' => '福利券/体験券のイベントは終了しました',
+    'ticket_amount_must_positive' => '出票金額は0より大きい必要があります',
+    'ticket_amount_must_be_integer' => '出票金額は整数である必要があります（小数を含まない）',
+    'ticket_amount_less_than_base' => '出票金額 :amount はウォッシュポイント基数 :base より小さくできません',
+    'ticket_amount_not_multiple' => '出票金額 :amount はウォッシュポイント基数 :base の整数倍である必要があります',
+    'ticket_balance_insufficient' => '残高不足、現在の残高：:current、必要：:required',
 
     // マシンコマンド関連
     'machine_command_failed' => 'マシンコマンド送信失敗',

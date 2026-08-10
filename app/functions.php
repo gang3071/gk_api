@@ -695,6 +695,11 @@ function machineOpenAny(
         }
         $lockAcquired = true;
 
+        // 🔒 检查钱包是否被锁定
+        if (\app\service\WalletService::isWalletLocked($player->id)) {
+            throw new Exception(trans('wallet_locked', [], 'message'));
+        }
+
         Log::info('[MachineOpenAny] 开始上分', [
             'player_id' => $player->id,
             'machine_id' => $machine->id,
@@ -2101,6 +2106,10 @@ function fishMachineWash(Player $player, Machine $machine, FishServices $service
         $machine->save();
 
         DB::commit();
+
+        // 🔓 洗分后解锁钱包（如果余额低于100）
+        \app\service\WalletService::autoUnlockIfNeeded($player->id);
+
         return true;
     } catch (\Exception $e) {
         DB::rollback();
@@ -2111,6 +2120,12 @@ function fishMachineWash(Player $player, Machine $machine, FishServices $service
 function fishMachineOpenAny(Player $player, Machine $machine, int $money, FishServices $services): Machine
 {
     openAnyCheck($machine, $player, $money);
+
+    // 🔒 检查钱包是否被锁定
+    if (\app\service\WalletService::isWalletLocked($player->id)) {
+        throw new Exception(trans('wallet_locked', [], 'message'));
+    }
+
     DB::beginTransaction();
     try {
         //原先餘額
@@ -3862,6 +3877,9 @@ function machineWashZero(
     } catch (Exception $e) {
         throw new Exception($e->getMessage());
     }
+
+    // 🔓 洗分清零后解锁钱包（如果余额低于100）
+    \app\service\WalletService::autoUnlockIfNeeded($player->id);
 
     return $machine;
 }
