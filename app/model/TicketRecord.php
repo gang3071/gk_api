@@ -6,6 +6,7 @@ namespace app\model;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
 
 /**
  * 出票记录模型
@@ -166,9 +167,9 @@ class TicketRecord extends Model
         }
 
         $expireHours = (int) config('welfare_ticket.expire_hours', 24);
-        $createdAt = strtotime($this->created_at);
-        $expireTime = $createdAt + ($expireHours * 60 * 60);
+        $createdAt = Carbon::parse($this->created_at);
+        $expireTime = $createdAt->addHours($expireHours);
 
-        return time() > $expireTime;
+        return Carbon::now()->gt($expireTime);
     }
 }
