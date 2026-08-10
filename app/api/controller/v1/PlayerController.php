@@ -4,7 +4,6 @@ namespace app\api\controller\v1;
 
 use app\exception\PlayerCheckException;
 use app\filesystem\Filesystem;
-use app\model\AdminUser;
 use app\model\BankContent;
 use app\model\Channel;
 use app\model\ChannelRechargeMethod;
@@ -1089,7 +1088,7 @@ class PlayerController
      * 洗分（线下代理提现）
      * @param Request $request
      * @return Response
-     * @throws PlayerCheckException|Exception
+     * @throws PlayerCheckException|Exception|\Throwable
      */
     public
     function presentAuto(
