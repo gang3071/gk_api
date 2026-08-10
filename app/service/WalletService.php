@@ -1362,9 +1362,9 @@ LUA;
     public static function lockWallet(int $playerId, string $reason = ''): bool
     {
         try {
-            \app\model\PlayerPlatformCash::query()
+            PlayerPlatformCash::query()
                 ->where('player_id', $playerId)
-                ->where('platform_id', \app\model\PlayerPlatformCash::PLATFORM_SELF)
+                ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
                 ->update(['wallet_locked' => 1]);
 
             Log::info('WalletService: 钱包已锁定', [
@@ -1391,9 +1391,9 @@ LUA;
     public static function unlockWallet(int $playerId): bool
     {
         try {
-            \app\model\PlayerPlatformCash::query()
+            PlayerPlatformCash::query()
                 ->where('player_id', $playerId)
-                ->where('platform_id', \app\model\PlayerPlatformCash::PLATFORM_SELF)
+                ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
                 ->update(['wallet_locked' => 0]);
 
             Log::info('WalletService: 钱包已解锁', [
@@ -1419,9 +1419,9 @@ LUA;
     public static function isWalletLocked(int $playerId): bool
     {
         try {
-            return \app\model\PlayerPlatformCash::query()
+            return PlayerPlatformCash::query()
                 ->where('player_id', $playerId)
-                ->where('platform_id', \app\model\PlayerPlatformCash::PLATFORM_SELF)
+                ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
                 ->value('wallet_locked') == 1;
         } catch (\Throwable $e) {
             Log::error('WalletService: 检查钱包锁定状态失败', [

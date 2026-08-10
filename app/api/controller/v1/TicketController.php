@@ -85,9 +85,9 @@ class TicketController
         }
 
         // 🔒 钱包锁定状态下，余额需达到配置分数才能出票
-        if (\app\service\WalletService::isWalletLocked($player->id)) {
+        if (WalletService::isWalletLocked($player->id)) {
             $issueThreshold = (int) config('welfare_ticket.issue_threshold', 5000);
-            $currentBalance = \app\service\WalletService::getBalance($player->id);
+            $currentBalance = WalletService::getBalance($player->id);
             if ($currentBalance < $issueThreshold) {
                 $this->releaseIdempotent($requestId);
                 Log::warning('redeemTicket: 钱包锁定，余额不足无法出票', [
@@ -129,14 +129,6 @@ class TicketController
                 }
 
                 // 检查余额是否足够
-                $currentBalance = WalletService::getBalance($player->id);
-                if ($currentBalance < $requestedAmount) {
-                    $this->releaseIdempotent($requestId);
-                    return jsonFailResponse(trans('ticket_balance_insufficient', [
-                        'current' => number_format($currentBalance, 2),
-                        'required' => number_format($requestedAmount, 2)
-                    ], 'message'));
-                }
             } else {
                 // 正常配置：验证倍数关系
 
@@ -160,14 +152,14 @@ class TicketController
                 }
 
                 // 检查余额是否足够
-                $currentBalance = WalletService::getBalance($player->id);
-                if ($currentBalance < $requestedAmount) {
-                    $this->releaseIdempotent($requestId);
-                    return jsonFailResponse(trans('ticket_balance_insufficient', [
-                        'current' => number_format($currentBalance, 2),
-                        'required' => number_format($requestedAmount, 2)
-                    ], 'message'));
-                }
+            }
+            $currentBalance = WalletService::getBalance($player->id);
+            if ($currentBalance < $requestedAmount) {
+                $this->releaseIdempotent($requestId);
+                return jsonFailResponse(trans('ticket_balance_insufficient', [
+                    'current' => number_format($currentBalance, 2),
+                    'required' => number_format($requestedAmount, 2)
+                ], 'message'));
             }
         }
 
@@ -298,6 +290,16 @@ class TicketController
 
             // ✅ 事务提交后更新爆机状态
             WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
+
+            // ✅ 钱包锁定状态下洗分成功后，自动解锁钱包
+            if (WalletService::isWalletLocked($player->id)) {
+                WalletService::unlockWallet($player->id);
+                Log::info('redeemTicket: 洗分成功后自动解锁钱包', [
+                    'player_id' => $player->id,
+                    'wash_amount' => $washAmount,
+                    'balance_after' => $afterGameAmount,
+                ]);
+            }
 
             // 保存幂等性记录（覆盖占位）
             $response = jsonSuccessResponse(trans('ticket_redeem_success', [], 'message'), [
@@ -439,7 +441,7 @@ class TicketController
                 }
 
                 // 🔒 检查钱包是否被锁定（福利卷/体验卷锁定后不能开分）
-                if (\app\service\WalletService::isWalletLocked($player->id)) {
+                if (WalletService::isWalletLocked($player->id)) {
                     $this->releaseIdempotent($requestId);
                     Log::warning('scanOpenScore: 钱包已锁定，无法开分', [
                         'player_id' => $player->id,
@@ -585,11 +587,11 @@ class TicketController
                 ]);
 
                 // ✅ 事务提交后更新爆机状态
-                \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $playerDeliveryRecord->amount_after, $playerDeliveryRecord->amount_before);
+                WalletService::checkMachineCrashAfterTransaction($player->id, $playerDeliveryRecord->amount_after, $playerDeliveryRecord->amount_before);
 
                 // 🔒 福利卷/体验卷使用后锁定钱包
                 if ($ticket->isWelfareOrExperience()) {
-                    \app\service\WalletService::lockWallet($player->id, 'ticket_type_' . $ticket->ticket_type);
+                    WalletService::lockWallet($player->id, 'ticket_type_' . $ticket->ticket_type);
                 }
 
                 // 保存幂等性记录（覆盖占位）
