@@ -132,9 +132,9 @@ class LotteryServices
                 // 降级使用数据库金额
             }
 
-            // 限制不超过最大金额
-            if ($lottery->max_amount > 0) {
-                $amount = min($amount, floatval($lottery->max_amount));
+            // 限制不超过最大彩池金额
+            if ($lottery->max_pool_amount > 0) {
+                $amount = min($amount, floatval($lottery->max_pool_amount));
             }
 
             $result[] = [
