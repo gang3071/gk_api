@@ -1129,6 +1129,21 @@ class PlayerController
             return jsonFailResponse(trans('machine_crashed_cannot_wash_score', [], 'message'));
         }
 
+        // 🔒 钱包锁定状态下，余额需达到配置分数才能洗分（福利卷/体验卷限制）
+        if (\app\service\WalletService::isWalletLocked($player->id)) {
+            $issueThreshold = (int) config('welfare_ticket.issue_threshold', 5000);
+            $currentBalance = \app\service\WalletService::getBalance($player->id);
+            if ($currentBalance < $issueThreshold) {
+                $this->releaseIdempotent($requestId);
+                Log::warning('presentAuto: 钱包锁定，余额不足无法洗分', [
+                    'player_id' => $player->id,
+                    'balance' => $currentBalance,
+                    'threshold' => $issueThreshold,
+                ]);
+                return jsonFailResponse(trans('ticket_locked_insufficient_balance', ['limit' => $issueThreshold], 'message'));
+            }
+        }
+
         // 渠道和货币验证
         /** @var Channel $channel */
         $channel = Channel::query()->where('department_id', \request()->department_id)->first();
@@ -1241,8 +1256,15 @@ class PlayerController
             // ✅ 事务提交后更新爆机状态
             \app\service\WalletService::checkMachineCrashAfterTransaction($player->id, $afterGameAmount, $beforeGameAmount);
 
-            // 🔓 洗分成功后解锁钱包（如果余额低于100）
-            \app\service\WalletService::autoUnlockIfNeeded($player->id);
+            // 🔓 洗分成功后解锁钱包
+            if (\app\service\WalletService::isWalletLocked($player->id)) {
+                \app\service\WalletService::unlockWallet($player->id);
+                Log::info('presentAuto: 洗分成功后自动解锁钱包', [
+                    'player_id' => $player->id,
+                    'wash_amount' => $washAmount,
+                    'balance_after' => $afterGameAmount,
+                ]);
+            }
 
             // 保存幂等性记录（覆盖占位）
             $response = jsonSuccessResponse('success', [
