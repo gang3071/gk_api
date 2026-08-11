@@ -1419,10 +1419,29 @@ LUA;
     public static function isWalletLocked(int $playerId): bool
     {
         try {
-            return PlayerPlatformCash::query()
+            $locked = PlayerPlatformCash::query()
                 ->where('player_id', $playerId)
                 ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
                 ->value('wallet_locked') == 1;
+
+            if (!$locked) {
+                return false;
+            }
+
+            // 钱包已锁定，检查余额是否低于阈值，低于则自动解锁
+            $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
+            $balance = self::getBalance($playerId);
+            if ($balance < $openScoreLimit) {
+                self::unlockWallet($playerId);
+                Log::info('WalletService: 余额低于限制，自动解锁钱包', [
+                    'player_id' => $playerId,
+                    'balance' => $balance,
+                    'limit' => $openScoreLimit,
+                ]);
+                return false;
+            }
+
+            return true;
         } catch (\Throwable $e) {
             Log::error('WalletService: 检查钱包锁定状态失败', [
                 'player_id' => $playerId,
