@@ -38,6 +38,8 @@ Route::group('/api', function () {
         Route::get('/me/rebate', [\app\api\controller\web\PlayerController::class, 'rebate']);
         // 領取返水
         Route::post('/me/rebate/claim', [\app\api\controller\web\PlayerController::class, 'rebateClaim']);
+        // 系統公告
+        Route::get('/announcements', [\app\api\controller\web\IndexController::class, 'announcements']);
     });
 });
 

@@ -3,6 +3,7 @@
 namespace app\api\controller\web;
 
 use app\model\AdminDevice;
+use app\model\Announcement;
 use app\model\Channel;
 use app\model\PhoneSmsLog;
 use app\model\Player;
@@ -217,6 +218,52 @@ class IndexController
             'accessToken' => $newToken['access_token'],
             'refreshToken' => $newToken['refresh_token'] ?? '',
             'expiresIn' => config('plugin.tinywan.jwt.app.jwt.access_exp'),
+        ]);
+    }
+
+    /**
+     * 系統公告列表
+     * @param Request $request
+     * @return Response
+     */
+    public function announcements(Request $request): Response
+    {
+        $player = checkPlayer();
+        $page = (int)($request->get('page', 1));
+        $pageSize = (int)($request->get('pageSize', 10));
+
+        $query = Announcement::query()
+            ->where('status', 1)
+            ->where('department_id', $player->department_id)
+            ->where('push_time', '<=', date('Y-m-d H:i:s'))
+            ->where(function ($query) {
+                $query->where('valid_time', '>=', date('Y-m-d H:i:s'))
+                    ->orWhereNull('valid_time');
+            })
+            ->orderBy('priority', 'desc')
+            ->orderBy('push_time', 'desc');
+
+        $total = (clone $query)->count();
+        $list = $query->forPage($page, $pageSize)->get();
+
+        $announcements = [];
+
+        /** @var Announcement $item */
+        foreach ($list as $item) {
+            $announcements[] = [
+                'id' => (string)$item->id,
+                'title' => $item->title,
+                'body' => $item->content,
+                'date' => !empty($item->push_time) ? date('Y/m/d', strtotime($item->push_time)) : '',
+                'pinned' => $item->priority >= Announcement::PRIORITY_SENIOR,
+            ];
+        }
+
+        return apiSuccessResponse('ok', [
+            'list' => $announcements,
+            'page' => $page,
+            'pageSize' => $pageSize,
+            'total' => $total,
         ]);
     }
 
