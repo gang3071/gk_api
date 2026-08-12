@@ -36,7 +36,7 @@ class LotteryController
      * 彩金列表（新版：支持独立彩池）
      * @param Request $request
      * @return Response
-     * @throws PlayerCheckException|Exception
+     * @throws PlayerCheckException
      */
     public function lotteryList(Request $request): Response
     {
@@ -137,7 +137,7 @@ class LotteryController
      * 彩金领取列表
      * @param Request $request
      * @return Response
-     * @throws PlayerCheckException|Exception
+     * @throws PlayerCheckException
      */
     public function lotteryRecordList(Request $request): Response
     {
@@ -156,6 +156,7 @@ class LotteryController
             return jsonFailResponse(getValidationMessages($e));
         }
         $recordList = PlayerLotteryRecord::query()
+            ->with(['player:id,store_admin_id', 'player.storeAdmin:id,nickname'])
             ->when($data['type'] == GameType::TYPE_SLOT || $data['type'] == GameType::TYPE_STEEL_BALL, function ($query) use ($data) {
                 $query->where('game_type', $data['type']);
             })
@@ -168,6 +169,7 @@ class LotteryController
             })
             ->select([
                 'id',
+                'player_id',
                 'player_name',
                 'lottery_name',
                 'amount',
@@ -184,9 +186,12 @@ class LotteryController
         $list = [];
         /** @var PlayerLotteryRecord $item */
         foreach ($recordList as $item) {
+            $storeName = $item->player?->storeAdmin?->nickname ?? '';
+            $playerNameWithStore = $item->player_name . ($storeName ? '/' . $storeName : '');
+
             $list[] = [
                 'id' => $item->id,
-                'player_name' => $item->player_name,
+                'player_name' => $playerNameWithStore,
                 'lottery_name' => $item->lottery_name,
                 'amount' => $item->amount,
                 'created_at' => date('Y-m-d H:i:s', strtotime($item->created_at)),

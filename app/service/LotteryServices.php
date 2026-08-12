@@ -132,9 +132,9 @@ class LotteryServices
                 // 降级使用数据库金额
             }
 
-            // 限制不超过最大金额
-            if ($lottery->max_amount > 0) {
-                $amount = min($amount, floatval($lottery->max_amount));
+            // 限制不超过最大彩池金额
+            if ($lottery->max_pool_amount > 0) {
+                $amount = min($amount, floatval($lottery->max_pool_amount));
             }
 
             $result[] = [
@@ -1346,28 +1346,14 @@ class LotteryServices
         $query = Lottery::where('status', 1)
             ->where('game_type', GameType::TYPE_SLOT)
             ->whereNull('deleted_at')
-            ->orderBy('lottery_type', 'asc')
-            ->orderBy('condition', 'desc');
-        
+            ->orderBy('sort', 'desc');
+
         if ($lotteryType) {
             $query->where('lottery_type', $lotteryType);
         }
-        $fixedSort = 0;
-        $randomSort = 0;
         $list = $query->get();
-        /** @var Lottery $lottery */
-        foreach ($list as $lottery) {
-            if ($lottery->lottery_type == Lottery::LOTTERY_TYPE_FIXED) {
-                $fixedSort++;
-                $lottery->sort = $fixedSort;
-            }
-            if ($lottery->lottery_type == Lottery::LOTTERY_TYPE_RANDOM) {
-                $randomSort++;
-                $lottery->sort = $randomSort;
-            }
-        }
         $this->slotLotteryList = $list;
-        
+
         return $this;
     }
     
@@ -1381,26 +1367,12 @@ class LotteryServices
         $query = Lottery::where('status', 1)
             ->where('game_type', GameType::TYPE_STEEL_BALL)
             ->whereNull('deleted_at')
-            ->orderBy('lottery_type', 'asc')
-            ->orderBy('condition', 'desc');
-        
+            ->orderBy('sort', 'desc');
+
         if ($lotteryType) {
             $query->where('lottery_type', $lotteryType);
         }
-        $fixedSort = 0;
-        $randomSort = 0;
         $list = $query->get();
-        /** @var Lottery $lottery */
-        foreach ($list as $lottery) {
-            if ($lottery->lottery_type == Lottery::LOTTERY_TYPE_FIXED) {
-                $fixedSort++;
-                $lottery->sort = $fixedSort;
-            }
-            if ($lottery->lottery_type == Lottery::LOTTERY_TYPE_RANDOM) {
-                $randomSort++;
-                $lottery->sort = $randomSort;
-            }
-        }
         $this->jackLotteryList = $list;
 
         return $this;

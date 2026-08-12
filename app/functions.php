@@ -2107,9 +2107,6 @@ function fishMachineWash(Player $player, Machine $machine, FishServices $service
 
         DB::commit();
 
-        // 🔓 洗分后解锁钱包（如果余额低于100）
-        \app\service\WalletService::autoUnlockIfNeeded($player->id);
-
         return true;
     } catch (\Exception $e) {
         DB::rollback();
@@ -2120,12 +2117,6 @@ function fishMachineWash(Player $player, Machine $machine, FishServices $service
 function fishMachineOpenAny(Player $player, Machine $machine, int $money, FishServices $services): Machine
 {
     openAnyCheck($machine, $player, $money);
-
-    // 🔒 检查钱包是否被锁定
-    if (\app\service\WalletService::isWalletLocked($player->id)) {
-        throw new Exception(trans('wallet_locked', [], 'message'));
-    }
-
     DB::beginTransaction();
     try {
         //原先餘額
@@ -3878,9 +3869,6 @@ function machineWashZero(
         throw new Exception($e->getMessage());
     }
 
-    // 🔓 洗分清零后解锁钱包（如果余额低于100）
-    \app\service\WalletService::autoUnlockIfNeeded($player->id);
-
     return $machine;
 }
 
@@ -4047,5 +4035,64 @@ if (!function_exists('generateLotteryLiveUrls')) {
             'license' => config('services.mobile_player.license', ''), // 移动端播放器 License URL
             'license_key' => config('services.mobile_player.license_key', ''), // 移动端播放器 License Key
         ];
+    }
+}
+
+if (!function_exists('getDeviceType')) {
+    /**
+     * 获取设备类型（用于JWT单点登录区分）
+     *
+     * 优先级：
+     * 1. 请求头 Device-Type（前端明确指定）
+     * 2. 请求头 App-Version（有值 = 移动端APP）
+     * 3. User-Agent 自动判断（降级方案）
+     *
+     * @return string WEB（网页）| MOBILE（移动端APP）| TABLET（平板）| KIOSK（安卓大屏设备）
+     */
+    function getDeviceType(): string
+    {
+        // 1️⃣ 优先使用前端明确指定的设备类型
+        $deviceType = request()->header('Device-Type', '');
+
+        if (!empty($deviceType)) {
+            $deviceType = strtoupper($deviceType);
+            // 白名单验证（添加 KIOSK 类型）
+            if (in_array($deviceType, ['WEB', 'MOBILE', 'TABLET', 'KIOSK'])) {
+                return $deviceType;
+            }
+        }
+
+        // 2️⃣ 通过 App-Version 判断（有值 = 移动端APP）
+        $appVersion = request()->header('App-Version', '');
+        if (!empty($appVersion)) {
+            return 'MOBILE';
+        }
+
+        // 3️⃣ 通过 User-Agent 自动判断（降级方案）
+        $userAgent = request()->header('User-Agent', '');
+
+        if (empty($userAgent)) {
+            return 'WEB'; // 默认为网页
+        }
+
+        // 移动设备关键词
+        $mobileKeywords = ['iPhone', 'iPad', 'Android', 'Mobile', 'Phone'];
+        $tabletKeywords = ['iPad', 'Tablet'];
+
+        // 平板优先判断（因为iPad也包含Mobile关键词）
+        foreach ($tabletKeywords as $keyword) {
+            if (stripos($userAgent, $keyword) !== false) {
+                return 'TABLET';
+            }
+        }
+
+        // 移动设备判断
+        foreach ($mobileKeywords as $keyword) {
+            if (stripos($userAgent, $keyword) !== false) {
+                return 'MOBILE';
+            }
+        }
+
+        return 'WEB';
     }
 }
