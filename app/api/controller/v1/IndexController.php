@@ -117,6 +117,7 @@ class IndexController
         addLoginRecord($player->id);
 
         // 🔍 测试日志：生成登录token
+        $deviceType = getDeviceType(); // 获取设备类型
         $tokenPayload = [
             'id' => $player->id,
             'avatar' => $player->avatar,
@@ -124,6 +125,7 @@ class IndexController
             'type' => $player->type,
             'currency' => $player->currency,
             'recommended_code' => $player->recommended_code,
+            'client' => $deviceType, // ✅ 添加设备类型，用于单点登录区分
         ];
 
         \support\Log::info('[Login] 验证码登录成功，生成token', [
@@ -131,6 +133,7 @@ class IndexController
             'phone' => $player->phone,
             'department_id' => request()->department_id,
             'ip' => request()->getRealIp(),
+            'device_type' => $deviceType, // 记录设备类型
         ]);
 
         $token = JwtToken::generateToken($tokenPayload);
@@ -187,6 +190,7 @@ class IndexController
         addLoginRecord($player->id);
 
         // 🔍 测试日志：生成登录token
+        $deviceType = getDeviceType(); // 获取设备类型
         $tokenPayload = [
             'id' => $player->id,
             'avatar' => $player->avatar,
@@ -194,6 +198,7 @@ class IndexController
             'type' => $player->type,
             'currency' => $player->currency,
             'recommended_code' => $player->recommended_code,
+            'client' => $deviceType, // ✅ 添加设备类型，用于单点登录区分
         ];
 
         \support\Log::info('[Login] 密码登录成功，生成token', [
@@ -201,6 +206,7 @@ class IndexController
             'phone' => $player->phone,
             'department_id' => request()->department_id,
             'ip' => request()->getRealIp(),
+            'device_type' => $deviceType, // 记录设备类型
         ]);
 
         $token = JwtToken::generateToken($tokenPayload);
@@ -256,6 +262,7 @@ class IndexController
             }
 
             addLoginRecord($player->id);
+            $deviceType = getDeviceType(); // 获取设备类型
             return jsonSuccessResponse('success', [
                 'token' => JwtToken::generateToken([
                     'id' => $player->id,
@@ -264,6 +271,7 @@ class IndexController
                     'type' => $player->type,
                     'currency' => $player->currency,
                     'recommended_code' => $player->recommended_code,
+                    'client' => $deviceType, // ✅ 添加设备类型，用于单点登录区分
                 ]),
                 'player_activity_phase' => (new ActivityServices(null, $player))->playerUnreceivedActivity()
             ]);
@@ -395,6 +403,7 @@ class IndexController
             return jsonFailResponse($e->getMessage());
         }
         
+        $deviceType = getDeviceType(); // 获取设备类型
         return jsonSuccessResponse('success', [
             'token' => JwtToken::generateToken([
                 'id' => $player->id,
@@ -403,6 +412,7 @@ class IndexController
                 'type' => $player->type,
                 'currency' => $player->currency,
                 'recommended_code' => $player->recommended_code,
+                'client' => $deviceType, // ✅ 添加设备类型，用于单点登录区分
             ]),
             'player_activity_phase' => (new ActivityServices(null, $player))->playerUnreceivedActivity()
         ]);
