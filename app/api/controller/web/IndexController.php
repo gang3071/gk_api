@@ -275,7 +275,7 @@ class IndexController
     public function authLogout(): Response
     {
         checkPlayer();
-        if (JwtToken::clear()) {
+        if (JwtToken::clear(getDeviceType())) {
             return apiSuccessResponse('ok');
         }
 
@@ -296,6 +296,7 @@ class IndexController
             'type' => $player->type,
             'currency' => $player->currency,
             'recommended_code' => $player->recommended_code,
+            'client' => getDeviceType(),
         ];
 
         $token = JwtToken::generateToken($tokenPayload);
