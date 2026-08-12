@@ -566,4 +566,5 @@ return [
     'amount_calculation_zero_or_negative' => '金額計算異常：結果がゼロまたは負数',
     'amount_calculation_too_large' => '金額計算異常：単回限度（100万円）を超えました、マシンオッズ設定を確認してください',
     'machine_odds_config_error' => 'マシンオッズ設定エラー',
+    'store_not_found' => '店舗が見つかりません',
 ];

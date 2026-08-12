@@ -575,4 +575,5 @@ return [
     'amount_calculation_zero_or_negative' => '計算金額異常：結果為0或負數',
     'amount_calculation_too_large' => '計算金額異常：超過單次限制（100萬元），請檢查機台賠率配置',
     'machine_odds_config_error' => '機台賠率配置錯誤',
+    'store_not_found' => '未找到門店',
 ];

@@ -40,6 +40,8 @@ Route::group('/api', function () {
         Route::post('/me/rebate/claim', [\app\api\controller\web\PlayerController::class, 'rebateClaim']);
         // 我的機台清單
         Route::get('/me/machines', [\app\api\controller\web\PlayerController::class, 'machines']);
+        // 門店機台列表
+        Route::get('/stores/{storeId}/machines', [\app\api\controller\web\MachineController::class, 'storeMachines']);
         // 系統公告
         Route::get('/announcements', [\app\api\controller\web\IndexController::class, 'announcements']);
     });

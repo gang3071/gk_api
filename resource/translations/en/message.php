@@ -569,4 +569,5 @@ return [
     'amount_calculation_zero_or_negative' => 'Amount calculation error: result is zero or negative',
     'amount_calculation_too_large' => 'Amount calculation error: exceeds single operation limit (1 million yuan), please check machine odds configuration',
     'machine_odds_config_error' => 'Machine odds configuration error',
+    'store_not_found' => 'Store not found',
 ];

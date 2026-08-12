@@ -585,4 +585,5 @@ return [
     'amount_calculation_zero_or_negative' => '计算金额异常：结果为0或负数',
     'amount_calculation_too_large' => '计算金额异常：超过单次限制（100万元），请检查机台赔率配置',
     'machine_odds_config_error' => '机台赔率配置错误',
+    'store_not_found' => '未找到门店',
 ];
