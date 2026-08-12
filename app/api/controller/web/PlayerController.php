@@ -422,19 +422,12 @@ class PlayerController
         $player = checkPlayer();
 
         $machine = Machine::query()
-            ->whereHas('machineCategory', function ($query) {
-                $query->whereHas('gameType', function ($query) {
-                    $query->where('status', 1);
-                })->where('status', 1);
-            })
-            ->where('status', 1)
-            ->where('maintaining', 0)
             ->where('gaming_user_id', $player->id)
             ->orderBy('sort')
             ->orderBy('id', 'desc')
             ->get();
 
-        if (empty($machine)) {
+        if ($machine->isEmpty()) {
             return apiFailResponse(trans('machine_no_gaming', [], 'message'));
         }
 
@@ -455,6 +448,7 @@ class PlayerController
         $action = 'leave';
         $language = locale() ?? 'zh_TW';
         $language = Str::replace('_', '-', $language);
+        $message = '';
 
         foreach ($machine as $key => $value) {
             try {
@@ -462,12 +456,14 @@ class PlayerController
 
                 // 機台鎖定
                 if ($services->has_lock == 1) {
-                    return apiFailResponse(trans('machine_has_lock', [], 'message'), []);
+                    $message = trans('machine_has_lock', [], 'message');
+                    continue;
                 }
 
                 // 機台開獎中
                 if ($services->reward_status == 1) {
-                    return apiFailResponse(trans('machine_reward_drawing', ['{code}' => $value->code], 'message'));
+                    $message = trans('machine_reward_drawing', ['{code}' => $value->code], 'message');
+                    continue;
                 }
 
                 Log::channel('machine_operations')
@@ -487,7 +483,8 @@ class PlayerController
                 );
 
                 if (! $result['success']) {
-                    return apiFailResponse($result['message'] ?? trans('machine_wash_command_failed', [], 'message'));
+                    $message = $result['message'] ?? trans('machine_wash_command_failed', [], 'message');
+                    continue;
                 }
 
                 Log::channel('machine_operations')->info('[MachineWashV2] 洗分成功', [
@@ -496,12 +493,14 @@ class PlayerController
                     'has_lottery' => $result['data']['has_lottery'] ?? false,
                 ]);
             } catch (Exception $e) {
-                if (! empty($requestId)) {
-                    $this->releaseIdempotent($requestId);
-                }
-
+                $this->releaseIdempotent($requestId);
                 throw $e;
             }
+        }
+
+        if (! empty($message)) {
+            $this->releaseIdempotent($requestId);
+            return apiFailResponse($message);
         }
 
         $response = apiSuccessResponse(trans('machine_logout_all', [], 'message'));
