@@ -264,4 +264,13 @@ class Machine extends Model
         return $this->belongsTo(MachineProducer::class,
             'producer_id')->withTrashed();
     }
+
+    /**
+     * 渠道關聯（machine ↔ channel_machine）
+     * @return HasMany
+     */
+    public function channelMachines(): HasMany
+    {
+        return $this->hasMany(ChannelMachine::class, 'machine_id');
+    }
 }

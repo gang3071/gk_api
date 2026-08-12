@@ -7,6 +7,7 @@ use app\model\AdminUser;
 use app\model\ChannelMachine;
 use app\model\Machine;
 use Exception;
+use Illuminate\Database\Eloquent\Builder;
 use support\Request;
 use support\Response;
 
@@ -107,6 +108,62 @@ class MachineController
             'page' => $page,
             'pageSize' => $pageSize,
             'total' => $total,
+        ]);
+    }
+
+    /**
+     * 掃碼 / 查詢單機
+     * @param Request $request
+     * @param string $code 掃碼結果（machine.code）
+     * @return Response
+     * @throws PlayerCheckException|Exception
+     */
+    public function machineByCode(Request $request, string $code): Response
+    {
+        $player = checkPlayer();
+
+        // 依機台編號查詢，限該玩家渠道部門下關聯的機台
+        $machine = Machine::query()
+            ->with(['machineLabel', 'machineCategory'])
+            ->where('code', $code)
+            ->where('status', 1)
+            ->whereHas('machineLabel', function (Builder $query) {
+                $query->where('status', 1);
+            })
+            ->whereHas('channelMachines', function (Builder $query) use ($player) {
+                $query->where('department_id', $player->department_id);
+            })
+            ->first();
+        if (!$machine) {
+            return apiFailResponse(trans('machine_not_found', [], 'message'));
+        }
+
+        // 玩家已占用機台數（bindable 配額判斷）
+        $occupiedCount = Machine::query()
+            ->where('gaming_user_id', $player->id)
+            ->count();
+        $machinePlayNum = $player->machine_play_num > 0 ? $player->machine_play_num : 1;
+
+        $venueStatus = self::aggregateVenueStatus($machine);
+
+        // occupiedBy：規格對應 machine_session.member_id，目前無此表，暫回 null
+        $occupiedBy = null;
+
+        return apiSuccessResponse('ok', [
+            'id' => $machine->id,
+            'code' => $machine->code,
+            'name' => $machine->name,
+            'pictureUrl' => $machine->picture_url,
+            'point' => $machine->machineLabel->point ?? 0,
+            'turn' => $machine->machineLabel->turn ?? 0,
+            'score' => $machine->machineLabel->score ?? 0,
+            'courtyard' => $machine->machineLabel->courtyard ?? '',
+            'correct_rate' => $machine->correct_rate,
+            'odds_x' => $machine->odds_x,
+            'odds_y' => $machine->odds_y,
+            'venueStatus' => $venueStatus,
+            'bindable' => $venueStatus === 'idle' && $occupiedCount < $machinePlayNum,
+            'occupiedBy' => $occupiedBy,
         ]);
     }
 
