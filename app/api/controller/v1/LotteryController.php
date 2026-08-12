@@ -36,7 +36,7 @@ class LotteryController
      * 彩金列表（新版：支持独立彩池）
      * @param Request $request
      * @return Response
-     * @throws PlayerCheckException|Exception
+     * @throws PlayerCheckException
      */
     public function lotteryList(Request $request): Response
     {
@@ -137,7 +137,7 @@ class LotteryController
      * 彩金领取列表
      * @param Request $request
      * @return Response
-     * @throws PlayerCheckException|Exception
+     * @throws PlayerCheckException
      */
     public function lotteryRecordList(Request $request): Response
     {
