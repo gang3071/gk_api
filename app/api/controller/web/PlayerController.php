@@ -299,7 +299,9 @@ class PlayerController
             ]);
 
             // 保存幂等性记录（覆盖占位）
-            $this->saveIdempotent($requestId, $response, 'rebate-claim:' . $player->id, $player->id);
+            if (! empty($requestId)) {
+                $this->saveIdempotent($requestId, $response, 'rebate-claim:' . $player->id, $player->id);
+            }
 
             return $response;
         } catch (Exception) {
@@ -359,16 +361,6 @@ class PlayerController
         foreach ($machine as $key => $value) {
             $services = MachineServices::createServices($value, $language);
 
-            $machineMedia = $value->machine_media
-                ->where('status', 1)
-                ->where('is_ams', 1)
-                ->makeHidden([
-                    'user_id', 'user_name', 'deleted_at', 'created_at', 'updated_at', 'push_ip', 'media_ip'
-                ])
-                ->sortBy('sort')
-                ->values()
-                ->all();
-
             // 初始化机台信息数组
             $machineInfo = [];
             $machineInfo['id'] = $value->id;
@@ -377,22 +369,24 @@ class PlayerController
             $machineInfo['type'] = $value->type;
             $machineInfo['odds_x'] = $value->odds_x;
             $machineInfo['odds_y'] = $value->odds_y;
-            $machineInfo['machineLabel'] = $value->machineLabel;
-            $machineInfo['machineMedia'] = $machineMedia;
-
-            $machineInfo['category_name'] = $value->machineCategory->name;
-            $machineInfo['turn_used_point'] = rtrim(rtrim(number_format($value->machineCategory->turn_used_point, 2, '.', ''), '0'), '.');
 
             if ($value->type == GameType::TYPE_STEEL_BALL) {
                 $machineInfo['odds_x'] = $value->machineCategory->name;
                 $machineInfo['odds_y'] = '';
             }
 
+            $machineInfo['category_name'] = $value->machineCategory->name;
+            $machineInfo['turn_used_point'] = rtrim(rtrim(number_format($value->machineCategory->turn_used_point, 2, '.', ''), '0'), '.');
+
+            $machineInfo['name'] = $value->machineLabel->name ?? '';
+            $machineInfo['courtyard'] = $value->machineLabel->courtyard ?? '';
+            $machineInfo['correct_rate'] = $value->machineLabel->correct_rate ?? '';
+
+            $machineInfo['reward_status'] = $services->reward_status;
+            $machineInfo['bet'] = $services->bet;
+            $machineInfo['last_play_time'] = $services->last_play_time;
             $machineInfo['keeping'] = $services->keeping;
             $machineInfo['keep_seconds'] = $services->keep_seconds;
-            $machineInfo['last_play_time'] = $services->last_play_time;
-            $machineInfo['reward_status'] = $services->reward_status;
-            $machineInfo['auto'] = $services->auto;
 
             $playRouteNum = Cache::get('machine_play_route_num', 1);
 
@@ -415,6 +409,109 @@ class PlayerController
         return apiSuccessResponse('success', [
             'list' => $list
         ]);
+    }
+
+    /**
+     * 機台登出（釋放全部)
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException|Exception
+     */
+    public function machinesLogoutAll(Request $request): Response
+    {
+        $player = checkPlayer();
+
+        $machine = Machine::query()
+            ->whereHas('machineCategory', function ($query) {
+                $query->whereHas('gameType', function ($query) {
+                    $query->where('status', 1);
+                })->where('status', 1);
+            })
+            ->where('status', 1)
+            ->where('maintaining', 0)
+            ->where('gaming_user_id', $player->id)
+            ->orderBy('sort')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        if (empty($machine)) {
+            return apiFailResponse(trans('machine_no_gaming', [], 'message'));
+        }
+
+        // ---------------------------------------- 冪等性處理 ----------------------------------------
+        $requestId = $request->input('request_id') ?? null;
+        $idempotentResponse = $this->checkIdempotent($requestId, 'machines-logout-all:' . $player->id, $player->id);
+
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        if (! $this->reserveIdempotent($requestId, 'machines-logout-all:' . $player->id, $player->id)) {
+            $response = $this->checkIdempotent($requestId, 'machines-logout-all:' . $player->id, $player->id);
+            return $response ?? apiFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ---------------------------------------- 機台逐台離線 ----------------------------------------
+        $action = 'leave';
+        $language = locale() ?? 'zh_TW';
+        $language = Str::replace('_', '-', $language);
+
+        foreach ($machine as $key => $value) {
+            try {
+                $services = MachineServices::createServices($value, $language);
+
+                // 機台鎖定
+                if ($services->has_lock == 1) {
+                    return apiFailResponse(trans('machine_has_lock', [], 'message'), []);
+                }
+
+                // 機台開獎中
+                if ($services->reward_status == 1) {
+                    return apiFailResponse(trans('machine_reward_drawing', ['{code}' => $value->code], 'message'));
+                }
+
+                Log::channel('machine_operations')
+                    ->info('[MachineWashV2] 开始洗分', [
+                        'player_id' => $player->id,
+                        'machine_id' => $value->id,
+                        'action' => $action,
+                        'lang' => $language
+                    ]);
+
+                // 调用 gk_work 完整业务逻辑
+                // 超时30秒，因为要处理完整的数据库事务
+                $client = new MachineClient(null, 30);
+
+                $result = $client->washMachine(
+                    $value->id, $player->id, $action, true, 0, $language
+                );
+
+                if (! $result['success']) {
+                    return apiFailResponse($result['message'] ?? trans('machine_wash_command_failed', [], 'message'));
+                }
+
+                Log::channel('machine_operations')->info('[MachineWashV2] 洗分成功', [
+                    'player_id' => $player->id,
+                    'machine_id' => $value->id,
+                    'has_lottery' => $result['data']['has_lottery'] ?? false,
+                ]);
+            } catch (Exception $e) {
+                if (! empty($requestId)) {
+                    $this->releaseIdempotent($requestId);
+                }
+
+                throw $e;
+            }
+        }
+
+        $response = apiSuccessResponse(trans('machine_logout_all', [], 'message'));
+
+        // 保存幂等性记录（覆盖占位）
+        if (! empty($requestId)) {
+            $this->saveIdempotent($requestId, $response, 'machines-logout-all:' . $player->id, $player->id);
+        }
+
+        return $response;
     }
 
     /**

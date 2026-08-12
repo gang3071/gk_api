@@ -127,6 +127,8 @@ return [
     'player_withdraw_closed' => 'プレイヤーの退会機能は閉じられています',
     'payment_function_closed' => '支払い機能が閉じられています',
     'phone_not_register' => '携帯電話番号が登録されていません',
+    'machine_no_gaming' => '使用中の機械はありません',
+    'machine_logout_all' => 'すべてのマシンからログアウトする',
 
     'open_point_required' => 'オープンポイント値を入力してください',
     'open_point_numeric' => 'オープンポイント値エラー',

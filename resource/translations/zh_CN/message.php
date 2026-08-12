@@ -127,6 +127,8 @@ return [
     'player_withdraw_closed' => '玩家转出功能关闭',
     'payment_function_closed' => '支付功能已关闭',
     'phone_not_register' => '手机号未注册',
+    'machine_no_gaming' => '没有占用中的机台',
+    'machine_logout_all' => '已从所有机台登出',
 
     'open_point_required' => '请输入开分值',
     'open_point_numeric' => '开分值错误',

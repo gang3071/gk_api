@@ -127,6 +127,8 @@ return [
     'player_withdraw_closed' => 'Player withdrawal function is closed',
     'payment_function_closed' => 'Payment function is closed',
     'phone_not_register' => 'Mobile phone number is not registered',
+    'machine_no_gaming' => 'No machines in use',
+    'machine_logout_all' => 'Logout from all machines',
 
     'open_point_required' => 'Please enter the open point value',
     'open_point_numeric' => 'Open point value error',
