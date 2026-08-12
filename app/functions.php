@@ -4012,7 +4012,7 @@ if (!function_exists('getDeviceType')) {
      * 2. 请求头 App-Version（有值 = 移动端APP）
      * 3. User-Agent 自动判断（降级方案）
      *
-     * @return string WEB（网页）| MOBILE（移动端APP）| TABLET（平板）
+     * @return string WEB（网页）| MOBILE（移动端APP）| TABLET（平板）| KIOSK（安卓大屏设备）
      */
     function getDeviceType(): string
     {
@@ -4021,8 +4021,8 @@ if (!function_exists('getDeviceType')) {
 
         if (!empty($deviceType)) {
             $deviceType = strtoupper($deviceType);
-            // 白名单验证
-            if (in_array($deviceType, ['WEB', 'MOBILE', 'TABLET'])) {
+            // 白名单验证（添加 KIOSK 类型）
+            if (in_array($deviceType, ['WEB', 'MOBILE', 'TABLET', 'KIOSK'])) {
                 return $deviceType;
             }
         }
