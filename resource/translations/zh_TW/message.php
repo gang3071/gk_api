@@ -132,6 +132,9 @@ return [
     'machine_no_gaming' => '沒有佔用中的機台',
     'machine_logout_all' => '已從所有機台登出',
     'machine_logout' => '已從機台登出',
+    'transfer_amount_invalid' => '轉分金額需為大於 0 的整數',
+    'credit_insufficient' => '機台分數不足',
+    'transfer_limit_exceeded' => '超過單次轉分上限 {limit} 點',
 
     'open_point_required' => '請輸入開分值',
     'open_point_numeric' => '開分值錯誤',

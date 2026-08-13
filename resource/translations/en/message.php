@@ -132,6 +132,9 @@ return [
     'machine_no_gaming' => 'No machines in use',
     'machine_logout_all' => 'Logout from all machines',
     'machine_logout' => 'Logout from machine',
+    'transfer_amount_invalid' => 'Transfer amount must be a positive integer',
+    'credit_insufficient' => 'Insufficient machine credit',
+    'transfer_limit_exceeded' => 'Transfer amount exceeds the limit of {limit} points',
 
     'open_point_required' => 'Please enter the open point value',
     'open_point_numeric' => 'Open point value error',

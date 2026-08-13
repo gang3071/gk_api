@@ -44,6 +44,8 @@ Route::group('/api', function () {
         Route::get('/machines/{code}', [\app\api\controller\web\MachineController::class, 'machineByCode']);
         // 綁定機台
         Route::post('/machines/{code}/bind', [\app\api\controller\web\MachineController::class, 'bind']);
+        // 機台上分 / 下分
+        Route::post('/machines/{code}/transfer', [\app\api\controller\web\MachineController::class, 'transfer']);
         // 門店機台列表
         Route::get('/stores/{storeId}/machines', [\app\api\controller\web\MachineController::class, 'storeMachines']);
         // 登出機台(單台)

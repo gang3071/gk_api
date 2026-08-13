@@ -132,6 +132,9 @@ return [
     'machine_no_gaming' => '使用中の機械はありません',
     'machine_logout_all' => 'すべてのマシンからログアウトする',
     'machine_logout' => 'マシンからログアウトする',
+    'transfer_amount_invalid' => '転分金額は 0 より大きい整数である必要があります',
+    'credit_insufficient' => '機械の分数が不足しています',
+    'transfer_limit_exceeded' => '1回の転分上限 {limit} ポイントを超えています',
 
     'open_point_required' => 'オープンポイント値を入力してください',
     'open_point_numeric' => 'オープンポイント値エラー',
