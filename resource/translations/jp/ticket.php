@@ -43,4 +43,5 @@ return [
     'player_not_found' => 'プレイヤーが見つかりません',
     'encrypt_key_not_configured' => '暗号化キーが設定されていません',
     'not_logged_in' => 'ログインしていません',
+    'ticket_cross_store_not_allowed' => 'この開分コードは現在の店舗に属していないため、使用できません',
 ];

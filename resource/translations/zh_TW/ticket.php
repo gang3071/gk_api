@@ -43,4 +43,5 @@ return [
     'player_not_found' => '玩家不存在',
     'encrypt_key_not_configured' => '加密密鑰未配置',
     'not_logged_in' => '未登錄',
+    'ticket_cross_store_not_allowed' => '此開分碼不屬於當前店鋪，無法使用',
 ];

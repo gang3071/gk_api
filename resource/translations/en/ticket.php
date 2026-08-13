@@ -43,4 +43,5 @@ return [
     'player_not_found' => 'Player not found',
     'encrypt_key_not_configured' => 'Encryption key not configured',
     'not_logged_in' => 'Not logged in',
+    'ticket_cross_store_not_allowed' => 'This open score code does not belong to current store and cannot be used',
 ];

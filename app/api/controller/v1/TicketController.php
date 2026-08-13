@@ -478,6 +478,18 @@ class TicketController
                     return jsonFailResponse(trans('ticket_bound_other_player', [], 'message'));
                 }
 
+                // 🔒 跨店限制：开分码只能在所属店铺使用
+                if ((int)$ticket->store_admin_id > 0 && (int)$ticket->store_admin_id !== (int)$player->store_admin_id) {
+                    $this->releaseIdempotent($requestId);
+                    Log::warning('scanOpenScore: 跨店使用被拒绝', [
+                        'player_id' => $player->id,
+                        'player_store_admin_id' => $player->store_admin_id,
+                        'ticket_store_admin_id' => $ticket->store_admin_id,
+                        'order_id' => $orderId,
+                    ]);
+                    return jsonFailResponse(trans('ticket_cross_store_not_allowed', [], 'message'));
+                }
+
                 // 福利卷/体验卷特殊验证
                 if ($ticket->isWelfareOrExperience()) {
                     // 检查玩家是否正在游玩机台游戏

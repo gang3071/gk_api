@@ -43,4 +43,5 @@ return [
     'player_not_found' => '玩家不存在',
     'encrypt_key_not_configured' => '加密密钥未配置',
     'not_logged_in' => '未登录',
+    'ticket_cross_store_not_allowed' => '此开分码不属于当前店铺，无法使用',
 ];
