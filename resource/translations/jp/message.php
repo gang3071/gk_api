@@ -31,6 +31,7 @@ return [
     'machine_open_amount_error' => 'ポイント数が間違っています',
     'machine_open_present_msg1' => 'ギフト開封を実行するには、少なくとも 10 秒の間隔が必要です',
     'system_error' => 'システムエラー',
+    'request_processing' => 'リクエスト処理中です。しばらくしてからもう一度お試しください',
     'machine_is_keeper' => 'このマシンは予約されています',
     'machine_is_unkeeper' => 'このマシンは予約されていません',
     'machine_cannot_keeper' => 'マシンは自動的に進行中のため、維持できません',
@@ -543,6 +544,7 @@ return [
     'ticket_amount_not_multiple' => '出票金額 :amount はウォッシュポイント基数 :base の整数倍である必要があります',
     'ticket_balance_insufficient' => '残高不足、現在の残高：:current、必要：:required',
     'ticket_machine_is_opening' => 'マシン:codeが抽選中、福利券/体験券を使用できません',
+    'ticket_cross_store_not_allowed' => 'この開分コードは現在の店舗に属していないため、使用できません',
 
     // マシンコマンド関連
     'machine_command_failed' => 'マシンコマンド送信失敗',

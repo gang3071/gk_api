@@ -31,6 +31,7 @@ return [
     'machine_open_amount_error' => 'Wrong amount of points',
     'machine_open_present_msg1' => 'An interval of at least 10 seconds is required to execute the gift opening',
     'system_error' => 'System error',
+    'request_processing' => 'Request is being processed, please try again later',
     'machine_is_keeping' => 'This machine is being reserved',
     'machine_is_unkeeping' => 'This machine is not reserved',
     'machine_cannot_keeping' => 'The machine is automatically in progress and cannot be kept',
@@ -546,6 +547,7 @@ return [
     'ticket_amount_not_multiple' => 'Ticket amount :amount must be a multiple of wash point base :base',
     'ticket_balance_insufficient' => 'Insufficient balance, current: :current, required: :required',
     'ticket_machine_is_opening' => 'Machine :code is drawing, cannot use welfare/experience ticket',
+    'ticket_cross_store_not_allowed' => 'This open score code does not belong to current store and cannot be used',
 
     // Machine Commands
     'machine_command_failed' => 'Machine command failed',

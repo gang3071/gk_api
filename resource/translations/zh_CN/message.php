@@ -31,6 +31,7 @@ return [
     'machine_open_amount_error' => '上分金额错误',
     'machine_open_present_msg1' => '执行开赠需间隔至少10秒',
     'system_error' => '系統錯誤',
+    'request_processing' => '请求正在处理中，请稍后再试',
     'machine_is_keeping' => '此机台已保留中',
     'machine_is_unkeeping' => '此机台非保留中',
     'machine_cannot_keeping' => '机台自动中，无法保留',
@@ -562,6 +563,7 @@ return [
     'ticket_amount_not_multiple' => '出票金额 :amount 必须是洗分基数 :base 的整数倍',
     'ticket_balance_insufficient' => '余额不足，当前余额：:current，需要：:required',
     'ticket_machine_is_opening' => '机台:code正在开奖中，无法使用福利卷/体验卷',
+    'ticket_cross_store_not_allowed' => '此开分码不属于当前店铺，无法使用',
 
     // 机台指令相关
     'machine_command_failed' => '机台指令发送失败',
