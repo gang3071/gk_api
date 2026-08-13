@@ -2,6 +2,7 @@
 
 namespace app\api\controller\web;
 
+use app\exception\PlayerCheckException;
 use app\model\AdminDevice;
 use app\model\Announcement;
 use app\model\Channel;
@@ -46,7 +47,7 @@ class IndexController
         }
 
         /** @var Player $player */
-        $player = Player::where('phone', $data['phone'])->where('department_id', request()->department_id)->first();
+        $player = Player::query()->where('phone', $data['phone'])->where('department_id', request()->department_id)->first();
         if (empty($player)) {
             return apiFailResponse(trans('phone_not_register', [], 'message'), [], 'PLAYER_NOT_FOUND');
         }
@@ -76,7 +77,7 @@ class IndexController
     public function smsLogin(Request $request): Response
     {
         /** @var Channel $channel */
-        $channel = Channel::where('department_id', request()->department_id)->first();
+        $channel = Channel::query()->where('department_id', request()->department_id)->first();
         if ($channel->web_login_status == 0) {
             return apiFailResponse(trans('web_login_close', [], 'message'), [], 'LOGIN_CLOSED');
         }
@@ -125,7 +126,7 @@ class IndexController
     public function passwordLogin(Request $request): Response
     {
         /** @var Channel $channel */
-        $channel = Channel::where('department_id', request()->department_id)->first();
+        $channel = Channel::query()->where('department_id', request()->department_id)->first();
         if ($channel->web_login_status == 0) {
             return apiFailResponse(trans('web_login_close', [], 'message'), [], 'LOGIN_CLOSED');
         }
@@ -181,7 +182,7 @@ class IndexController
         $data = $request->all();
         $refreshToken = $data['refreshToken'] ?? $request->header('Authorization', '');
         $refreshToken = trim($refreshToken);
-        if (strpos($refreshToken, 'Bearer ') === 0) {
+        if (str_starts_with($refreshToken, 'Bearer ')) {
             $refreshToken = substr($refreshToken, 7);
         }
         if (empty($refreshToken)) {
@@ -225,6 +226,7 @@ class IndexController
      * 系統公告列表
      * @param Request $request
      * @return Response
+     * @throws PlayerCheckException
      */
     public function announcements(Request $request): Response
     {
@@ -271,6 +273,7 @@ class IndexController
     /**
      * 登出
      * @return Response
+     * @throws PlayerCheckException
      */
     public function authLogout(): Response
     {

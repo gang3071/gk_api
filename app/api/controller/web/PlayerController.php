@@ -8,9 +8,9 @@ use app\model\GamePlatform;
 use app\model\GameType;
 use app\model\Machine;
 use app\model\PlayerDeliveryRecord;
-use app\model\PlayGameRecord;
 use app\model\PlayerMoneyEditLog;
 use app\model\PlayerReverseWaterDetail;
+use app\model\PlayGameRecord;
 use app\model\VipLevel;
 use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
@@ -66,7 +66,6 @@ class PlayerController
             ->whereNotIn('platform_id', self::getExcludedPlatformIds())
             ->sum('bet');
         // ---------------------------------------- VIP 相關 ----------------------------------------
-        $nextLevel = '';
         $vipLevel = $player->vipLevel()->first();
         $currentPeriod = $player->currentVipPeriod()->first();
         $currentBetAmount = $currentPeriod ? $currentPeriod->period_bet_amount : 0;
@@ -450,7 +449,7 @@ class PlayerController
         $language = Str::replace('_', '-', $language);
         $message = '';
 
-        foreach ($machine as $key => $value) {
+        foreach ($machine as $value) {
             try {
                 $services = MachineServices::createServices($value, $language);
 

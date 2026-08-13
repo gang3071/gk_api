@@ -180,6 +180,7 @@ class MachineController
         $player = checkPlayer();
 
         // 依機台編號查詢，限該玩家渠道部門下關聯的機台
+        /** @var Machine $machine */
         $machine = Machine::query()
             ->with(['machineLabel', 'machineCategory'])
             ->where('code', $code)
