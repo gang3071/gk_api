@@ -37,6 +37,8 @@ return [
     'keeping_success' => 'Keeping success',
     'keeping_cancel_success' => 'Cancel reservation successfully',
     'machine_not_found' => 'Machine not found',
+    'machine_occupied' => 'Machine is occupied',
+    'quota_exceeded' => 'Machine quota exceeded',
     'machine_open_wash_too_fast' => 'The operation needs to be separated by 5 seconds. If illegal program operation is found, the account will be frozen',
     'machine_open_uncertain' => 'Deposit operation status is uncertain, please contact customer service',
     'game_amount_insufficient' => 'Your game wallet balance is insufficient',

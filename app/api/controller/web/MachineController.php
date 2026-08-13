@@ -6,6 +6,7 @@ use app\exception\PlayerCheckException;
 use app\model\AdminUser;
 use app\model\ChannelMachine;
 use app\model\Machine;
+use app\model\Player;
 use Exception;
 use Illuminate\Database\Eloquent\Builder;
 use support\Request;
@@ -164,6 +165,96 @@ class MachineController
             'venueStatus' => $venueStatus,
             'bindable' => $venueStatus === 'idle' && $occupiedCount < $machinePlayNum,
             'occupiedBy' => $occupiedBy,
+        ]);
+    }
+
+    /**
+     * 綁定機台
+     * @param Request $request
+     * @param string $code 機台編號
+     * @return Response
+     * @throws PlayerCheckException|Exception
+     */
+    public function bind(Request $request, string $code): Response
+    {
+        $player = checkPlayer();
+
+        // 依機台編號查詢，限該玩家渠道部門下關聯的機台
+        $machine = Machine::query()
+            ->with(['machineLabel', 'machineCategory'])
+            ->where('code', $code)
+            ->where('status', 1)
+            ->whereHas('machineLabel', function (Builder $query) {
+                $query->where('status', 1);
+            })
+            ->whereHas('channelMachines', function (Builder $query) use ($player) {
+                $query->where('department_id', $player->department_id);
+            })
+            ->first();
+        if (!$machine) {
+            return apiFailResponse(trans('machine_not_found', [], 'message'));
+        }
+
+        // 已被其他玩家占用
+        if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
+            return apiFailResponse(trans('machine_occupied', [], 'message'));
+        }
+        // 非 idle（保留 / 使用中）視為被占用       
+        if ($machine->gaming_user_id == 0 && ($machine->gaming == 1 || $machine->keeping == 1 || $machine->is_use == 1)) {
+            return apiFailResponse(trans('machine_occupied', [], 'message'));
+        }
+
+        // 已由自己綁定，直接回成功（冪等）      
+        if ($machine->gaming_user_id == $player->id && $machine->gaming == 1) {
+            return $this->bindSuccessResponse($machine, $player);
+        }
+
+        // 配額檢查：未達 machinePlayNum 配額
+        $occupiedCount = Machine::query()
+            ->where('gaming_user_id', $player->id)
+            ->count();
+        $machinePlayNum = $player->machine_play_num > 0 ? $player->machine_play_num : 1;
+        if ($occupiedCount >= $machinePlayNum) {
+            return apiFailResponse(trans('quota_exceeded', [], 'message'));
+        }
+
+        // 綁定：佔位並標記使用中
+        $machine->gaming_user_id = $player->id;
+        $machine->gaming = 1;
+        $machine->save();
+
+        return $this->bindSuccessResponse($machine, $player);
+    }
+
+    /**
+     * 綁定成功回應
+     * @param Machine $machine
+     * @param Player $player
+     * @return Response
+     */
+    private function bindSuccessResponse(Machine $machine, Player $player): Response
+    {
+        $venueStatus = self::aggregateVenueStatus($machine);
+
+        return apiSuccessResponse('ok', [
+            'id' => $machine->id,
+            'code' => $machine->code,
+            'name' => $machine->name,
+            'pictureUrl' => $machine->picture_url,
+            'point' => $machine->machineLabel->point ?? 0,
+            'turn' => $machine->machineLabel->turn ?? 0,
+            'score' => $machine->machineLabel->score ?? 0,
+            'courtyard' => $machine->machineLabel->courtyard ?? '',
+            'correct_rate' => $machine->correct_rate,
+            'odds_x' => $machine->odds_x,
+            'odds_y' => $machine->odds_y,
+            'venueStatus' => $venueStatus,
+            'bindable' => false,
+            'occupiedBy' => [
+                'id' => $player->id,
+                'nickname' => $player->name,
+            ],
+            'boundAt' => (int)(strtotime($machine->updated_at) * 1000),
         ]);
     }
 

@@ -37,6 +37,8 @@ return [
     'keeping_success' => '保留成功',
     'keeping_cancel_success' => '取消保留成功',
     'machine_not_found' => '未找到机台',
+    'machine_occupied' => '机台已被占用',
+    'quota_exceeded' => '已达到机台数量上限',
     'machine_open_wash_too_fast' => '操作上下分需间隔5秒，若发现使用非法程序操作将冻结帐号',
     'machine_open_uncertain' => '上分操作状态未知，请联系客服核实',
     'game_amount_insufficient' => '您的游戏钱包馀额不足',

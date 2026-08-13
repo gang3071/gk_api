@@ -44,6 +44,8 @@ Route::group('/api', function () {
         Route::post('/me/machines/logout-all', [\app\api\controller\web\PlayerController::class, 'machinesLogoutAll']);
         // 掃碼 / 查詢單機
         Route::get('/machines/{code}', [\app\api\controller\web\MachineController::class, 'machineByCode']);
+        // 綁定機台
+        Route::post('/machines/{code}/bind', [\app\api\controller\web\MachineController::class, 'bind']);
         // 門店機台列表
         Route::get('/stores/{storeId}/machines', [\app\api\controller\web\MachineController::class, 'storeMachines']);
         // 系統公告
