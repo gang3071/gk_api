@@ -131,6 +131,7 @@ return [
     'phone_not_register' => '手机号未注册',
     'machine_no_gaming' => '没有占用中的机台',
     'machine_logout_all' => '已从所有机台登出',
+    'machine_logout' => '已从机台登出',
 
     'open_point_required' => '请输入开分值',
     'open_point_numeric' => '开分值错误',

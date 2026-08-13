@@ -31,23 +31,25 @@ Route::group('/api', function () {
         // 账号登出
         Route::post('/auth/logout', [\app\api\controller\web\IndexController::class, 'authLogout']);
         // 個人資料
-        Route::get('/me/profile', [\app\api\controller\web\PlayerController::class, 'profile']);
+        Route::post('/me/profile', [\app\api\controller\web\PlayerController::class, 'profile']);
         // 錢包點數
-        Route::get('/me/wallet', [\app\api\controller\web\PlayerController::class, 'wallet']);
+        Route::post('/me/wallet', [\app\api\controller\web\PlayerController::class, 'wallet']);
         // 返水資訊
-        Route::get('/me/rebate', [\app\api\controller\web\PlayerController::class, 'rebate']);
+        Route::post('/me/rebate', [\app\api\controller\web\PlayerController::class, 'rebate']);
         // 領取返水
         Route::post('/me/rebate/claim', [\app\api\controller\web\PlayerController::class, 'rebateClaim']);
         // 我的機台清單
-        Route::get('/me/machines', [\app\api\controller\web\PlayerController::class, 'machines']);
-        // 一鍵登出所有機台
-        Route::post('/me/machines/logout-all', [\app\api\controller\web\PlayerController::class, 'machinesLogoutAll']);
+        Route::post('/me/machines', [\app\api\controller\web\PlayerController::class, 'machines']);
         // 掃碼 / 查詢單機
         Route::get('/machines/{code}', [\app\api\controller\web\MachineController::class, 'machineByCode']);
         // 綁定機台
         Route::post('/machines/{code}/bind', [\app\api\controller\web\MachineController::class, 'bind']);
         // 門店機台列表
         Route::get('/stores/{storeId}/machines', [\app\api\controller\web\MachineController::class, 'storeMachines']);
+        // 登出機台(單台)
+        Route::post('/machines/logout', [\app\api\controller\web\MachineController::class, 'machinesLogout']);
+        // 登出機台(全部)
+        Route::post('/machines/logout-all', [\app\api\controller\web\MachineController::class, 'machinesLogoutAll']);
         // 系統公告
         Route::get('/announcements', [\app\api\controller\web\IndexController::class, 'announcements']);
     });

@@ -131,6 +131,7 @@ return [
     'phone_not_register' => '携帯電話番号が登録されていません',
     'machine_no_gaming' => '使用中の機械はありません',
     'machine_logout_all' => 'すべてのマシンからログアウトする',
+    'machine_logout' => 'マシンからログアウトする',
 
     'open_point_required' => 'オープンポイント値を入力してください',
     'open_point_numeric' => 'オープンポイント値エラー',

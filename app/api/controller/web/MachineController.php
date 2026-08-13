@@ -7,13 +7,21 @@ use app\model\AdminUser;
 use app\model\ChannelMachine;
 use app\model\Machine;
 use app\model\Player;
+use app\service\machine\MachineClient;
+use app\service\machine\MachineServices;
 use Exception;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
+use Respect\Validation\Exceptions\AllOfException;
+use Respect\Validation\Validator;
+use support\Log;
 use support\Request;
 use support\Response;
 
 class MachineController
 {
+    use \support\IdempotentTrait;
+
     /**
      * 門店機台列表
      * @param Request $request
@@ -200,12 +208,12 @@ class MachineController
         if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
             return apiFailResponse(trans('machine_occupied', [], 'message'));
         }
-        // 非 idle（保留 / 使用中）視為被占用       
+        // 非 idle（保留 / 使用中）視為被占用
         if ($machine->gaming_user_id == 0 && ($machine->gaming == 1 || $machine->keeping == 1 || $machine->is_use == 1)) {
             return apiFailResponse(trans('machine_occupied', [], 'message'));
         }
 
-        // 已由自己綁定，直接回成功（冪等）      
+        // 已由自己綁定，直接回成功（冪等）
         if ($machine->gaming_user_id == $player->id && $machine->gaming == 1) {
             return $this->bindSuccessResponse($machine, $player);
         }
@@ -273,5 +281,224 @@ class MachineController
             return 'in-use';
         }
         return 'idle';
+    }
+
+
+    /**
+     * 機台登出（單台)
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException|Exception
+     */
+    public function machinesLogout(Request $request): Response
+    {
+        $player = checkPlayer();
+
+        if (empty($player->channel->status_machine) || empty($player->status_machine)) {
+            return apiFailResponse(trans('platform_no_permission', [], 'message'));
+        }
+
+        // ---------------------------------------- 參數檢查 ----------------------------------------
+        $data = $request->all();
+        $validator = Validator::key('machine_id', Validator::intVal()->notEmpty()->setName(trans('machine_id', [], 'message')));
+
+        try {
+            $validator->assert($data);
+        } catch (AllOfException $e) {
+            return apiFailResponse(getValidationMessages($e));
+        }
+
+        // ---------------------------------------- 冪等性處理 ----------------------------------------
+        $requestId = $request->input('request_id') ?? null;
+        $machineId = (int) ($data['machine_id'] ?? 0);
+        $operation = 'machines-logout:' . $player->id . ':' . $machineId;
+        $checkIdempotent = $this->checkIdempotent($requestId, $operation, $player->id);
+
+        if ($checkIdempotent) {
+            return $checkIdempotent;
+        }
+
+        if (! $this->reserveIdempotent($requestId, $operation, $player->id)) {
+            $response = $this->checkIdempotent($requestId, $operation, $player->id);
+            return $response ?? apiFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ---------------------------------------- 機台離線 ----------------------------------------
+        $machine = Machine::query()
+            ->where('id', $data['machine_id'])
+            ->where('gaming_user_id', $player->id)
+            ->first();
+
+        if (! $machine) {
+            $response = apiFailResponse(trans('machine_not_found', [], 'message'));
+            $this->saveIdempotent($requestId, $response, $operation, $player->id);
+
+            return $response;
+        }
+
+        $action = 'leave';
+        $language = locale() ?? 'zh_TW';
+        $language = Str::replace('_', '-', $language);
+
+        try {
+            $services = MachineServices::createServices($machine, $language);
+
+            // 機台鎖定
+            if ($services->has_lock == 1) {
+                $this->releaseIdempotent($requestId);
+                return apiFailResponse(trans('machine_has_lock', [], 'message'));
+            }
+
+            // 機台開獎中
+            if ($services->reward_status == 1) {
+                $this->releaseIdempotent($requestId);
+                return apiFailResponse(trans('machine_reward_drawing', ['{code}' => $machine->code], 'message'));
+            }
+
+            Log::channel('machine_operations')
+                ->info('[MachineWashV2] 开始洗分', [
+                    'player_id' => $player->id,
+                    'machine_id' => $machine->id,
+                    'action' => $action,
+                    'lang' => $language
+                ]);
+
+            // 调用 gk_work 完整业务逻辑
+            // 超时30秒，因为要处理完整的数据库事务
+            $client = new MachineClient(null, 30);
+
+            $result = $client->washMachine(
+                $machine->id, $player->id, $action, true, 0, $language
+            );
+
+            if (! $result['success']) {
+                $this->releaseIdempotent($requestId);
+                return apiFailResponse($result['message'] ?? trans('machine_wash_command_failed', [], 'message'));
+            }
+
+            Log::channel('machine_operations')->info('[MachineWashV2] 洗分成功', [
+                'player_id' => $player->id,
+                'machine_id' => $machine->id,
+                'has_lottery' => $result['data']['has_lottery'] ?? false,
+            ]);
+        } catch (Exception $e) {
+            Log::error($e->getMessage());
+            $this->releaseIdempotent($requestId);
+
+            return apiFailResponse($e->getMessage());
+        }
+
+        $response = apiSuccessResponse(trans('machine_logout', [], 'message'));
+        $this->saveIdempotent($requestId, $response, $operation, $player->id);
+
+        return $response;
+    }
+
+    /**
+     * 機台登出（全部)
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException|Exception
+     */
+    public function machinesLogoutAll(Request $request): Response
+    {
+        $player = checkPlayer();
+
+        if (empty($player->channel->status_machine) || empty($player->status_machine)) {
+            return apiFailResponse(trans('platform_no_permission', [], 'message'));
+        }
+
+        // ---------------------------------------- 冪等性處理 ----------------------------------------
+        $requestId = $request->input('request_id') ?? null;
+        $operation = 'machines-logout-all:' . $player->id;
+        $checkIdempotent = $this->checkIdempotent($requestId, $operation, $player->id);
+
+        if ($checkIdempotent) {
+            return $checkIdempotent;
+        }
+
+        if (! $this->reserveIdempotent($requestId, $operation, $player->id)) {
+            $response = $this->checkIdempotent($requestId, $operation, $player->id);
+            return $response ?? apiFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ---------------------------------------- 機台逐台離線 ----------------------------------------
+        $machine = Machine::query()
+            ->where('gaming_user_id', $player->id)
+            ->orderBy('sort')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        if ($machine->isEmpty()) {
+            $response = apiFailResponse(trans('machine_no_gaming', [], 'message'));
+            $this->saveIdempotent($requestId, $response, $operation, $player->id);
+
+            return $response;
+        }
+
+        $action = 'leave';
+        $language = locale() ?? 'zh_TW';
+        $language = Str::replace('_', '-', $language);
+        $message = '';
+
+        foreach ($machine as $key => $value) {
+            try {
+                $services = MachineServices::createServices($value, $language);
+
+                // 機台鎖定
+                if ($services->has_lock == 1) {
+                    $message = trans('machine_has_lock', [], 'message');
+                    continue;
+                }
+
+                // 機台開獎中
+                if ($services->reward_status == 1) {
+                    $message = trans('machine_reward_drawing', ['{code}' => $value->code], 'message');
+                    continue;
+                }
+
+                Log::channel('machine_operations')
+                    ->info('[MachineWashV2] 开始洗分', [
+                        'player_id' => $player->id,
+                        'machine_id' => $value->id,
+                        'action' => $action,
+                        'lang' => $language
+                    ]);
+
+                // 调用 gk_work 完整业务逻辑
+                // 超时30秒，因为要处理完整的数据库事务
+                $client = new MachineClient(null, 30);
+
+                $result = $client->washMachine(
+                    $value->id, $player->id, $action, true, 0, $language
+                );
+
+                if (! $result['success']) {
+                    $message = $result['message'] ?? trans('machine_wash_command_failed', [], 'message');
+                    continue;
+                }
+
+                Log::channel('machine_operations')->info('[MachineWashV2] 洗分成功', [
+                    'player_id' => $player->id,
+                    'machine_id' => $value->id,
+                    'has_lottery' => $result['data']['has_lottery'] ?? false,
+                ]);
+            } catch (Exception $e) {
+                Log::error($e->getMessage());
+                $this->releaseIdempotent($requestId);
+
+                return apiFailResponse($e->getMessage());
+            }
+        }
+
+        if (! empty($message)) {
+            $this->releaseIdempotent($requestId);
+            return apiFailResponse($message);
+        }
+
+        $response = apiSuccessResponse(trans('machine_logout_all', [], 'message'));
+        $this->saveIdempotent($requestId, $response, $operation, $player->id);
+
+        return $response;
     }
 }
