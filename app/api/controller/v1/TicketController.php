@@ -579,8 +579,9 @@ class TicketController
                 // 更新出票记录状态（机台使用）
                 $ticket->update([
                     'status' => TicketRecord::STATUS_MACHINE_USED,
+                    'player_id' => $player->id,
                     'scanned_at' => date('Y-m-d H:i:s'),
-                    'scanned_by' => 'player_' . $player->id,
+                    'scanned_by' => $player->id,
                 ]);
 
                 // 更新玩家充值统计
