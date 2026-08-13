@@ -3,19 +3,26 @@
 namespace app\api\controller\web;
 
 use app\exception\PlayerCheckException;
+use app\model\Channel;
 use app\model\GamePlatform;
+use app\model\GameType;
 use app\model\Machine;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerMoneyEditLog;
 use app\model\PlayerReverseWaterDetail;
 use app\model\PlayGameRecord;
 use app\model\VipLevel;
+use app\service\machine\MachineClient;
+use app\service\machine\MachineServices;
 use app\service\WalletService;
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Support\Str;
 use Respect\Validation\Exceptions\AllOfException;
 use Respect\Validation\Validator;
+use support\Cache;
 use support\Db;
+use support\Log;
 use support\Request;
 use support\Response;
 
@@ -26,7 +33,7 @@ class PlayerController
     /**
      * 個人資料
      * @return Response
-     * @throws PlayerCheckException|Exception
+     * @throws PlayerCheckException
      */
     public function profile(): Response
     {
@@ -113,7 +120,7 @@ class PlayerController
     /**
      * 錢包點數
      * @return Response
-     * @throws PlayerCheckException|Exception
+     * @throws PlayerCheckException
      */
     public function wallet(): Response
     {
@@ -128,7 +135,7 @@ class PlayerController
     /**
      * 返水資訊
      * @return Response
-     * @throws PlayerCheckException|Exception
+     * @throws PlayerCheckException
      */
     public function rebate(): Response
     {
@@ -168,18 +175,8 @@ class PlayerController
     public function rebateClaim(Request $request): Response
     {
         $player = checkPlayer();
-        // ---------------------------------------- 參數檢查 ----------------------------------------
-        $data = $request->all();
-        $validator = Validator::key('amount', Validator::intVal()->setName(trans('amount', [], 'message')));
-
-        try {
-            $validator->assert($data);
-        } catch (AllOfException $e) {
-            return apiFailResponse(getValidationMessages($e));
-        }
-
         // ---------------------------------------- 冪等性處理 ----------------------------------------
-        $requestId = $data['request_id'] ?? null;
+        $requestId = $request->input('request_id') ?? null;
         $operation = 'rebate-claim:' . $player->id;
         $checkIdempotent = $this->checkIdempotent($requestId, $operation, $player->id);
 
@@ -203,6 +200,15 @@ class PlayerController
         }
 
         $vipLevel = $player->vipLevel()->first();
+
+        // 如果玩家没有VIP等级，获取所属渠道的最低VIP等级作为默认展示
+        if (empty($vipLevel)) {
+            $vipLevel = VipLevel::query()
+                ->where('department_id', $player->department_id)
+                ->orderBy('sort', 'asc')
+                ->first();
+        }
+
         $minAmount = $vipLevel->min_claim_amount ?? 0;
 
         if ($minAmount <= 0) {
@@ -215,11 +221,6 @@ class PlayerController
         if ($claimableAmount <= 0) {
             $this->releaseIdempotent($requestId);
             return apiFailResponse(trans('reverse_water_insufficient', [], 'message'));
-        }
-
-        if ($data['amount'] != $claimableAmount) {
-            $this->releaseIdempotent($requestId);
-            return apiFailResponse(trans('reverse_water_different', [], 'message'));
         }
 
         Db::beginTransaction();
@@ -300,6 +301,105 @@ class PlayerController
 
             return apiFailResponse(trans('system_error', [], 'message'));
         }
+    }
+
+    /**
+     * 我的機台清單
+     * @return Response
+     * @throws PlayerCheckException|Exception
+     */
+    public function machines(): Response
+    {
+        $player = checkPlayer();
+
+        if (empty($player->channel->status_machine) || empty($player->status_machine)) {
+            return jsonFailResponse(trans('platform_no_permission', [], 'message'));
+        }
+
+        $machine = Machine::query()
+            ->whereHas('machineCategory', function ($query) {
+                $query->whereHas('gameType', function ($query) {
+                    $query->where('status', 1);
+                })->where('status', 1);
+            })
+            ->where('status', 1)
+            ->where('maintaining', 0)
+            ->where('gaming_user_id', $player->id)
+            ->orderBy('sort')
+            ->orderBy('id', 'desc')
+            ->get();
+        // ---------------------------------------- 批量檢查機台在線狀態 ----------------------------------------
+        $onlineMap = [];
+        $machineIds = $machine->pluck('id')->toArray();
+
+        try {
+            $client = new MachineClient();
+            $checkOnline = $client->batchCheckOnline($machineIds);
+
+            if ($checkOnline['success'] && isset($checkOnline['data'])) {
+                $onlineMap = $checkOnline['data'];
+            }
+        } catch (Exception $e) {
+            Log::error('Batch check machine online failed', ['error' => $e->getMessage()]);
+        }
+
+        // ---------------------------------------- 組裝資料 ----------------------------------------
+        $list = [];
+        $language = locale() ?? 'zh_TW';
+        $language = Str::replace('_', '-', $language);
+        $channel = Channel::query()->where('department_id', $player->department_id)->first();
+
+        foreach ($machine as $value) {
+            $services = MachineServices::createServices($value, $language);
+
+            // 初始化机台信息数组
+            $machineInfo = [];
+            $machineInfo['id'] = $value->id;
+            $machineInfo['code'] = $value->code;
+            $machineInfo['picture_url'] = $value->picture_url;
+            $machineInfo['type'] = $value->type;
+            $machineInfo['odds_x'] = $value->odds_x;
+            $machineInfo['odds_y'] = $value->odds_y;
+
+            if ($value->type == GameType::TYPE_STEEL_BALL) {
+                $machineInfo['odds_x'] = $value->machineCategory->name;
+                $machineInfo['odds_y'] = '';
+            }
+
+            $machineInfo['category_name'] = $value->machineCategory->name;
+            $machineInfo['turn_used_point'] = rtrim(rtrim(number_format($value->machineCategory->turn_used_point, 2, '.', ''), '0'), '.');
+
+            $machineInfo['name'] = $value->machineLabel->name ?? '';
+            $machineInfo['courtyard'] = $value->machineLabel->courtyard ?? '';
+            $machineInfo['correct_rate'] = $value->machineLabel->correct_rate ?? '';
+
+            $machineInfo['reward_status'] = $services->reward_status;
+            $machineInfo['bet'] = $services->bet;
+            $machineInfo['last_play_time'] = $services->last_play_time;
+            $machineInfo['keeping'] = $services->keeping;
+            $machineInfo['keep_seconds'] = $services->keep_seconds;
+
+            $playRouteNum = Cache::get('machine_play_route_num', 1);
+
+            switch ($channel->machine_media_line) {
+                case 1:
+                case 2:
+                    $machineInfo['play_route'] = 0;
+                    break;
+
+                case 3:
+                    $machineInfo['play_route'] = $playRouteNum % 2;
+                    Cache::set('machine_play_route_num', $playRouteNum + 1, 24 * 60 * 60);
+                    break;
+            }
+
+            $machineInfo['online_status'] = $onlineMap[$value->id] ?? 'offline';
+            $list[] = $machineInfo;
+        }
+
+        return apiSuccessResponse('success', [
+            'list' => $list
+        ]);
     }
 
     /**

@@ -309,8 +309,8 @@ class MachineController
         }
 
         // ---------------------------------------- 冪等性處理 ----------------------------------------
-        $requestId = $request->input('request_id') ?? null;
-        $machineId = (int) ($data['machine_id'] ?? 0);
+        $requestId = $data['request_id'] ?? null;
+        $machineId = $data['machine_id'] ?? 0;
         $operation = 'machines-logout:' . $player->id . ':' . $machineId;
         $checkIdempotent = $this->checkIdempotent($requestId, $operation, $player->id);
 
@@ -441,7 +441,7 @@ class MachineController
         $language = Str::replace('_', '-', $language);
         $message = '';
 
-        foreach ($machine as $key => $value) {
+        foreach ($machine as $value) {
             try {
                 $services = MachineServices::createServices($value, $language);
 
