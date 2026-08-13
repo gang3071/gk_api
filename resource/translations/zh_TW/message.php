@@ -547,7 +547,7 @@ return [
     'ticket_open_score_failed' => '上分失敗',
     'ticket_scan_success' => '掃碼開分成功',
     'ticket_expired' => '福利卷/體驗卷已過期',
-    'ticket_wallet_balance_too_high' => '請確保錢包餘額<:limit分',
+    'ticket_wallet_balance_too_high' => '請確保總餘額（錢包+機台）<:limit分',
     'wallet_locked' => '錢包已鎖定',
     'ticket_locked_insufficient_balance' => '請確保錢包餘額>:limit分',
     'welfare_activity_expired' => '福利卷/體驗卷活動已結束，無法使用',
@@ -556,6 +556,7 @@ return [
     'ticket_amount_less_than_base' => '出票金額 :amount 不能小於洗分基數 :base',
     'ticket_amount_not_multiple' => '出票金額 :amount 必須是洗分基數 :base 的整數倍',
     'ticket_balance_insufficient' => '餘額不足，當前餘額：:current，需要：:required',
+    'ticket_machine_is_opening' => '機台:code正在開獎中，無法使用福利卷/體驗卷',
 
     // 機台指令相關
     'machine_command_failed' => '機台指令發送失敗',

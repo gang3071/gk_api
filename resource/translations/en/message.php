@@ -541,7 +541,7 @@ return [
     'ticket_open_score_failed' => 'Failed to add score',
     'ticket_scan_success' => 'QR code scanned and score added successfully',
     'ticket_expired' => 'Welfare/Experience ticket has expired',
-    'ticket_wallet_balance_too_high' => 'Please ensure wallet balance < :limit',
+    'ticket_wallet_balance_too_high' => 'Please ensure total balance (wallet + machine) < :limit',
     'wallet_locked' => 'Wallet is locked',
     'ticket_locked_insufficient_balance' => 'Please ensure wallet balance > :limit',
     'welfare_activity_expired' => 'Welfare/Experience ticket activity has ended',
@@ -550,6 +550,7 @@ return [
     'ticket_amount_less_than_base' => 'Ticket amount :amount cannot be less than wash point base :base',
     'ticket_amount_not_multiple' => 'Ticket amount :amount must be a multiple of wash point base :base',
     'ticket_balance_insufficient' => 'Insufficient balance, current: :current, required: :required',
+    'ticket_machine_is_opening' => 'Machine :code is drawing, cannot use welfare/experience ticket',
 
     // Machine Commands
     'machine_command_failed' => 'Machine command failed',

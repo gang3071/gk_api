@@ -8,13 +8,17 @@ use app\exception\PlayerCheckException;
 use app\model\AdminUser;
 use app\model\Channel;
 use app\model\Currency;
+use app\model\GameType;
+use app\model\Machine;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerRechargeRecord;
 use app\model\PlayerWithdrawRecord;
 use app\model\TicketRecord;
+use app\service\machine\MachineServices;
 use app\service\WalletService;
 use Exception;
+use Illuminate\Support\Collection;
 use support\Db;
 use support\Log;
 use support\Request;
@@ -172,7 +176,7 @@ class TicketController
                 // 使用自动计算（全部洗分）
                 $washResult = WalletService::atomicWash($player->id, $washPointConfig);
             }
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // Lua 脚本执行失败 - 释放占位
             $this->releaseIdempotent($requestId);
             Log::error('TicketController: Wash operation failed', [
@@ -331,7 +335,7 @@ class TicketController
             ]);
 
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // 捕获所有异常，确保事务回滚
             if (DB::transactionLevel() > 0) {
                 DB::rollBack();
@@ -386,11 +390,6 @@ class TicketController
         }
 
         try {
-            Log::info('scanOpenScore: 开始处理', [
-                'player_id' => $player->id,
-                'order_id' => $orderId,
-            ]);
-
             // ==================== 阶段3：占位后检查（需要查库，失败需释放） ====================
             // 爆机检查：玩家不能开分
             $crashCheck = checkMachineCrash($player);
@@ -406,11 +405,6 @@ class TicketController
 
             if (!$lock) {
                 $this->releaseIdempotent($requestId);
-                Log::warning('scanOpenScore: 获取锁失败，正在处理中', [
-                    'player_id' => $player->id,
-                    'order_id' => $orderId,
-                    'lock_key' => $lockKey,
-                ]);
                 return jsonFailResponse(trans('ticket_processing', [], 'message'));
             }
 
@@ -421,23 +415,12 @@ class TicketController
 
                 if (!$ticket) {
                     $this->releaseIdempotent($requestId);
-                    Log::warning('scanOpenScore: 出票记录不存在', [
-                        'player_id' => $player->id,
-                        'order_id' => $orderId,
-                    ]);
                     return jsonFailResponse(trans('ticket_not_found', [], 'message'));
                 }
 
                 // 验证状态（已打印或待核销状态才能扫码）
                 if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
                     $this->releaseIdempotent($requestId);
-                    Log::warning('scanOpenScore: 出票状态异常', [
-                        'player_id' => $player->id,
-                        'order_id' => $orderId,
-                        'ticket_status' => $ticket->status,
-                        'expected_status' => 'STATUS_NORMAL',
-                        'status_name' => $ticket->status_name ?? 'unknown',
-                    ]);
                     return jsonFailResponse(trans('ticket_already_used', [], 'message'));
                 }
 
@@ -448,19 +431,8 @@ class TicketController
                     $currentBalance = WalletService::getBalance($player->id);
                     if ($currentBalance < $openScoreLimit) {
                         WalletService::unlockWallet($player->id);
-                        Log::info('scanOpenScore: 余额低于额度，自动解锁钱包', [
-                            'player_id' => $player->id,
-                            'balance' => $currentBalance,
-                            'open_score_limit' => $openScoreLimit,
-                        ]);
                     } else {
                         $this->releaseIdempotent($requestId);
-                        Log::warning('scanOpenScore: 钱包已锁定，余额超出限制无法开分', [
-                            'player_id' => $player->id,
-                            'order_id' => $orderId,
-                            'balance' => $currentBalance,
-                            'open_score_limit' => $openScoreLimit,
-                        ]);
                         return jsonFailResponse(trans('wallet_locked', [], 'message'));
                     }
                 }
@@ -470,65 +442,80 @@ class TicketController
                 // player_id > 0: 已绑定，只有绑定玩家能扫码
                 if ((int)$ticket->player_id > 0 && (int)$ticket->player_id !== (int)$player->id) {
                     $this->releaseIdempotent($requestId);
-                    Log::warning('scanOpenScore: 玩家绑定验证失败', [
-                        'current_player_id' => $player->id,
-                        'ticket_player_id' => $ticket->player_id,
-                        'order_id' => $orderId,
-                    ]);
                     return jsonFailResponse(trans('ticket_bound_other_player', [], 'message'));
                 }
 
                 // 福利卷/体验卷特殊验证
                 if ($ticket->isWelfareOrExperience()) {
                     // 检查玩家是否正在游玩机台游戏
-                    $isPlayingMachine = \app\model\Machine::query()
+                    $playingMachines = Machine::query()
+                        ->with('machineCategory')
                         ->where('gaming_user_id', $player->id)
-                        ->exists();
-                    if ($isPlayingMachine) {
-                        $this->releaseIdempotent($requestId);
-                        Log::warning('scanOpenScore: 玩家正在游玩机台，无法使用福利卷/体验卷', [
-                            'player_id' => $player->id,
-                            'order_id' => $orderId,
-                        ]);
-                        return jsonFailResponse(trans('ticket_playing_machine', [], 'message'));
+                        ->get();
+
+                    // 初始化机台分数
+                    $machineScores = 0;
+
+                    if ($playingMachines->isNotEmpty()) {
+                        $lang = request()->header('accept-language', 'zh_CN');
+
+                        // 检查是否有机台正在开奖中（从Redis获取实时状态）
+                        foreach ($playingMachines as $machine) {
+                            try {
+                                $services = MachineServices::createServices($machine, $lang);
+                                $rewardStatus = (int)($services->reward_status ?? 0);
+
+                                if ($rewardStatus === 1) {
+                                    $this->releaseIdempotent($requestId);
+                                    return jsonFailResponse(trans('ticket_machine_is_opening', ['code' => $machine->code], 'message'));
+                                }
+                            } catch (Throwable $e) {
+                                Log::error('scanOpenScore: 获取机台开奖状态失败', [
+                                    'player_id' => $player->id,
+                                    'machine_id' => $machine->id,
+                                    'error' => $e->getMessage(),
+                                ]);
+                                // 获取状态失败，为安全起见拒绝操作
+                                $this->releaseIdempotent($requestId);
+                                return jsonFailResponse(trans('system_error', [], 'message'));
+                            }
+                        }
+
+                        // 所有机台都不在开奖中，计算机台上的分数（不加到钱包，只用于余额判断）
+                        try {
+                            $machineScores = $this->calculateAllMachineScores($player, $playingMachines);
+                        } catch (Throwable $e) {
+                            $this->releaseIdempotent($requestId);
+                            Log::error('scanOpenScore: 计算机台分数失败', [
+                                'player_id' => $player->id,
+                                'order_id' => $orderId,
+                                'error' => $e->getMessage(),
+                                'trace' => $e->getTraceAsString(),
+                            ]);
+                            return jsonFailResponse(trans('system_error', [], 'message'));
+                        }
                     }
 
                     // 检查活动是否在有效期内
                     $activityEndTime = (string) config('welfare_ticket.activity_end_time', '');
                     if (!empty($activityEndTime) && time() > strtotime($activityEndTime)) {
                         $this->releaseIdempotent($requestId);
-                        Log::warning('scanOpenScore: 福利卷/体验卷活动已结束', [
-                            'player_id' => $player->id,
-                            'order_id' => $orderId,
-                            'activity_end_time' => $activityEndTime,
-                        ]);
                         return jsonFailResponse(trans('welfare_activity_expired', [], 'message'));
                     }
 
                     // 检查是否已过期
                     if ($ticket->isExpired()) {
                         $this->releaseIdempotent($requestId);
-                        Log::warning('scanOpenScore: 福利卷/体验卷已过期', [
-                            'player_id' => $player->id,
-                            'order_id' => $orderId,
-                            'ticket_type' => $ticket->ticket_type,
-                            'created_at' => $ticket->created_at,
-                        ]);
                         return jsonFailResponse(trans('ticket_expired', [], 'message'));
                     }
 
-                    // 检查钱包余额：余额必须低于配置值才能使用福利卷/体验卷
+                    // 检查钱包余额：钱包余额 + 机台分数必须低于配置值才能使用福利卷/体验卷
                     $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
                     $currentWalletBalance = WalletService::getBalance($player->id);
-                    if ($currentWalletBalance >= $openScoreLimit) {
+                    $totalBalance = bcadd((string)$currentWalletBalance, (string)$machineScores, 2);
+
+                    if ((float)$totalBalance >= $openScoreLimit) {
                         $this->releaseIdempotent($requestId);
-                        Log::warning('scanOpenScore: 钱包余额超过限制，无法使用福利卷/体验卷', [
-                            'player_id' => $player->id,
-                            'order_id' => $orderId,
-                            'ticket_type' => $ticket->ticket_type,
-                            'wallet_balance' => $currentWalletBalance,
-                            'open_score_limit' => $openScoreLimit,
-                        ]);
                         return jsonFailResponse(trans('ticket_wallet_balance_too_high', ['limit' => $openScoreLimit], 'message'));
                     }
                 }
@@ -579,8 +566,9 @@ class TicketController
                 // 更新出票记录状态（机台使用）
                 $ticket->update([
                     'status' => TicketRecord::STATUS_MACHINE_USED,
+                    'player_id' => $player->id,
                     'scanned_at' => date('Y-m-d H:i:s'),
-                    'scanned_by' => 'player_' . $player->id,
+                    'scanned_by' => $player->id,
                 ]);
 
                 // 更新玩家充值统计
@@ -604,15 +592,6 @@ class TicketController
                 $playerDeliveryRecord->save();
 
                 Db::commit();
-
-                // 🔍 成功日志
-                Log::info('scanOpenScore: 扫码开分成功', [
-                    'player_id' => $player->id,
-                    'order_id' => $ticket->order_id,
-                    'score' => $score,
-                    'previous_balance' => $previousBalance,
-                    'current_balance' => $currentBalance,
-                ]);
 
                 // ✅ 事务提交后更新爆机状态
                 WalletService::checkMachineCrashAfterTransaction($player->id, $playerDeliveryRecord->amount_after, $playerDeliveryRecord->amount_before);
@@ -765,5 +744,86 @@ class TicketController
             'default_value' => 100.00,
         ]);
         return 100.00;
+    }
+
+    /**
+     * 计算玩家游戏中所有机台的总分数（不加到钱包，仅用于余额判断）
+     *
+     * @param Player $player 玩家对象
+     * @param Collection $machines 机台集合
+     * @return float 机台总分数
+     * @throws Throwable
+     */
+    private function calculateAllMachineScores(Player $player, Collection $machines): float
+    {
+        $totalMachineScores = 0;
+        $lang = request()->header('accept-language', 'zh_CN');
+
+        foreach ($machines as $machine) {
+            try {
+                // 通过机台服务类获取Redis中的实时数据
+                $services = MachineServices::createServices($machine, $lang);
+                $machineScore = $this->calculateMachineScoreToSettle($machine, $services);
+
+                if ($machineScore > 0) {
+                    $totalMachineScores = bcadd((string)$totalMachineScores, (string)$machineScore, 2);
+                }
+            } catch (Throwable $e) {
+                Log::error('calculateAllMachineScores: 获取机台服务失败', [
+                    'player_id' => $player->id,
+                    'machine_id' => $machine->id,
+                    'error' => $e->getMessage(),
+                ]);
+                // 继续处理其他机台
+                continue;
+            }
+        }
+
+        return (float)$totalMachineScores;
+    }
+
+    /**
+     * 计算机台待结算的分数（从Redis获取实时数据）
+     *
+     * @param Machine $machine 机台对象
+     * @param mixed $services 机台服务实例（Slot|Jackpot|SongSlot|SongJackpot）
+     * @return float 待结算分数
+     */
+    private function calculateMachineScoreToSettle(Machine $machine, mixed $services): float
+    {
+        $scoreToSettle = 0;
+
+        switch ($machine->type) {
+            case GameType::TYPE_SLOT:
+                // Slot机台：当前分数（point）通过 turn_used_point 转换
+                $currentPoint = (int)($services->point ?? 0);
+                $turnUsedPoint = $machine->machineCategory->turn_used_point ?? 1;
+                $scoreToSettle = bcmul((string)$currentPoint, (string)$turnUsedPoint, 2);
+                break;
+
+            case GameType::TYPE_STEEL_BALL:
+                // 钢珠机台：机器分数（通过比值转换） + 转数分数
+                $turnUsedPoint = $machine->machineCategory->turn_used_point ?? 0;
+
+                // 1. 当前分数（point）通过比值转换
+                $currentPoint = (int)($services->point ?? 0);
+                $ratio = ($machine->odds_x > 0 && $machine->odds_y > 0)
+                    ? bcdiv((string)$machine->odds_x, (string)$machine->odds_y, 6)
+                    : 1;
+                $convertedPoint = bcmul((string)$currentPoint, (string)$ratio, 2);
+
+                // 2. 当前转数（turn）转换成分数：当前转数 × 每转消耗游戏点数
+                $currentTurn = (int)($services->turn ?? 0);
+                $turnScore = bcmul((string)$currentTurn, (string)$turnUsedPoint, 2);
+
+                // 总分数 = 转换后的分数 + 转数分数
+                $scoreToSettle = bcadd($convertedPoint, $turnScore, 2);
+                break;
+
+            default:
+                break;
+        }
+
+        return max(0, (float)$scoreToSettle);
     }
 }

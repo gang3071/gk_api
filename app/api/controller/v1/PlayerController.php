@@ -186,22 +186,41 @@ class PlayerController
         }
 
         // 获取当天电子游戏打码量（排除真人视讯/体育平台，用于VIP升级统计）
-        $todayStart = Carbon::today()->startOfDay()->toDateTimeString();
-        $todayEnd = Carbon::today()->endOfDay()->toDateTimeString();
+        // 时间区间：以每天08:00:00作为分界点
+        $now = Carbon::now();
+        $today8am = Carbon::today()->setTime(8, 0, 0);
+        $yesterday8am = Carbon::yesterday()->setTime(8, 0, 0);
+        $tomorrow8am = Carbon::tomorrow()->setTime(8, 0, 0);
+
+        // 判断当前时间是否在今日08:00之后
+        if ($now->gte($today8am)) {
+            // 当前在今日08:00之后，今日区间 = 今日08:00 ~ 隔天08:00
+            $todayStart = $today8am->toDateTimeString();
+            $todayEnd = $tomorrow8am->toDateTimeString();
+            // 昨日区间 = 昨日08:00 ~ 今日08:00
+            $yesterdayStart = $yesterday8am->toDateTimeString();
+            $yesterdayEnd = $today8am->toDateTimeString();
+        } else {
+            // 当前在今日08:00之前（凌晨），今日区间 = 昨日08:00 ~ 今日08:00
+            $todayStart = $yesterday8am->toDateTimeString();
+            $todayEnd = $today8am->toDateTimeString();
+            // 昨日区间 = 前天08:00 ~ 昨日08:00
+            $yesterdayStart = Carbon::parse('-2 days')->setTime(8, 0, 0)->toDateTimeString();
+            $yesterdayEnd = $yesterday8am->toDateTimeString();
+        }
+
         $todayGameBetAmount = PlayGameRecord::query()
             ->where('player_id', $player->id)
             ->where('created_at', '>=', $todayStart)
-            ->where('created_at', '<=', $todayEnd)
+            ->where('created_at', '<', $todayEnd)
             ->whereNotIn('platform_id', $this->getExcludedPlatformIds())
             ->sum('bet');
 
         // 获取昨日电子游戏打码量
-        $yesterdayStart = Carbon::yesterday()->startOfDay()->toDateTimeString();
-        $yesterdayEnd = Carbon::yesterday()->endOfDay()->toDateTimeString();
         $yesterdayGameBetAmount = PlayGameRecord::query()
             ->where('player_id', $player->id)
             ->where('created_at', '>=', $yesterdayStart)
-            ->where('created_at', '<=', $yesterdayEnd)
+            ->where('created_at', '<', $yesterdayEnd)
             ->whereNotIn('platform_id', $this->getExcludedPlatformIds())
             ->sum('bet');
 
