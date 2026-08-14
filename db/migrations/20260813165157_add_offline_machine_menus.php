@@ -16,7 +16,7 @@ use Phinx\Migration\AbstractMigration;
  * - 线下机台独立于线上机台管理
  * - 必须绑定店家才能创建
  */
-final class AddOfflineMachinMenus extends AbstractMigration
+final class AddOfflineMachineMenus extends AbstractMigration
 {
     /**
      * 菜单类型常量
