@@ -92,6 +92,10 @@ class Machine extends Model
     const CONTROL_TYPE_MEI = 1;
     const CONTROL_TYPE_SONG = 2;
 
+    // 机台来源类型
+    const MACHINE_SOURCE_ONLINE = 1;  // 线上机台（有直播）
+    const MACHINE_SOURCE_OFFLINE = 2; // 线下机台（无直播）
+
     protected $name;
     protected $correct_rate;
     protected $picture_url;
@@ -272,5 +276,33 @@ class Machine extends Model
     public function channelMachines(): HasMany
     {
         return $this->hasMany(ChannelMachine::class, 'machine_id');
+    }
+
+    /**
+     * 绑定的店家管理员
+     * @return BelongsTo
+     */
+    public function storeAdmin(): BelongsTo
+    {
+        return $this->belongsTo(AdminUser::class, 'store_admin_id', 'id')
+            ->withTrashed();
+    }
+
+    /**
+     * 判断是否为线下机台
+     * @return bool
+     */
+    public function isOfflineMachine(): bool
+    {
+        return $this->machine_source == self::MACHINE_SOURCE_OFFLINE;
+    }
+
+    /**
+     * 判断是否为线上机台
+     * @return bool
+     */
+    public function isOnlineMachine(): bool
+    {
+        return $this->machine_source == self::MACHINE_SOURCE_ONLINE;
     }
 }

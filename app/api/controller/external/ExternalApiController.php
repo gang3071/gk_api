@@ -126,6 +126,7 @@ class ExternalApiController
         $gamingMachines = Machine::with(['machineCategory', 'gamingPlayer'])
             ->where('gaming', 1)
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_ONLINE)
             ->orderBy('type', 'asc')
             ->get();
         if ($gamingMachines) {

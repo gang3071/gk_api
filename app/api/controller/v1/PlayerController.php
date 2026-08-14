@@ -111,6 +111,7 @@ class PlayerController
         $setting = SystemSetting::query()->where('status', 1)->where('feature', 'recharge_order_expiration')->first();
         $machineList = Machine::query()
             ->where('status', 1)
+            ->where('machine_source', Machine::MACHINE_SOURCE_ONLINE)
             ->whereHas('machineCategory', function ($query) {
                 $query->whereHas('gameType', function ($query) {
                     $query->where('status', 1);
@@ -392,6 +393,7 @@ class PlayerController
         /** @var Machine $playingMachine */
         $playingMachine = Machine::query()
             ->where('status', 1)
+            ->where('machine_source', Machine::MACHINE_SOURCE_ONLINE)
             ->whereHas('machineCategory', function ($query) {
                 $query->whereHas('gameType', function ($query) {
                     $query->where('status', 1);

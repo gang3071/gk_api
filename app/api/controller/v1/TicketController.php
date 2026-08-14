@@ -451,6 +451,7 @@ class TicketController
                     $playingMachines = Machine::query()
                         ->with('machineCategory')
                         ->where('gaming_user_id', $player->id)
+                        ->where('machine_source', Machine::MACHINE_SOURCE_ONLINE)
                         ->get();
 
                     // 初始化机台分数

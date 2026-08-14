@@ -63,9 +63,12 @@ class MachineController
             return apiFailResponse(trans('store_not_found', [], 'message'));
         }
 
-        // 該門店部門下關聯的機台
+        // 该门店绑定的线下机台（通过 channel_machine.store_admin_id 过滤）
         $machineIds = ChannelMachine::query()
-            ->where('department_id', $store->department_id)
+            ->where('store_admin_id', $storeId)  // ✅ 只获取绑定到当前店家的机台
+            ->whereHas('machine', function ($query) {
+                $query->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE);
+            })
             ->pluck('machine_id');
         if ($machineIds->isEmpty()) {
             return apiSuccessResponse('ok', [
@@ -80,6 +83,7 @@ class MachineController
             ->with(['machineLabel', 'machineCategory'])
             ->whereIn('id', $machineIds)
             ->where('status', 1)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
             ->whereHas('machineLabel', function ($query) {
                 $query->where('status', 1);
             })
@@ -89,6 +93,7 @@ class MachineController
         // 玩家已占用機台數（bindable 配額判斷）
         $occupiedCount = Machine::query()
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
             ->count();
         $machinePlayNum = $player->machine_play_num > 0 ? $player->machine_play_num : 1;
 
@@ -137,16 +142,18 @@ class MachineController
     {
         $player = checkPlayer();
 
-        // 依機台編號查詢，限該玩家渠道部門下關聯的機台
+        // 依機台編號查詢，限該玩家所属店家的机台
         $machine = Machine::query()
             ->with(['machineLabel', 'machineCategory'])
             ->where('code', $code)
             ->where('status', 1)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
             ->whereHas('machineLabel', function (Builder $query) {
                 $query->where('status', 1);
             })
             ->whereHas('channelMachines', function (Builder $query) use ($player) {
-                $query->where('department_id', $player->department_id);
+                // ✅ 只查询绑定到玩家所属店家的机台
+                $query->where('store_admin_id', $player->store_admin_id);
             })
             ->first();
         if (!$machine) {
@@ -156,6 +163,7 @@ class MachineController
         // 玩家已占用機台數（bindable 配額判斷）
         $occupiedCount = Machine::query()
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
             ->count();
         $machinePlayNum = $player->machine_play_num > 0 ? $player->machine_play_num : 1;
 
@@ -193,17 +201,19 @@ class MachineController
     {
         $player = checkPlayer();
 
-        // 依機台編號查詢，限該玩家渠道部門下關聯的機台
+        // 依機台編號查詢，限該玩家所属店家的机台
         /** @var Machine $machine */
         $machine = Machine::query()
             ->with(['machineLabel', 'machineCategory'])
             ->where('code', $code)
             ->where('status', 1)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
             ->whereHas('machineLabel', function (Builder $query) {
                 $query->where('status', 1);
             })
             ->whereHas('channelMachines', function (Builder $query) use ($player) {
-                $query->where('department_id', $player->department_id);
+                // ✅ 只查询绑定到玩家所属店家的机台
+                $query->where('store_admin_id', $player->store_admin_id);
             })
             ->first();
         if (!$machine) {
@@ -227,6 +237,7 @@ class MachineController
         // 配額檢查：未達 machinePlayNum 配額
         $occupiedCount = Machine::query()
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
             ->count();
         $machinePlayNum = $player->machine_play_num > 0 ? $player->machine_play_num : 1;
         if ($occupiedCount >= $machinePlayNum) {
@@ -318,16 +329,18 @@ class MachineController
             $amount = (int)$amount;
 
             // ---------------------------------------- 機台檢查 ----------------------------------------
-            // 依機台編號查詢，限該玩家渠道部門下關聯的機台
+            // 依機台編號查詢，限該玩家所属店家的机台
             $machine = Machine::query()
                 ->with(['machineLabel', 'machineCategory'])
                 ->where('code', $code)
                 ->where('status', 1)
+                ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
                 ->whereHas('machineLabel', function (Builder $query) {
                     $query->where('status', 1);
                 })
                 ->whereHas('channelMachines', function (Builder $query) use ($player) {
-                    $query->where('department_id', $player->department_id);
+                    // ✅ 只查询绑定到玩家所属店家的机台
+                    $query->where('store_admin_id', $player->store_admin_id);
                 })
                 ->first();
             if (! $machine) {
@@ -557,6 +570,11 @@ class MachineController
         $machine = Machine::query()
             ->where('id', $data['machine_id'])
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
+            ->whereHas('channelMachines', function ($query) use ($player) {
+                // ✅ 只能登出绑定到玩家所属店家的机台
+                $query->where('store_admin_id', $player->store_admin_id);
+            })
             ->first();
 
         if (! $machine) {
@@ -655,6 +673,11 @@ class MachineController
         // ---------------------------------------- 機台逐台離線 ----------------------------------------
         $machine = Machine::query()
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
+            ->whereHas('channelMachines', function ($query) use ($player) {
+                // ✅ 只登出绑定到玩家所属店家的机台
+                $query->where('store_admin_id', $player->store_admin_id);
+            })
             ->orderBy('sort')
             ->orderBy('id', 'desc')
             ->get();

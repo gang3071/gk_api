@@ -160,6 +160,7 @@ class MachineController
                 ->leftjoin('machine_category', 'machine.cate_id', '=', 'machine_category.id')
                 ->where('channel_machine.department_id', $request->department_id)
                 ->where('machine.type', $gameType->type)
+                ->where('machine.machine_source', Machine::MACHINE_SOURCE_ONLINE)
                 ->where('machine.status', 1)
                 ->where('machine_label.status', 1)
                 ->groupBy(
@@ -301,6 +302,7 @@ class MachineController
                 $q->where('odds_x', $value);
             })
             ->where('status', 1)
+            ->where('machine_source', Machine::MACHINE_SOURCE_ONLINE)
             ->whereIn('id', $machineIds)
             ->get();
         $lang = locale() ?? 'zh_TW';

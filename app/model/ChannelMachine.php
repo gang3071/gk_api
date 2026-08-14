@@ -12,12 +12,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int id 主键
  * @property int department_id 渠道id
  * @property int machine_id 机器id
+ * @property int|null store_admin_id 绑定店家ID（仅线下机台使用）
  * @property int status 状态
  * @property string created_at 创建时间
  * @property string updated_at 最后一次修改时间
  *
  * @property Channel channel 渠道
  * @property Machine machine 机器
+ * @property AdminUser|null storeAdmin 绑定店家（仅线下机台）
  * @package app\model
  */
 class ChannelMachine extends Model
@@ -56,5 +58,14 @@ class ChannelMachine extends Model
     public function machine(): BelongsTo
     {
         return $this->BelongsTo(Machine::class, 'machine_id')->withTrashed();
+    }
+
+    /**
+     * 绑定店家信息（仅线下机台使用）
+     * @return BelongsTo
+     */
+    public function storeAdmin(): BelongsTo
+    {
+        return $this->belongsTo(AdminUser::class, 'store_admin_id')->withTrashed();
     }
 }

@@ -93,6 +93,11 @@ class PlayerController
             ->where('status', 1)
             ->where('maintaining', 0)
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
+            ->whereHas('channelMachines', function ($query) use ($player) {
+                // ✅ 只统计绑定到玩家所属店家的机台
+                $query->where('store_admin_id', $player->store_admin_id);
+            })
             ->count();
 
         return apiSuccessResponse('success', [
@@ -325,6 +330,11 @@ class PlayerController
             ->where('status', 1)
             ->where('maintaining', 0)
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
+            ->whereHas('channelMachines', function ($query) use ($player) {
+                // ✅ 只返回绑定到玩家所属店家的机台
+                $query->where('store_admin_id', $player->store_admin_id);
+            })
             ->orderBy('sort')
             ->orderBy('id', 'desc')
             ->get();
