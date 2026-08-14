@@ -445,6 +445,18 @@ class TicketController
                     return jsonFailResponse(trans('ticket_bound_other_player', [], 'message'));
                 }
 
+                // 🔒 跨店限制：开分码只能在所属店铺使用
+                if ((int)$ticket->store_admin_id > 0 && (int)$ticket->store_admin_id !== (int)$player->store_admin_id) {
+                    $this->releaseIdempotent($requestId);
+                    Log::warning('scanOpenScore: 跨店使用被拒绝', [
+                        'player_id' => $player->id,
+                        'player_store_admin_id' => $player->store_admin_id,
+                        'ticket_store_admin_id' => $ticket->store_admin_id,
+                        'order_id' => $orderId,
+                    ]);
+                    return jsonFailResponse(trans('ticket_cross_store_not_allowed', [], 'message'));
+                }
+
                 // 福利卷/体验卷特殊验证
                 if ($ticket->isWelfareOrExperience()) {
                     // 检查玩家是否正在游玩机台游戏
@@ -796,10 +808,12 @@ class TicketController
 
         switch ($machine->type) {
             case GameType::TYPE_SLOT:
-                // Slot机台：当前分数（point）通过 turn_used_point 转换
+                // Slot机台：当前分数（point）通过比值转换
                 $currentPoint = (int)($services->point ?? 0);
-                $turnUsedPoint = $machine->machineCategory->turn_used_point ?? 1;
-                $scoreToSettle = bcmul((string)$currentPoint, (string)$turnUsedPoint, 2);
+                $ratio = ($machine->odds_x > 0 && $machine->odds_y > 0)
+                    ? bcdiv((string)$machine->odds_x, (string)$machine->odds_y, 6)
+                    : 1;
+                $scoreToSettle = bcmul((string)$currentPoint, (string)$ratio, 2);
                 break;
 
             case GameType::TYPE_STEEL_BALL:

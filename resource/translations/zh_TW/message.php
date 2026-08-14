@@ -31,6 +31,7 @@ return [
     'machine_open_amount_error' => '開分金額錯誤',
     'machine_open_present_msg1' => '執行開贈需間隔至少10秒',
     'system_error' => '系統錯誤',
+    'request_processing' => '請求正在處理中，請稍後再試',
     'machine_is_keeping' => '此機台已保留中',
     'machine_is_unkeeping' => '此機台非保留中',
     'machine_cannot_keeping' => '機器自動中，無法保留',
@@ -561,6 +562,7 @@ return [
     'ticket_amount_not_multiple' => '出票金額 :amount 必須是洗分基數 :base 的整數倍',
     'ticket_balance_insufficient' => '餘額不足，當前餘額：:current，需要：:required',
     'ticket_machine_is_opening' => '機台:code正在開獎中，無法使用福利卷/體驗卷',
+    'ticket_cross_store_not_allowed' => '此開分碼不屬於當前店鋪，無法使用',
 
     // 機台指令相關
     'machine_command_failed' => '機台指令發送失敗',
