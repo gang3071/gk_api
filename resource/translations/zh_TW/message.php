@@ -587,4 +587,14 @@ return [
     'machine_odds_config_error' => '機台賠率配置錯誤',
     'ticket_playing_machine' => '請先停止當前遊玩機台',
     'store_not_found' => '未找到門店',
+
+    // 劵匣
+    'ticket_kind_draw' => '摸獎劵',
+    'ticket_kind_draw_desc' => '透過機台遊玩累積打碼量自動獲得，每 1,000,000 點打碼量獲得 1 張摸獎劵，活動結束後自動開獎，獎金直接入帳。',
+    'ticket_kind_blindbox' => '盲盒劵',
+    'ticket_kind_blindbox_desc' => '盲盒劵尚未開放，敬請期待。',
+    'ticket_kind_exchange' => '兌換劵',
+    'ticket_kind_exchange_desc' => '兌換劵尚未開放，敬請期待。',
+    'ticket_kind_wheel' => '轉盤劵',
+    'ticket_kind_wheel_desc' => '轉盤劵尚未開放，敬請期待。',
 ];

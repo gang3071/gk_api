@@ -581,4 +581,14 @@ return [
     'machine_odds_config_error' => 'Machine odds configuration error',
     'store_not_found' => 'Store not found',
     'ticket_playing_machine' => 'Please stop the current machine game first',
+
+    // Ticket Box
+    'ticket_kind_draw' => 'Raffle Ticket',
+    'ticket_kind_draw_desc' => 'Earned automatically by accumulating wager from machine gameplay. Every 1,000,000 points of wager earns 1 raffle ticket. The draw runs automatically after the activity ends and prizes are credited directly to your wallet.',
+    'ticket_kind_blindbox' => 'Blindbox Ticket',
+    'ticket_kind_blindbox_desc' => 'Blindbox tickets are coming soon.',
+    'ticket_kind_exchange' => 'Exchange Ticket',
+    'ticket_kind_exchange_desc' => 'Exchange tickets are coming soon.',
+    'ticket_kind_wheel' => 'Wheel Ticket',
+    'ticket_kind_wheel_desc' => 'Wheel tickets are coming soon.',
 ];

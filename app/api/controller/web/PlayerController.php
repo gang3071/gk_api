@@ -6,6 +6,7 @@ use app\exception\PlayerCheckException;
 use app\model\Channel;
 use app\model\GamePlatform;
 use app\model\GameType;
+use app\model\LotteryTicket;
 use app\model\Machine;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerMoneyEditLog;
@@ -132,6 +133,63 @@ class PlayerController
 
         return apiSuccessResponse('success', [
             'walletBalance' => self::formatAmount($walletBalance)
+        ]);
+    }
+
+    /**
+     * 劵匣
+     *
+     * 彙總各類劵的持有數量與開放狀態（draw 摸獎劵 / blindbox 盲盒劵 / exchange 兌換劵 / wheel 轉盤劵）。
+     * 目前僅摸獎劵有對應系統（lottery_ticket），其餘類型尚未開放，回傳 count=0 / open=false。
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function tickets(): Response
+    {
+        $player = checkPlayer();
+
+        $channel = Channel::query()->where('department_id', $player->department_id)->first();
+
+        // 摸獎劵：持有未使用的摸獎券數量
+        $drawCount = LotteryTicket::query()
+            ->where('player_id', $player->id)
+            ->where('department_id', $player->department_id)
+            ->where('status', LotteryTicket::STATUS_UNUSED)
+            ->count();
+
+        $list = [
+            [
+                'kind' => 'draw',
+                'label' => trans('ticket_kind_draw', [], 'message'),
+                'count' => $drawCount,
+                'open' => ((int)($channel->lottery_ticket_enabled ?? 0) === 1),
+                'desc' => trans('ticket_kind_draw_desc', [], 'message'),
+            ],
+            [
+                'kind' => 'blindbox',
+                'label' => trans('ticket_kind_blindbox', [], 'message'),
+                'count' => 0,
+                'open' => false,
+                'desc' => trans('ticket_kind_blindbox_desc', [], 'message'),
+            ],
+            [
+                'kind' => 'exchange',
+                'label' => trans('ticket_kind_exchange', [], 'message'),
+                'count' => 0,
+                'open' => false,
+                'desc' => trans('ticket_kind_exchange_desc', [], 'message'),
+            ],
+            [
+                'kind' => 'wheel',
+                'label' => trans('ticket_kind_wheel', [], 'message'),
+                'count' => 0,
+                'open' => false,
+                'desc' => trans('ticket_kind_wheel_desc', [], 'message'),
+            ],
+        ];
+
+        return apiSuccessResponse('success', [
+            'list' => $list
         ]);
     }
 

@@ -597,4 +597,14 @@ return [
     'machine_odds_config_error' => '机台赔率配置错误',
     'store_not_found' => '未找到门店',
     'ticket_playing_machine' => '请先停止当前游玩机台',
+
+    // 劵匣
+    'ticket_kind_draw' => '摸奖券',
+    'ticket_kind_draw_desc' => '通过机台游玩累积打码量自动获得，每 1,000,000 点打码量获得 1 张摸奖券，活动结束后自动开奖，奖金直接入账。',
+    'ticket_kind_blindbox' => '盲盒券',
+    'ticket_kind_blindbox_desc' => '盲盒券尚未开放，敬请期待。',
+    'ticket_kind_exchange' => '兑换券',
+    'ticket_kind_exchange_desc' => '兑换券尚未开放，敬请期待。',
+    'ticket_kind_wheel' => '转盘券',
+    'ticket_kind_wheel_desc' => '转盘券尚未开放，敬请期待。',
 ];
