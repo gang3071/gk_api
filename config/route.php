@@ -52,6 +52,8 @@ Route::group('/api', function () {
         Route::post('/machines/logout', [\app\api\controller\web\MachineController::class, 'machinesLogout']);
         // 登出機台(全部)
         Route::post('/machines/logout-all', [\app\api\controller\web\MachineController::class, 'machinesLogoutAll']);
+        // 摸獎券資訊
+        Route::post('/ticket/current-activity', [\app\api\controller\web\PlayerController::class, 'currentActivity']);
         // 系統公告
         Route::get('/announcements', [\app\api\controller\web\IndexController::class, 'announcements']);
     });

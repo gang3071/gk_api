@@ -526,7 +526,6 @@ class MachineController
         return 'idle';
     }
 
-
     /**
      * 機台登出（單台)
      * @param Request $request
@@ -624,11 +623,12 @@ class MachineController
                 return apiFailResponse($result['message'] ?? trans('machine_wash_command_failed', [], 'message'));
             }
 
-            Log::channel('machine_operations')->info('[MachineWashV2] 洗分成功', [
-                'player_id' => $player->id,
-                'machine_id' => $machine->id,
-                'has_lottery' => $result['data']['has_lottery'] ?? false,
-            ]);
+            Log::channel('machine_operations')
+                ->info('[MachineWashV2] 洗分成功', [
+                    'player_id' => $player->id,
+                    'machine_id' => $machine->id,
+                    'has_lottery' => $result['data']['has_lottery'] ?? false,
+                ]);
         } catch (Exception $e) {
             Log::error($e->getMessage());
             $this->releaseIdempotent($requestId);
@@ -731,11 +731,12 @@ class MachineController
                     continue;
                 }
 
-                Log::channel('machine_operations')->info('[MachineWashV2] 洗分成功', [
-                    'player_id' => $player->id,
-                    'machine_id' => $value->id,
-                    'has_lottery' => $result['data']['has_lottery'] ?? false,
-                ]);
+                Log::channel('machine_operations')
+                    ->info('[MachineWashV2] 洗分成功', [
+                        'player_id' => $player->id,
+                        'machine_id' => $value->id,
+                        'has_lottery' => $result['data']['has_lottery'] ?? false,
+                    ]);
             } catch (Exception $e) {
                 Log::error($e->getMessage());
                 $this->releaseIdempotent($requestId);
