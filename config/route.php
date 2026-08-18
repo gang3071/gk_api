@@ -36,6 +36,8 @@ Route::group('/api', function () {
         Route::post('/me/wallet', [\app\api\controller\web\PlayerController::class, 'wallet']);
         // 劵匣
         Route::get('/me/tickets', [\app\api\controller\web\PlayerController::class, 'tickets']);
+        // 我的獎券
+        Route::get('/raffle/me/tickets', [\app\api\controller\web\LotteryTicketController::class, 'myTickets']);
         // 返水資訊
         Route::post('/me/rebate', [\app\api\controller\web\PlayerController::class, 'rebate']);
         // 領取返水

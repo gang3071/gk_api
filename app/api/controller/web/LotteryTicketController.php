@@ -324,6 +324,42 @@ class LotteryTicketController
     }
 
     /**
+     * 我的獎券
+     *
+     * 自動取得當前摸獎活動中玩家持有的未使用獎券號清單。
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function myTickets(): Response
+    {
+        $player = checkPlayer();
+
+        $activity = self::getSmartActivity($player->department_id, true);
+
+        if (! $activity) {
+            return apiSuccessResponse('success', [
+                'ticketNumbers' => [],
+                'ticketCount' => 0,
+                'validUntil' => null,
+            ]);
+        }
+
+        $ticketNumbers = LotteryTicket::query()
+            ->where('player_id', $player->id)
+            ->where('activity_id', $activity->id)
+            ->where('status', LotteryTicket::STATUS_UNUSED)
+            ->orderBy('ticket_no', 'asc')
+            ->pluck('ticket_no')
+            ->toArray();
+
+        return apiSuccessResponse('success', [
+            'ticketNumbers' => $ticketNumbers,
+            'ticketCount' => count($ticketNumbers),
+            'validUntil' => $activity->end_time,
+        ]);
+    }
+
+    /**
      * 格式化金额显示（整数不显示小数位）
      * @param float $amount
      * @return float|int
