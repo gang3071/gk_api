@@ -580,12 +580,16 @@ class TicketController
                 $currentBalance = $incrementResult['balance'];
 
                 // 更新出票记录状态（机台使用）
-                $ticket->update([
+                $updateData = [
                     'status' => TicketRecord::STATUS_MACHINE_USED,
-                    'player_id' => $player->id,
                     'scanned_at' => date('Y-m-d H:i:s'),
                     'scanned_by' => $player->id,
-                ]);
+                ];
+                // 洗分票不更新 player_id，保留出票时的玩家绑定
+                if ((int)$ticket->ticket_type != TicketRecord::TYPE_WITHDRAW) {
+                    $updateData['player_id'] = $player->id;
+                }
+                $ticket->update($updateData);
 
                 // 更新玩家充值统计
                 $player->player_extend->recharge_amount = bcadd((string)$player->player_extend->recharge_amount,
