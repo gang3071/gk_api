@@ -25,43 +25,29 @@ class LotteryTicketController
     {
         $player = checkPlayer();
 
-        $skipEnded = (bool) $request->input('skip_ended', false);  // 是否跳过已结束活动
         $getPrevious = (bool) $request->input('get_previous', false);  // 是否获取上期活动
+
+        // 获取当前活动
+        $activity = self::getSmartActivity($player->department_id, true);
 
         // ---------------------------------------- 上期活動 ----------------------------------------
         if ($getPrevious) {
-            // 1. 先获取当前活动
-            $currentActivity = self::getSmartActivity($player->department_id, true); // 跳过已结束的活动
-
-            // 2. 查询上期活动：比当前活动 ID 小的、最新的已结束活动
-            $query = LotteryTicketActivity::query()
+            // 查询上期活动：比当前活动 ID 小的、最新的已结束活动
+            $ticketActivity = LotteryTicketActivity::query()
                 ->where('department_id', $player->department_id)
                 ->where('status', LotteryTicketActivity::STATUS_ENDED)
                 ->orderBy('id', 'desc');
 
             // 如果有当前活动，上期活动必须比它 ID 小
-            if ($currentActivity) {
-                $query->where('id', '<', $currentActivity->id);
+            if ($activity) {
+                $ticketActivity->where('id', '<', $activity->id);
             }
 
-            $activity = $query->first();
-
-            if (! $activity) {
-                return jsonSuccessResponse('success', [
-                    'has_activity' => false,
-                    'activity' => null,
-                    'message' => '暂无上期活动'
-                ]);
-            }
-
-            return self::buildActivityResponse($activity, $player);
+            $activity = $ticketActivity->first();
         }
 
-        // ---------------------------------------- 默認流程 ----------------------------------------
-        $activity = self::getSmartActivity($player->department_id, $skipEnded);
-
         if (! $activity) {
-            return jsonSuccessResponse('success', [
+            return apiFailResponse('success', [
                 'has_activity' => false,
                 'activity' => null
             ]);
@@ -127,7 +113,7 @@ class LotteryTicketController
     }
 
     /**
-     * 构建活动响应数据（优化版）
+     * 构建活动响应数据
      * @param LotteryTicketActivity $activity
      * @param $player
      * @return Response
@@ -147,27 +133,21 @@ class LotteryTicketController
         // ---------------------------------------- 打码进度 ----------------------------------------
         $betProgress = LotteryTicketBetProgress::query()
             ->where('activity_id', $activity->id)
-            ->where('player_id', $player->id);
-
-        if ($player->vip_level_id !== null) {
-            $betProgress->where('vip_level_id', $player->vip_level_id);
-        } else {
-            $betProgress->whereNull('vip_level_id');
-        }
-
-        $betProgress = $betProgress->first();
+            ->where('player_id', $player->id)
+            ->where('vip_level_id', $player->vip_level_id ?? 0)
+            ->first();
 
         $amountRequired = $betProgress->bet_amount_required ?? 0;
         $amountCurrent = $betProgress->current_bet_amount ?? 0;
 
-        if (! $betProgress) {
+        if (empty($betProgress)) {
             $vipConfig = LotteryTicketVipConfig::query()
                 ->where('activity_id', $activity->id)
                 ->where('vip_level_id', $player->vip_level_id ?? 0)
                 ->where('status', 1)
                 ->first();
 
-            $amountRequired = $vipConfig ? $vipConfig->bet_amount_required : 0;
+            $amountRequired = $vipConfig->bet_amount_required ?? 0;
         }
 
         // ---------------------------------------- 总获奖金额 ----------------------------------------
@@ -190,7 +170,7 @@ class LotteryTicketController
                 ->count();
         }
 
-        return jsonSuccessResponse('success', [
+        return apiSuccessResponse('success', [
             'has_activity' => true,
             'activity' => [
                 'id' => $activity->id,
@@ -366,7 +346,6 @@ class LotteryTicketController
      */
     private function formatAmount(float $amount): float|int
     {
-        // 判断是否为整数
         if (floor($amount) == $amount) {
             // 整数：返回整数类型
             return (int)$amount;

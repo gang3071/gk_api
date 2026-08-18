@@ -475,7 +475,6 @@ class PlayerController
      */
     private function formatAmount(float $amount): float|int
     {
-        // 判断是否为整数
         if (floor($amount) == $amount) {
             // 整数：返回整数类型
             return (int)$amount;
