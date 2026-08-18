@@ -440,7 +440,11 @@ class TicketController
                 // 验证玩家绑定关系
                 // player_id = 0: 未绑定，任何人都能扫码
                 // player_id > 0: 已绑定，只有绑定玩家能扫码
-                if ((int)$ticket->player_id > 0 && (int)$ticket->player_id !== (int)$player->id) {
+                // 洗分票(TYPE_WITHDRAW)不限制绑定关系，允许任意玩家扫码开分
+                if ((int)$ticket->ticket_type !== TicketRecord::TYPE_WITHDRAW
+                    && (int)$ticket->player_id > 0
+                    && (int)$ticket->player_id !== (int)$player->id
+                ) {
                     $this->releaseIdempotent($requestId);
                     return jsonFailResponse(trans('ticket_bound_other_player', [], 'message'));
                 }
