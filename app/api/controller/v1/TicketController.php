@@ -585,8 +585,8 @@ class TicketController
                     'scanned_at' => date('Y-m-d H:i:s'),
                     'scanned_by' => $player->id,
                 ];
-                // 洗分票不更新 player_id，保留出票时的玩家绑定
-                if ((int)$ticket->ticket_type != TicketRecord::TYPE_WITHDRAW) {
+                // 洗分票且已绑定玩家时，不更新 player_id，保留出票时的玩家绑定
+                if (empty($ticket->player_id)) {
                     $updateData['player_id'] = $player->id;
                 }
                 $ticket->update($updateData);
