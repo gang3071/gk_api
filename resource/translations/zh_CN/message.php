@@ -5,6 +5,7 @@ use app\model\PhoneSmsLog;
 
 return [
     'validation_error' => '字段验证错误',
+    'signature_params_missing' => '签名参数缺失',
     'machine_maintaining' => '机台维护中',
     'game_type_not_fount' => '游戏类别不存在',
     'machine_not_fount' => '未找到机台',

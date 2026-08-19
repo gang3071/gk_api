@@ -5,6 +5,7 @@ use app\model\PhoneSmsLog;
 
 return [
     'validation_error' => 'Field validation error',
+    'signature_params_missing' => 'Signature parameters missing',
     'machine_maintaining' => 'Machine under maintenance',
     'game_type_not_fount' => 'Game category does not exist',
     'machine_not_fount' => 'Machine not found',

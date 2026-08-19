@@ -96,9 +96,53 @@ class ApiHandler extends ExceptionHandler
             }
         }
 
+        // 其他异常处理 - 避免泄露服务器路径
+        $code = $exception->getCode() ?: 500;
+        $message = $exception->getMessage();
+
+        // 🛡️ 生产环境隐藏敏感信息
+        if (!config('app.debug', false)) {
+            // TypeError、ArgumentCountError 等 PHP 内部错误不应暴露给客户端
+            if ($exception instanceof \TypeError
+                || $exception instanceof \ArgumentCountError
+                || $exception instanceof \ParseError
+                || $exception instanceof \Error) {
+
+                // 记录完整错误到日志
+                \support\Log::error('[API Exception] PHP Internal Error', [
+                    'exception_class' => get_class($exception),
+                    'message' => $message,
+                    'file' => $exception->getFile(),
+                    'line' => $exception->getLine(),
+                    'trace' => $exception->getTraceAsString(),
+                ]);
+
+                return json([
+                    'code' => 500,
+                    'msg' => trans('system_error', [], 'message')
+                ]);
+            }
+
+            // 过滤包含文件路径的错误信息
+            if (preg_match('/\/www\/|\/home\/|\/var\/|\/usr\/|[A-Z]:\\\\|called in/', $message)) {
+                \support\Log::error('[API Exception] Path Leaked in Message', [
+                    'exception_class' => get_class($exception),
+                    'original_message' => $message,
+                    'file' => $exception->getFile(),
+                    'line' => $exception->getLine(),
+                ]);
+
+                return json([
+                    'code' => $code ?: 500,
+                    'msg' => trans('system_error', [], 'message')
+                ]);
+            }
+        }
+
+        // Debug 模式或安全的错误信息，直接返回
         return json([
-            'code' => $exception->getCode(),
-            'msg' => $exception->getMessage()
+            'code' => $code,
+            'msg' => $message
         ]);
     }
 }
