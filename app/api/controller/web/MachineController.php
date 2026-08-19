@@ -209,26 +209,72 @@ class MachineController
             ->count();
         $machinePlayNum = $player->machine_play_num > 0 ? $player->machine_play_num : 1;
 
+        // ---------------------------------------- 獲取機台即時狀態 ----------------------------------------
+        $lang = locale() ?? 'zh_TW';
+        $lang = Str::replace('_', '-', $lang);
+        $machineServices = MachineServices::createServices($machine, $lang);
+
+        // 檢查機台在線狀態
+        $onlineStatus = 'offline';
+        try {
+            $client = new MachineClient();
+            $result = $client->batchCheckOnline([$machine->id]);
+            if ($result['success'] && isset($result['data'][$machine->id])) {
+                $onlineStatus = $result['data'][$machine->id];
+            }
+        } catch (Exception $e) {
+            Log::error('Check machine online failed', ['error' => $e->getMessage()]);
+        }
+
+        // 當前轉數（斯洛機需要除以3向上取整）
+        $nowTurn = $machineServices->now_turn;
+        if ($machine->type == GameType::TYPE_SLOT) {
+            $nowTurn = $nowTurn > 0 ? intval(ceil($nowTurn / 3)) : 0;
+        }
+
         $venueStatus = self::aggregateVenueStatus($machine);
 
-        // occupiedBy：規格對應 machine_session.member_id，目前無此表，暫回 null
+        // 占用玩家信息
         $occupiedBy = null;
+        if ($machine->gaming_user_id > 0) {
+            $occupiedPlayer = Player::query()->find($machine->gaming_user_id);
+            if ($occupiedPlayer) {
+                $occupiedBy = [
+                    'id' => $occupiedPlayer->id,
+                    'nickname' => $occupiedPlayer->name,
+                    'avatar' => $occupiedPlayer->avatar ?? '',
+                ];
+            }
+        }
 
         return apiSuccessResponse('ok', [
             'id' => $machine->id,
             'code' => $machine->code,
-            'name' => $machine->name,
+            'name' => $machine->machineLabel->name ?? $machine->name,
+            'type' => $machine->type,
             'pictureUrl' => $machine->picture_url,
             'point' => $machine->machineLabel->point ?? 0,
             'turn' => $machine->machineLabel->turn ?? 0,
             'score' => $machine->machineLabel->score ?? 0,
             'courtyard' => $machine->machineLabel->courtyard ?? '',
-            'correct_rate' => $machine->correct_rate,
+            'correct_rate' => $machine->machineLabel->correct_rate ?? $machine->correct_rate ?? '',
             'odds_x' => $machine->odds_x,
             'odds_y' => $machine->odds_y,
             'venueStatus' => $venueStatus,
             'bindable' => $venueStatus === 'idle' && $occupiedCount < $machinePlayNum,
             'occupiedBy' => $occupiedBy,
+            // ✅ 新增：機台即時狀態
+            'maintaining' => $machine->maintaining,
+            'gamingUserId' => $machine->gaming_user_id,
+            'keeping' => $machineServices->keeping,
+            'gaming' => $machineServices->gaming,
+            'isUse' => $machine->is_use,
+            'rewardStatus' => $machineServices->reward_status,
+            'nowTurn' => $nowTurn ? intval($nowTurn) : 0,
+            'bet' => $machineServices->bet ?? 0,
+            'keepSeconds' => $machineServices->keep_seconds,
+            'onlineStatus' => $onlineStatus,
+            'lastPlayTime' => $machineServices->last_play_time ?? null,
         ]);
     }
 
