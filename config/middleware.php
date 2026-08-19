@@ -20,10 +20,10 @@ use Wengg\WebmanApiSign\ApiSignMiddleware;
 return [
     // api应用中间件
     'api' => [
-//        ApiSignMiddleware::class,
-        SiteAuthMiddleware::class,
-        DeviceCollectMiddleware::class,
-        Lang::class
+        ApiSignMiddleware::class,       // 签名验证（必需）
+        SiteAuthMiddleware::class,      // 站点验证（必需）
+        DeviceCollectMiddleware::class, // 设备采集（/api/web 路径排除）
+        Lang::class                     // 语言设置（可选）
     ],
     //单一钱包中间件
     'wallet' => [

@@ -12,6 +12,11 @@ class DeviceCollectMiddleware implements MiddlewareInterface
 {
     public function process(Request $request, callable $handler): Response
     {
+        // 排除 /api/web 路径（Web 端 API 不需要强制设备验证）
+        if (preg_match('/^\/api\/web\//', $request->path())) {
+            return $handler($request);
+        }
+
         $deviceCpuId = $request->header('DeviceCpuID', '');
         if (empty($deviceCpuId)) {
             return jsonFailResponse(trans('device_cpu_id_required', [], 'message'), [], 403);
