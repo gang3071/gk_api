@@ -308,21 +308,78 @@ class MachineController
             return apiFailResponse(trans('machine_not_found', [], 'message'));
         }
 
-        // 已被其他玩家占用
+        // ---------------------------------------- 機台狀態檢查 ----------------------------------------
+        // 檢查維護狀態
+        if ($machine->maintaining == 1) {
+            return apiFailResponse(trans('machine_maintaining', [], 'message'));
+        }
+
+        // 檢查全局維護
+        if (machineMaintaining()) {
+            return apiFailResponse(trans('machine_maintaining', [], 'message'));
+        }
+
+        // 獲取機台即時狀態（Redis）
+        $lang = locale() ?? 'zh_TW';
+        $lang = Str::replace('_', '-', $lang);
+        $machineServices = MachineServices::createServices($machine, $lang);
+
+        // 檢查機台鎖定狀態
+        if ($machineServices->has_lock == 1) {
+            return apiFailResponse(trans('machine_has_lock', [], 'message'));
+        }
+
+        // 檢查開獎狀態
+        if ($machineServices->reward_status == 1) {
+            return apiFailResponse(trans('machine_reward_drawing', ['{code}' => $machine->code], 'message'));
+        }
+
+        // 檢查在線狀態
+        $onlineStatus = 'offline';
+        try {
+            $client = new MachineClient();
+            $result = $client->batchCheckOnline([$machine->id]);
+            if ($result['success'] && isset($result['data'][$machine->id])) {
+                $onlineStatus = $result['data'][$machine->id];
+            }
+        } catch (Exception $e) {
+            Log::error('Check machine online failed', ['error' => $e->getMessage()]);
+        }
+
+        if ($onlineStatus !== 'online') {
+            return apiFailResponse(trans('machine_has_offline', ['{code}' => $machine->code], 'message'));
+        }
+
+        // ---------------------------------------- 占用狀態檢查 ----------------------------------------
+        // 已被其他玩家占用（數據庫狀態）
         if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
             return apiFailResponse(trans('machine_occupied', [], 'message'));
         }
-        // 非 idle（保留 / 使用中）視為被占用
+
+        // Redis 實時狀態檢查（保留 / 使用中）
+        if ($machineServices->keeping == 1 || $machineServices->gaming == 1) {
+            // 如果 Redis 顯示占用但數據庫顯示空閒，可能是狀態不一致
+            if ($machine->gaming_user_id == 0) {
+                return apiFailResponse(trans('machine_occupied', [], 'message'));
+            }
+            // 如果是其他玩家占用
+            if ($machine->gaming_user_id != $player->id) {
+                return apiFailResponse(trans('machine_occupied', [], 'message'));
+            }
+        }
+
+        // 數據庫狀態檢查（保留 / 使用中）
         if ($machine->gaming_user_id == 0 && ($machine->gaming == 1 || $machine->keeping == 1 || $machine->is_use == 1)) {
             return apiFailResponse(trans('machine_occupied', [], 'message'));
         }
 
+        // ---------------------------------------- 冪等性處理 ----------------------------------------
         // 已由自己綁定，直接回成功（冪等）
         if ($machine->gaming_user_id == $player->id && $machine->gaming == 1) {
             return $this->bindSuccessResponse($machine, $player);
         }
 
-        // 配額檢查：未達 machinePlayNum 配額
+        // ---------------------------------------- 配額檢查 ----------------------------------------
         $occupiedCount = Machine::query()
             ->where('gaming_user_id', $player->id)
             ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
@@ -332,10 +389,39 @@ class MachineController
             return apiFailResponse(trans('quota_exceeded', [], 'message'));
         }
 
-        // 綁定：佔位並標記使用中
+        // ---------------------------------------- 執行綁定 ----------------------------------------
+        // 更新數據庫狀態
         $machine->gaming_user_id = $player->id;
         $machine->gaming = 1;
         $machine->save();
+
+        // ✅ 同步更新 Redis 狀態（通過 Cache 直接更新）
+        // Redis Key 格式參考 MachineServices 的實現
+        $redisKey = "machine:{$machine->id}:status";
+        try {
+            $statusData = \support\Cache::get($redisKey, []);
+            if (!is_array($statusData)) {
+                $statusData = [];
+            }
+            $statusData['gaming'] = 1;
+            $statusData['gaming_user_id'] = $player->id;
+            $statusData['is_use'] = 1;
+            $statusData['updated_at'] = date('Y-m-d H:i:s');
+            \support\Cache::set($redisKey, $statusData, 86400); // 24小時過期
+
+            Log::info('[MachineBinding] Redis status updated', [
+                'machine_id' => $machine->id,
+                'player_id' => $player->id,
+                'redis_key' => $redisKey,
+            ]);
+        } catch (Exception $e) {
+            // Redis 更新失敗不影響綁定，記錄日誌
+            Log::error('[MachineBinding] Failed to update Redis status', [
+                'machine_id' => $machine->id,
+                'player_id' => $player->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return $this->bindSuccessResponse($machine, $player);
     }
@@ -348,18 +434,42 @@ class MachineController
      */
     private function bindSuccessResponse(Machine $machine, Player $player): Response
     {
+        // 獲取機台即時狀態
+        $lang = locale() ?? 'zh_TW';
+        $lang = Str::replace('_', '-', $lang);
+        $machineServices = MachineServices::createServices($machine, $lang);
+
+        // 檢查在線狀態
+        $onlineStatus = 'offline';
+        try {
+            $client = new MachineClient();
+            $result = $client->batchCheckOnline([$machine->id]);
+            if ($result['success'] && isset($result['data'][$machine->id])) {
+                $onlineStatus = $result['data'][$machine->id];
+            }
+        } catch (Exception $e) {
+            Log::error('Check machine online failed', ['error' => $e->getMessage()]);
+        }
+
+        // 當前轉數（斯洛機需要除以3向上取整）
+        $nowTurn = $machineServices->now_turn;
+        if ($machine->type == GameType::TYPE_SLOT) {
+            $nowTurn = $nowTurn > 0 ? intval(ceil($nowTurn / 3)) : 0;
+        }
+
         $venueStatus = self::aggregateVenueStatus($machine);
 
         return apiSuccessResponse('ok', [
             'id' => $machine->id,
             'code' => $machine->code,
-            'name' => $machine->name,
+            'name' => $machine->machineLabel->name ?? $machine->name,
+            'type' => $machine->type,
             'pictureUrl' => $machine->picture_url,
             'point' => $machine->machineLabel->point ?? 0,
             'turn' => $machine->machineLabel->turn ?? 0,
             'score' => $machine->machineLabel->score ?? 0,
             'courtyard' => $machine->machineLabel->courtyard ?? '',
-            'correct_rate' => $machine->correct_rate,
+            'correct_rate' => $machine->machineLabel->correct_rate ?? $machine->correct_rate ?? '',
             'odds_x' => $machine->odds_x,
             'odds_y' => $machine->odds_y,
             'venueStatus' => $venueStatus,
@@ -367,8 +477,21 @@ class MachineController
             'occupiedBy' => [
                 'id' => $player->id,
                 'nickname' => $player->name,
+                'avatar' => $player->avatar ?? '',
             ],
             'boundAt' => (int)(strtotime($machine->updated_at) * 1000),
+            // ✅ 新增：機台即時狀態
+            'maintaining' => $machine->maintaining,
+            'gamingUserId' => $machine->gaming_user_id,
+            'keeping' => $machineServices->keeping,
+            'gaming' => $machineServices->gaming,
+            'isUse' => $machine->is_use,
+            'rewardStatus' => $machineServices->reward_status,
+            'nowTurn' => $nowTurn ? intval($nowTurn) : 0,
+            'bet' => $machineServices->bet ?? 0,
+            'keepSeconds' => $machineServices->keep_seconds,
+            'onlineStatus' => $onlineStatus,
+            'lastPlayTime' => $machineServices->last_play_time ?? null,
         ]);
     }
 
