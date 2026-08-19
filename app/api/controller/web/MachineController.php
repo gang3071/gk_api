@@ -431,6 +431,7 @@ class MachineController
      * @param Machine $machine
      * @param Player $player
      * @return Response
+     * @throws Exception
      */
     private function bindSuccessResponse(Machine $machine, Player $player): Response
     {
