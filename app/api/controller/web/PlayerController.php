@@ -39,9 +39,25 @@ class PlayerController
         // ---------------------------------------- 基本資料 ----------------------------------------
         $player = checkPlayer();
         $storeName = '';
+        $storeInfo = null;
 
         if (! empty($player->storeAdmin)) {
-            $storeName = $player->storeAdmin->nickname ?? $player->storeAdmin->username ?? '';
+            $store = $player->storeAdmin;
+            $storeName = $store->nickname ?? $store->username ?? '';
+
+            // 組裝門店詳細信息
+            $storeInfo = [
+                'id' => $store->id,
+                'username' => $store->username,
+                'nickname' => $store->nickname ?? '',
+                'phone' => $store->phone ?? '',
+                'email' => $store->email ?? '',
+                'avatar' => $store->avatar ?? '',
+                'status' => $store->status,
+                'type' => $store->type,
+                'departmentId' => $store->department_id,
+                'parentAdminId' => $store->parent_admin_id ?? null,
+            ];
         }
 
         // ---------------------------------------- 打分相關 ----------------------------------------
@@ -110,6 +126,7 @@ class PlayerController
                 'yesterdayScore' => self::formatAmount($yesterdayScore),
                 'createdAt' => $player->created_at
             ],
+            'store' => $storeInfo,
             'vip' => [
                 'vipName' => $vipLevel->name,
                 'vipLevel' => $vipLevel->sort,
