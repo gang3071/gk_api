@@ -545,12 +545,20 @@ class MachineController
             }
 
             // ---------------------------------------- 构造包含 machine_id 的新请求 ----------------------------------------
-            // 使用反射临时添加 machine_id 参数
+            // 使用反射修改 POST 数据，添加 machine_id 参数
             $reflection = new \ReflectionClass($request);
-            $property = $reflection->getProperty('_data');
+            // 需要访问父类的 protected 属性
+            $property = $reflection->getParentClass()->getParentClass()->getProperty('_data');
             $property->setAccessible(true);
             $data = $property->getValue($request);
-            $data['machine_id'] = $machine->id;
+
+            // 确保 post 数组存在
+            if (!isset($data['post'])) {
+                $data['post'] = [];
+            }
+
+            // 添加 machine_id 到 POST 数据中
+            $data['post']['machine_id'] = $machine->id;
             $property->setValue($request, $data);
 
             // ---------------------------------------- 根據機台類型調用 v1 的方法 ----------------------------------------
