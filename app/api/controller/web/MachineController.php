@@ -439,10 +439,27 @@ class MachineController
     private function injectPostData(Request $request, array $data): void
     {
         try {
-            $reflection = new \ReflectionClass($request);
             // Webman Request 继承链: support\Request -> Webman\Http\Request -> Workerman\Protocols\Http\Request
-            // _data 属性在最底层的 Workerman\Protocols\Http\Request 中
-            $property = $reflection->getParentClass()->getParentClass()->getProperty('_data');
+            // _data 属性在最底层的 Workerman\Protocols\Http\Request 中定义
+
+            // 逐级向上查找直到找到定义 _data 属性的类
+            $reflection = new \ReflectionClass($request);
+            $property = null;
+
+            while ($reflection) {
+                try {
+                    $property = $reflection->getProperty('_data');
+                    break; // 找到了，退出循环
+                } catch (\ReflectionException $e) {
+                    // 当前类没有这个属性，尝试父类
+                    $reflection = $reflection->getParentClass();
+                }
+            }
+
+            if (!$property) {
+                throw new Exception('Cannot find _data property in Request class hierarchy');
+            }
+
             $property->setAccessible(true);
             $requestData = $property->getValue($request);
 
@@ -458,7 +475,11 @@ class MachineController
 
             $property->setValue($request, $requestData);
         } catch (\Throwable $e) {
-            Log::error('[injectPostData] Failed to inject post data', ['error' => $e->getMessage(), 'data' => $data,]);
+            Log::error('[injectPostData] Failed to inject post data', [
+                'error' => $e->getMessage(),
+                'data' => $data,
+                'request_class' => get_class($request),
+            ]);
             throw new Exception('Failed to inject request data: ' . $e->getMessage());
         }
     }
