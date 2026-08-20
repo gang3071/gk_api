@@ -8,6 +8,7 @@ use app\model\ChannelMachine;
 use app\model\GameType;
 use app\model\Machine;
 use app\model\Player;
+use app\model\SystemSetting;
 use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
 use Exception;
@@ -23,43 +24,6 @@ class MachineController
     use \support\IdempotentTrait;
 
     /**
-     * 向 Request 的 POST 数据中注入额外参数
-     *
-     * @param Request $request
-     * @param array $data 要注入的键值对
-     * @return void
-     */
-    private function injectPostData(Request $request, array $data): void
-    {
-        try {
-            $reflection = new \ReflectionClass($request);
-            // Webman Request 继承链: support\Request -> Webman\Http\Request -> Workerman\Protocols\Http\Request
-            // _data 属性在最底层的 Workerman\Protocols\Http\Request 中
-            $property = $reflection->getParentClass()->getParentClass()->getProperty('_data');
-            $property->setAccessible(true);
-            $requestData = $property->getValue($request);
-
-            // 确保 post 数组存在
-            if (!isset($requestData['post'])) {
-                $requestData['post'] = [];
-            }
-
-            // 注入数据
-            foreach ($data as $key => $value) {
-                $requestData['post'][$key] = $value;
-            }
-
-            $property->setValue($request, $requestData);
-        } catch (\Throwable $e) {
-            Log::error('[injectPostData] Failed to inject post data', [
-                'error' => $e->getMessage(),
-                'data' => $data,
-            ]);
-            throw new Exception('Failed to inject request data: ' . $e->getMessage());
-        }
-    }
-
-    /**
      * 門店機台列表
      * @param Request $request
      * @param string $storeId 門店 ID（店家 AdminUser.type=4）
@@ -69,16 +33,12 @@ class MachineController
     public function storeMachines(Request $request, string $storeId): Response
     {
         $player = checkPlayer();
-        $page = (int) $request->get('page', 1);
-        $pageSize = (int) $request->get('pageSize', 10);
-        $status = (string) $request->get('status', ''); // 机台状态筛选
+        $page = (int)$request->get('page', 1);
+        $pageSize = (int)$request->get('pageSize', 10);
+        $status = (string)$request->get('status', ''); // 机台状态筛选
 
         // 門店 = 店家管理員（AdminUser.type=4）
-        $store = AdminUser::query()
-            ->where('id', $storeId)
-            ->where('type', AdminUser::TYPE_STORE)
-            ->whereNull('deleted_at')
-            ->first();
+        $store = AdminUser::query()->where('id', $storeId)->where('type', AdminUser::TYPE_STORE)->whereNull('deleted_at')->first();
         if (!$store) {
             return apiFailResponse(trans('store_not_found', [], 'message'));
         }
@@ -88,37 +48,20 @@ class MachineController
         }
 
         // 该门店绑定的线下机台（通过 channel_machine.store_admin_id 过滤）
-        $machineIds = ChannelMachine::query()
-            ->where('store_admin_id', $storeId)  // ✅ 只获取绑定到当前店家的机台
+        $machineIds = ChannelMachine::query()->where('store_admin_id', $storeId)  // ✅ 只获取绑定到当前店家的机台
             ->whereHas('machine', function ($query) {
                 $query->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE);
-            })
-            ->pluck('machine_id');
+            })->pluck('machine_id');
         if ($machineIds->isEmpty()) {
-            return apiSuccessResponse('ok', [
-                'list' => [],
-                'page' => $page,
-                'pageSize' => $pageSize,
-                'total' => 0,
-            ]);
+            return apiSuccessResponse('ok', ['list' => [], 'page' => $page, 'pageSize' => $pageSize, 'total' => 0,]);
         }
 
-        $query = Machine::query()
-            ->with(['machineLabel', 'machineCategory'])
-            ->whereIn('id', $machineIds)
-            ->where('status', 1)
-            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
-            ->whereHas('machineLabel', function ($query) {
+        $query = Machine::query()->with(['machineLabel', 'machineCategory'])->whereIn('id', $machineIds)->where('status', 1)->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)->whereHas('machineLabel', function ($query) {
                 $query->where('status', 1);
-            })
-            ->orderBy('sort', 'desc')
-            ->orderBy('id', 'desc');
+            })->orderBy('sort', 'desc')->orderBy('id', 'desc');
 
         // 玩家已占用機台數（bindable 配額判斷）
-        $occupiedCount = Machine::query()
-            ->where('gaming_user_id', $player->id)
-            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
-            ->count();
+        $occupiedCount = Machine::query()->where('gaming_user_id', $player->id)->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)->count();
         $machinePlayNum = $player->machine_play_num > 0 ? $player->machine_play_num : 1;
 
         // ---------------------------------------- 批量檢查機台在線狀態 ----------------------------------------
@@ -158,43 +101,30 @@ class MachineController
                 $nowTurn = $nowTurn > 0 ? intval(ceil($nowTurn / 3)) : 0;
             }
 
-            $list[] = [
-                'id' => $machine->id,
-                'code' => $machine->code,
-                'name' => $machine->machineLabel->name,
-                'type' => $machine->type,
-                'pictureUrl' => $machine->picture_url,
-                'point' => $machine->machineLabel->point ?? 0,
-                'turn' => $machine->machineLabel->turn ?? 0,
-                'score' => $machine->machineLabel->score ?? 0,
-                'courtyard' => $machine->machineLabel->courtyard ?? '',
-                'correct_rate' => $machine->machineLabel->correct_rate ?? '',
-                'odds_x' => $machine->odds_x,
-                'odds_y' => $machine->odds_y,
-                'venueStatus' => $venueStatus,
-                'bindable' => $venueStatus === 'idle' && $occupiedCount < $machinePlayNum,
-                // ✅ 新增：機台即時狀態
-                'maintaining' => $machine->maintaining,
-                'gamingUserId' => $machine->gaming_user_id,
-                'keeping' => $machineServices->keeping,
-                'gaming' => $machineServices->gaming,
-                'isUse' => $machine->is_use,
-                'rewardStatus' => $machineServices->reward_status,
-                'nowTurn' => $nowTurn ? intval($nowTurn) : 0,
-                'keepSeconds' => $machineServices->keep_seconds,
-                'onlineStatus' => $onlineStatus,
-            ];
+            $list[] = ['id' => $machine->id, 'code' => $machine->code, 'name' => $machine->machineLabel->name, 'type' => $machine->type, 'pictureUrl' => $machine->picture_url, 'point' => $machine->machineLabel->point ?? 0, 'turn' => $machine->machineLabel->turn ?? 0, 'score' => $machine->machineLabel->score ?? 0, 'courtyard' => $machine->machineLabel->courtyard ?? '', 'correct_rate' => $machine->machineLabel->correct_rate ?? '', 'odds_x' => $machine->odds_x, 'odds_y' => $machine->odds_y, 'venueStatus' => $venueStatus, 'bindable' => $venueStatus === 'idle' && $occupiedCount < $machinePlayNum, // ✅ 新增：機台即時狀態
+                'maintaining' => $machine->maintaining, 'gamingUserId' => $machine->gaming_user_id, 'keeping' => $machineServices->keeping, 'gaming' => $machineServices->gaming, 'isUse' => $machine->is_use, 'rewardStatus' => $machineServices->reward_status, 'nowTurn' => $nowTurn ? intval($nowTurn) : 0, 'keepSeconds' => $machineServices->keep_seconds, 'onlineStatus' => $onlineStatus,];
         }
 
         $total = count($list);
         $list = array_slice($list, ($page - 1) * $pageSize, $pageSize);
 
-        return apiSuccessResponse('ok', [
-            'list' => $list,
-            'page' => $page,
-            'pageSize' => $pageSize,
-            'total' => $total,
-        ]);
+        return apiSuccessResponse('ok', ['list' => $list, 'page' => $page, 'pageSize' => $pageSize, 'total' => $total,]);
+    }
+
+    /**
+     * 聚合機台現場狀態
+     * @param Machine $machine
+     * @return string idle / in-use / maintenance
+     */
+    private static function aggregateVenueStatus(Machine $machine): string
+    {
+        if ($machine->maintaining == 1) {
+            return 'maintenance';
+        }
+        if ($machine->gaming == 1 || $machine->keeping == 1 || $machine->is_use == 1) {
+            return 'in-use';
+        }
+        return 'idle';
     }
 
     /**
@@ -209,8 +139,8 @@ class MachineController
         $player = checkPlayer();
 
         // 从查询参数获取 id 或 code
-        $machineId = $request->input('id') ? (int) $request->input('id') : null;     // 机台ID（整数）
-        $machineCode = $request->input('code') ? (string) $request->input('code') : null; // 机台编号（字符串）
+        $machineId = $request->input('id') ? (int)$request->input('id') : null;     // 机台ID（整数）
+        $machineCode = $request->input('code') ? (string)$request->input('code') : null; // 机台编号（字符串）
 
         if (!$machineId && !$machineCode) {
             return apiFailResponse(trans('invalid_params', [], 'message'));
@@ -218,14 +148,9 @@ class MachineController
 
         // 依機台ID或Code查詢，限該玩家所属店家的机台
         /** @var Machine $machine */
-        $query = Machine::query()
-            ->with(['machineLabel', 'machineCategory'])
-            ->where('status', 1)
-            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
-            ->whereHas('machineLabel', function (Builder $query) {
+        $query = Machine::query()->with(['machineLabel', 'machineCategory'])->where('status', 1)->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)->whereHas('machineLabel', function (Builder $query) {
                 $query->where('status', 1);
-            })
-            ->whereHas('channelMachines', function (Builder $query) use ($player) {
+            })->whereHas('channelMachines', function (Builder $query) use ($player) {
                 // ✅ 只查询绑定到玩家所属店家的机台
                 $query->where('store_admin_id', $player->store_admin_id);
             });
@@ -243,10 +168,7 @@ class MachineController
         }
 
         // 玩家已占用機台數（bindable 配額判斷）
-        $occupiedCount = Machine::query()
-            ->where('gaming_user_id', $player->id)
-            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
-            ->count();
+        $occupiedCount = Machine::query()->where('gaming_user_id', $player->id)->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)->count();
         $machinePlayNum = $player->machine_play_num > 0 ? $player->machine_play_num : 1;
 
         // ---------------------------------------- 獲取機台即時狀態 ----------------------------------------
@@ -279,43 +201,12 @@ class MachineController
         if ($machine->gaming_user_id > 0) {
             $occupiedPlayer = Player::query()->find($machine->gaming_user_id);
             if ($occupiedPlayer) {
-                $occupiedBy = [
-                    'id' => $occupiedPlayer->id,
-                    'nickname' => $occupiedPlayer->name,
-                    'avatar' => $occupiedPlayer->avatar ?? '',
-                ];
+                $occupiedBy = ['id' => $occupiedPlayer->id, 'nickname' => $occupiedPlayer->name, 'avatar' => $occupiedPlayer->avatar ?? '',];
             }
         }
 
-        return apiSuccessResponse('ok', [
-            'id' => $machine->id,
-            'code' => $machine->code,
-            'name' => $machine->machineLabel->name ?? $machine->name,
-            'type' => $machine->type,
-            'pictureUrl' => $machine->picture_url,
-            'point' => $machine->machineLabel->point ?? 0,
-            'turn' => $machine->machineLabel->turn ?? 0,
-            'score' => $machine->machineLabel->score ?? 0,
-            'courtyard' => $machine->machineLabel->courtyard ?? '',
-            'correct_rate' => $machine->machineLabel->correct_rate ?? $machine->correct_rate ?? '',
-            'odds_x' => $machine->odds_x,
-            'odds_y' => $machine->odds_y,
-            'venueStatus' => $venueStatus,
-            'bindable' => $venueStatus === 'idle' && $occupiedCount < $machinePlayNum,
-            'occupiedBy' => $occupiedBy,
-            // ✅ 新增：機台即時狀態
-            'maintaining' => $machine->maintaining,
-            'gamingUserId' => $machine->gaming_user_id,
-            'keeping' => $machineServices->keeping,
-            'gaming' => $machineServices->gaming,
-            'isUse' => $machine->is_use,
-            'rewardStatus' => $machineServices->reward_status,
-            'nowTurn' => $nowTurn ? intval($nowTurn) : 0,
-            'bet' => $machineServices->bet ?? 0,
-            'keepSeconds' => $machineServices->keep_seconds,
-            'onlineStatus' => $onlineStatus,
-            'lastPlayTime' => $machineServices->last_play_time ?? null,
-        ]);
+        return apiSuccessResponse('ok', ['id' => $machine->id, 'code' => $machine->code, 'name' => $machine->machineLabel->name ?? $machine->name, 'type' => $machine->type, 'pictureUrl' => $machine->picture_url, 'point' => $machine->machineLabel->point ?? 0, 'turn' => $machine->machineLabel->turn ?? 0, 'score' => $machine->machineLabel->score ?? 0, 'courtyard' => $machine->machineLabel->courtyard ?? '', 'correct_rate' => $machine->machineLabel->correct_rate ?? $machine->correct_rate ?? '', 'odds_x' => $machine->odds_x, 'odds_y' => $machine->odds_y, 'venueStatus' => $venueStatus, 'bindable' => $venueStatus === 'idle' && $occupiedCount < $machinePlayNum, 'occupiedBy' => $occupiedBy, // ✅ 新增：機台即時狀態
+            'maintaining' => $machine->maintaining, 'gamingUserId' => $machine->gaming_user_id, 'keeping' => $machineServices->keeping, 'gaming' => $machineServices->gaming, 'isUse' => $machine->is_use, 'rewardStatus' => $machineServices->reward_status, 'nowTurn' => $nowTurn ? intval($nowTurn) : 0, 'bet' => $machineServices->bet ?? 0, 'keepSeconds' => $machineServices->keep_seconds, 'onlineStatus' => $onlineStatus, 'lastPlayTime' => $machineServices->last_play_time ?? null,]);
     }
 
     /**
@@ -331,19 +222,12 @@ class MachineController
 
         // 依機台ID查詢，限該玩家所属店家的机台
         /** @var Machine $machine */
-        $machine = Machine::query()
-            ->with(['machineLabel', 'machineCategory'])
-            ->where('id', $machineId)
-            ->where('status', 1)
-            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
-            ->whereHas('machineLabel', function (Builder $query) {
+        $machine = Machine::query()->with(['machineLabel', 'machineCategory'])->where('id', $machineId)->where('status', 1)->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)->whereHas('machineLabel', function (Builder $query) {
                 $query->where('status', 1);
-            })
-            ->whereHas('channelMachines', function (Builder $query) use ($player) {
+            })->whereHas('channelMachines', function (Builder $query) use ($player) {
                 // ✅ 只查询绑定到玩家所属店家的机台
                 $query->where('store_admin_id', $player->store_admin_id);
-            })
-            ->first();
+            })->first();
         if (!$machine) {
             return apiFailResponse(trans('machine_not_found', [], 'message'));
         }
@@ -420,10 +304,7 @@ class MachineController
         }
 
         // ---------------------------------------- 配額檢查 ----------------------------------------
-        $occupiedCount = Machine::query()
-            ->where('gaming_user_id', $player->id)
-            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
-            ->count();
+        $occupiedCount = Machine::query()->where('gaming_user_id', $player->id)->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)->count();
         $machinePlayNum = $player->machine_play_num > 0 ? $player->machine_play_num : 1;
         if ($occupiedCount >= $machinePlayNum) {
             return apiFailResponse(trans('quota_exceeded', [], 'message'));
@@ -433,26 +314,28 @@ class MachineController
         // 更新數據庫狀態
         $machine->gaming_user_id = $player->id;
         $machine->gaming = 1;
+        $machine->last_game_at = date('Y-m-d H:i:s');
         $machine->save();
 
         // ✅ 同步更新 Redis 狀態（通過 MachineServices）
-        // 使用 MachineServices 的 __set 方法自動保存到 Redis 並推送更新
         try {
-            $machineServices->gaming = 1;
-            $machineServices->gaming_user_id = $player->id;
-            $machineServices->is_use = 1;
+            try {
+                /** @var SystemSetting $keepingGiftSetting */
+                $keepingGiftSetting = SystemSetting::query()->where('feature', 'gift_keeping_minutes')->where('status', 1)->first();
 
-            Log::info('[MachineBinding] Redis status updated via MachineServices', [
-                'machine_id' => $machine->id,
-                'player_id' => $player->id,
-            ]);
+                if (!empty($keepingGiftSetting) && $keepingGiftSetting->num > 0) {
+                    $giftKeepSeconds = bcmul($keepingGiftSetting->num, 60);  // 分钟转秒
+                    $machineServices->keep_seconds = $giftKeepSeconds;
+                }
+                $machineServices->gaming = 1;
+                $machineServices->last_play_time = time();
+                $machineServices->gaming_user_id = $player->id;
+            } catch (\Exception $e) {
+                Log::error('[machineOpenAnyFree] 赠送保留时间失败', ['player_id' => $player->id, 'machine_id' => $machine->id, 'error' => $e->getMessage(),]);
+            }
         } catch (Exception $e) {
             // Redis 更新失敗不影響綁定，記錄日誌
-            Log::error('[MachineBinding] Failed to update Redis status', [
-                'machine_id' => $machine->id,
-                'player_id' => $player->id,
-                'error' => $e->getMessage(),
-            ]);
+            Log::error('[MachineBinding] Failed to update Redis status', ['machine_id' => $machine->id, 'player_id' => $player->id, 'error' => $e->getMessage(),]);
         }
 
         return $this->bindSuccessResponse($machine, $player);
@@ -492,56 +375,8 @@ class MachineController
 
         $venueStatus = self::aggregateVenueStatus($machine);
 
-        return apiSuccessResponse('ok', [
-            'id' => $machine->id,
-            'code' => $machine->code,
-            'name' => $machine->machineLabel->name ?? $machine->name,
-            'type' => $machine->type,
-            'pictureUrl' => $machine->picture_url,
-            'point' => $machine->machineLabel->point ?? 0,
-            'turn' => $machine->machineLabel->turn ?? 0,
-            'score' => $machine->machineLabel->score ?? 0,
-            'courtyard' => $machine->machineLabel->courtyard ?? '',
-            'correct_rate' => $machine->machineLabel->correct_rate ?? $machine->correct_rate ?? '',
-            'odds_x' => $machine->odds_x,
-            'odds_y' => $machine->odds_y,
-            'venueStatus' => $venueStatus,
-            'bindable' => false,
-            'occupiedBy' => [
-                'id' => $player->id,
-                'nickname' => $player->name,
-                'avatar' => $player->avatar ?? '',
-            ],
-            'boundAt' => (int)(strtotime($machine->updated_at) * 1000),
-            // ✅ 新增：機台即時狀態
-            'maintaining' => $machine->maintaining,
-            'gamingUserId' => $machine->gaming_user_id,
-            'keeping' => $machineServices->keeping,
-            'gaming' => $machineServices->gaming,
-            'isUse' => $machine->is_use,
-            'rewardStatus' => $machineServices->reward_status,
-            'nowTurn' => $nowTurn ? intval($nowTurn) : 0,
-            'bet' => $machineServices->bet ?? 0,
-            'keepSeconds' => $machineServices->keep_seconds,
-            'onlineStatus' => $onlineStatus,
-            'lastPlayTime' => $machineServices->last_play_time ?? null,
-        ]);
-    }
-
-    /**
-     * 聚合機台現場狀態
-     * @param Machine $machine
-     * @return string idle / in-use / maintenance
-     */
-    private static function aggregateVenueStatus(Machine $machine): string
-    {
-        if ($machine->maintaining == 1) {
-            return 'maintenance';
-        }
-        if ($machine->gaming == 1 || $machine->keeping == 1 || $machine->is_use == 1) {
-            return 'in-use';
-        }
-        return 'idle';
+        return apiSuccessResponse('ok', ['id' => $machine->id, 'code' => $machine->code, 'name' => $machine->machineLabel->name ?? $machine->name, 'type' => $machine->type, 'pictureUrl' => $machine->picture_url, 'point' => $machine->machineLabel->point ?? 0, 'turn' => $machine->machineLabel->turn ?? 0, 'score' => $machine->machineLabel->score ?? 0, 'courtyard' => $machine->machineLabel->courtyard ?? '', 'correct_rate' => $machine->machineLabel->correct_rate ?? $machine->correct_rate ?? '', 'odds_x' => $machine->odds_x, 'odds_y' => $machine->odds_y, 'venueStatus' => $venueStatus, 'bindable' => false, 'occupiedBy' => ['id' => $player->id, 'nickname' => $player->name, 'avatar' => $player->avatar ?? '',], 'boundAt' => (int)(strtotime($machine->updated_at) * 1000), // ✅ 新增：機台即時狀態
+            'maintaining' => $machine->maintaining, 'gamingUserId' => $machine->gaming_user_id, 'keeping' => $machineServices->keeping, 'gaming' => $machineServices->gaming, 'isUse' => $machine->is_use, 'rewardStatus' => $machineServices->reward_status, 'nowTurn' => $nowTurn ? intval($nowTurn) : 0, 'bet' => $machineServices->bet ?? 0, 'keepSeconds' => $machineServices->keep_seconds, 'onlineStatus' => $onlineStatus, 'lastPlayTime' => $machineServices->last_play_time ?? null,]);
     }
 
     #[RateLimiter(limit: 20)]
@@ -551,12 +386,11 @@ class MachineController
      * @param Request $request
      * @param string $machineId
      * @return Response
-     */
-    public function machineOperation(Request $request, string $machineId): Response
+     */ public function machineOperation(Request $request, string $machineId): Response
     {
         try {
             $player = checkPlayer();
-            $action = (string) $request->input('action', '');
+            $action = (string)$request->input('action', '');
 
             // ---------------------------------------- 參數驗證 ----------------------------------------
             if (empty($action)) {
@@ -565,19 +399,13 @@ class MachineController
 
             // ---------------------------------------- 機台檢查 ----------------------------------------
             /** @var Machine $machine */
-            $machine = Machine::query()
-                ->where('id', $machineId)
-                ->where('status', 1)
-                ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
-                ->whereHas('machineLabel', function (Builder $query) {
+            $machine = Machine::query()->where('id', $machineId)->where('status', 1)->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)->whereHas('machineLabel', function (Builder $query) {
                     $query->where('status', 1);
-                })
-                ->whereHas('channelMachines', function (Builder $query) use ($player) {
+                })->whereHas('channelMachines', function (Builder $query) use ($player) {
                     $query->where('store_admin_id', $player->store_admin_id);
-                })
-                ->first();
+                })->first();
 
-            if (! $machine) {
+            if (!$machine) {
                 return apiFailResponse(trans('machine_not_found', [], 'message'));
             }
 
@@ -596,13 +424,42 @@ class MachineController
                 return apiFailResponse(trans('machine_type_not_supported', [], 'message'));
             }
         } catch (Exception $e) {
-            Log::error('[MachineOperation] Error', [
-                'machine_id' => $machineId,
-                'action' => $action ?? '',
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+            Log::error('[MachineOperation] Error', ['machine_id' => $machineId, 'action' => $action ?? '', 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString(),]);
             return apiFailResponse($e->getMessage() ?: trans('system_error', [], 'message'));
+        }
+    }
+
+    /**
+     * 向 Request 的 POST 数据中注入额外参数
+     *
+     * @param Request $request
+     * @param array $data 要注入的键值对
+     * @return void
+     */
+    private function injectPostData(Request $request, array $data): void
+    {
+        try {
+            $reflection = new \ReflectionClass($request);
+            // Webman Request 继承链: support\Request -> Webman\Http\Request -> Workerman\Protocols\Http\Request
+            // _data 属性在最底层的 Workerman\Protocols\Http\Request 中
+            $property = $reflection->getParentClass()->getParentClass()->getProperty('_data');
+            $property->setAccessible(true);
+            $requestData = $property->getValue($request);
+
+            // 确保 post 数组存在
+            if (!isset($requestData['post'])) {
+                $requestData['post'] = [];
+            }
+
+            // 注入数据
+            foreach ($data as $key => $value) {
+                $requestData['post'][$key] = $value;
+            }
+
+            $property->setValue($request, $requestData);
+        } catch (\Throwable $e) {
+            Log::error('[injectPostData] Failed to inject post data', ['error' => $e->getMessage(), 'data' => $data,]);
+            throw new Exception('Failed to inject request data: ' . $e->getMessage());
         }
     }
 }
