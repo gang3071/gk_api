@@ -19,6 +19,46 @@ use support\Request;
 use support\Response;
 use Webman\RateLimiter\Annotation\RateLimiter;
 
+/**
+ * Request 包装类，用于注入额外参数
+ */
+class RequestWrapper extends Request
+{
+    private array $injectedData = [];
+
+    public function __construct(Request $originalRequest)
+    {
+        // 复制原始请求的所有属性
+        foreach (get_object_vars($originalRequest) as $key => $value) {
+            $this->$key = $value;
+        }
+    }
+
+    public function injectData(array $data): void
+    {
+        $this->injectedData = array_merge($this->injectedData, $data);
+    }
+
+    public function post($name = null, $default = null)
+    {
+        $postData = parent::post();
+        if (!is_array($postData)) {
+            $postData = [];
+        }
+        $mergedData = array_merge($postData, $this->injectedData);
+
+        if ($name === null) {
+            return $mergedData;
+        }
+        return $mergedData[$name] ?? $default;
+    }
+
+    public function all()
+    {
+        return $this->get() + $this->post();
+    }
+}
+
 class MachineController
 {
     use \support\IdempotentTrait;
@@ -410,77 +450,23 @@ class MachineController
             }
 
             // ---------------------------------------- 构造包含 machine_id 的新请求 ----------------------------------------
-            // 注入 machine_id 参数到 POST 数据
-            $this->injectPostData($request, ['machine_id' => $machine->id]);
+            // 使用 RequestWrapper 注入 machine_id 参数
+            $wrappedRequest = new RequestWrapper($request);
+            $wrappedRequest->injectData(['machine_id' => $machine->id]);
 
             // ---------------------------------------- 根據機台類型調用 v1 的方法 ----------------------------------------
             $v1Controller = new \app\api\controller\v1\MachineController();
 
             if ($machine->type == GameType::TYPE_STEEL_BALL) {
-                return $v1Controller->jackPotAction($request);
+                return $v1Controller->jackPotAction($wrappedRequest);
             } elseif ($machine->type == GameType::TYPE_SLOT) {
-                return $v1Controller->slotAction($request);
+                return $v1Controller->slotAction($wrappedRequest);
             } else {
                 return apiFailResponse(trans('machine_type_not_supported', [], 'message'));
             }
         } catch (Exception $e) {
             Log::error('[MachineOperation] Error', ['machine_id' => $machineId, 'action' => $action ?? '', 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString(),]);
             return apiFailResponse($e->getMessage() ?: trans('system_error', [], 'message'));
-        }
-    }
-
-    /**
-     * 向 Request 的 POST 数据中注入额外参数
-     *
-     * @param Request $request
-     * @param array $data 要注入的键值对
-     * @return void
-     */
-    private function injectPostData(Request $request, array $data): void
-    {
-        try {
-            // Webman Request 继承链: support\Request -> Webman\Http\Request -> Workerman\Protocols\Http\Request
-            // _data 属性在最底层的 Workerman\Protocols\Http\Request 中定义
-
-            // 逐级向上查找直到找到定义 _data 属性的类
-            $reflection = new \ReflectionClass($request);
-            $property = null;
-
-            while ($reflection) {
-                try {
-                    $property = $reflection->getProperty('_data');
-                    break; // 找到了，退出循环
-                } catch (\ReflectionException $e) {
-                    // 当前类没有这个属性，尝试父类
-                    $reflection = $reflection->getParentClass();
-                }
-            }
-
-            if (!$property) {
-                throw new Exception('Cannot find _data property in Request class hierarchy');
-            }
-
-            $property->setAccessible(true);
-            $requestData = $property->getValue($request);
-
-            // 确保 post 数组存在
-            if (!isset($requestData['post'])) {
-                $requestData['post'] = [];
-            }
-
-            // 注入数据
-            foreach ($data as $key => $value) {
-                $requestData['post'][$key] = $value;
-            }
-
-            $property->setValue($request, $requestData);
-        } catch (\Throwable $e) {
-            Log::error('[injectPostData] Failed to inject post data', [
-                'error' => $e->getMessage(),
-                'data' => $data,
-                'request_class' => get_class($request),
-            ]);
-            throw new Exception('Failed to inject request data: ' . $e->getMessage());
         }
     }
 }
