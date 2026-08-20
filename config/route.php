@@ -44,16 +44,14 @@ Route::group('/api', function () {
         Route::post('/me/rebate/claim', [\app\api\controller\web\PlayerController::class, 'rebateClaim']);
         // 我的機台清單
         Route::post('/me/machines', [\app\api\controller\web\PlayerController::class, 'machines']);
-        // 掃碼 / 查詢單機（通过机台 ID 获取机台详细信息）
-        Route::get('/machines/{machineId}', [\app\api\controller\web\MachineController::class, 'machineById']);
+        // 查詢單機（支持通过机台 ID 或 Code 查询）
+        Route::get('/machines/{identifier}', [\app\api\controller\web\MachineController::class, 'getMachine']);
         // 綁定機台（使用 machine_id）
         Route::post('/machines/{machineId}/bind', [\app\api\controller\web\MachineController::class, 'bind']);
         // 機台操作（鋼珠機 + 斯洛機所有操作，使用 machine_id）
         Route::post('/machines/{machineId}/operation', [\app\api\controller\web\MachineController::class, 'machineOperation']);
         // 門店機台列表
         Route::get('/stores/{storeId}/machines', [\app\api\controller\web\MachineController::class, 'storeMachines']);
-        // 登出機台(單台)
-        Route::post('/machines/logout', [\app\api\controller\web\MachineController::class, 'machinesLogout']);
         // 摸獎券資訊
         Route::post('/tickets/current-activity', [\app\api\controller\web\LotteryTicketController::class, 'currentActivity']);
         // 系統公告

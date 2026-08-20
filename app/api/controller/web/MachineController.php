@@ -13,8 +13,6 @@ use app\service\machine\MachineServices;
 use Exception;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
-use Respect\Validation\Exceptions\AllOfException;
-use Respect\Validation\Validator;
 use support\Log;
 use support\Request;
 use support\Response;
@@ -163,21 +161,24 @@ class MachineController
     }
 
     /**
-     * 掃碼 / 查詢單機
+     * 查詢單機（支持通过 ID 或 Code 查询）
      * @param Request $request
-     * @param string $machineId 機台 ID（扫码获取）
+     * @param string $identifier 機台 ID 或 Code（自动识别）
      * @return Response
      * @throws PlayerCheckException|Exception
      */
-    public function machineById(Request $request, string $machineId): Response
+    public function getMachine(Request $request, string $identifier): Response
     {
         $player = checkPlayer();
 
-        // 依機台ID查詢，限該玩家所属店家的机台
+        // 智能识别是 ID 还是 Code
+        // 纯数字视为 ID，其他视为 Code
+        $isNumeric = ctype_digit($identifier);
+
+        // 依機台ID或Code查詢，限該玩家所属店家的机台
         /** @var Machine $machine */
-        $machine = Machine::query()
+        $query = Machine::query()
             ->with(['machineLabel', 'machineCategory'])
-            ->where('id', $machineId)
             ->where('status', 1)
             ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
             ->whereHas('machineLabel', function (Builder $query) {
@@ -186,8 +187,16 @@ class MachineController
             ->whereHas('channelMachines', function (Builder $query) use ($player) {
                 // ✅ 只查询绑定到玩家所属店家的机台
                 $query->where('store_admin_id', $player->store_admin_id);
-            })
-            ->first();
+            });
+
+        // 根据类型添加查询条件
+        if ($isNumeric) {
+            $query->where('id', $identifier);
+        } else {
+            $query->where('code', $identifier);
+        }
+
+        $machine = $query->first();
         if (!$machine) {
             return apiFailResponse(trans('machine_not_found', [], 'message'));
         }
