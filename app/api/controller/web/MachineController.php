@@ -23,6 +23,43 @@ class MachineController
     use \support\IdempotentTrait;
 
     /**
+     * 向 Request 的 POST 数据中注入额外参数
+     *
+     * @param Request $request
+     * @param array $data 要注入的键值对
+     * @return void
+     */
+    private function injectPostData(Request $request, array $data): void
+    {
+        try {
+            $reflection = new \ReflectionClass($request);
+            // Webman Request 继承链: support\Request -> Webman\Http\Request -> Workerman\Protocols\Http\Request
+            // _data 属性在最底层的 Workerman\Protocols\Http\Request 中
+            $property = $reflection->getParentClass()->getParentClass()->getProperty('_data');
+            $property->setAccessible(true);
+            $requestData = $property->getValue($request);
+
+            // 确保 post 数组存在
+            if (!isset($requestData['post'])) {
+                $requestData['post'] = [];
+            }
+
+            // 注入数据
+            foreach ($data as $key => $value) {
+                $requestData['post'][$key] = $value;
+            }
+
+            $property->setValue($request, $requestData);
+        } catch (\Throwable $e) {
+            Log::error('[injectPostData] Failed to inject post data', [
+                'error' => $e->getMessage(),
+                'data' => $data,
+            ]);
+            throw new Exception('Failed to inject request data: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * 門店機台列表
      * @param Request $request
      * @param string $storeId 門店 ID（店家 AdminUser.type=4）
@@ -545,21 +582,8 @@ class MachineController
             }
 
             // ---------------------------------------- 构造包含 machine_id 的新请求 ----------------------------------------
-            // 使用反射修改 POST 数据，添加 machine_id 参数
-            $reflection = new \ReflectionClass($request);
-            // 需要访问父类的 protected 属性
-            $property = $reflection->getParentClass()->getParentClass()->getProperty('_data');
-            $property->setAccessible(true);
-            $data = $property->getValue($request);
-
-            // 确保 post 数组存在
-            if (!isset($data['post'])) {
-                $data['post'] = [];
-            }
-
-            // 添加 machine_id 到 POST 数据中
-            $data['post']['machine_id'] = $machine->id;
-            $property->setValue($request, $data);
+            // 注入 machine_id 参数到 POST 数据
+            $this->injectPostData($request, ['machine_id' => $machine->id]);
 
             // ---------------------------------------- 根據機台類型調用 v1 的方法 ----------------------------------------
             $v1Controller = new \app\api\controller\v1\MachineController();
