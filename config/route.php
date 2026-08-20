@@ -44,8 +44,8 @@ Route::group('/api', function () {
         Route::post('/me/rebate/claim', [\app\api\controller\web\PlayerController::class, 'rebateClaim']);
         // 我的機台清單
         Route::post('/me/machines', [\app\api\controller\web\PlayerController::class, 'machines']);
-        // 掃碼 / 查詢單機（通过机台编号获取机台信息，返回包含 machine_id）
-        Route::get('/machines/by-code/{code}', [\app\api\controller\web\MachineController::class, 'machineByCode']);
+        // 掃碼 / 查詢單機（通过机台 ID 获取机台详细信息）
+        Route::get('/machines/{machineId}', [\app\api\controller\web\MachineController::class, 'machineById']);
         // 綁定機台（使用 machine_id）
         Route::post('/machines/{machineId}/bind', [\app\api\controller\web\MachineController::class, 'bind']);
         // 機台操作（鋼珠機 + 斯洛機所有操作，使用 machine_id）

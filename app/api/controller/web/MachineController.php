@@ -38,13 +38,6 @@ class MachineController
         $pageSize = (int)$request->get('pageSize', 10);
         $status = $request->get('status', '');
 
-        if ($page < 1) {
-            $page = 1;
-        }
-        if ($pageSize < 1) {
-            $pageSize = 10;
-        }
-
         // 門店 = 店家管理員（AdminUser.type=4）
         $store = AdminUser::query()
             ->where('id', $storeId)
@@ -172,18 +165,19 @@ class MachineController
     /**
      * 掃碼 / 查詢單機
      * @param Request $request
-     * @param string $code 掃碼結果（machine.code）
+     * @param string $machineId 機台 ID（扫码获取）
      * @return Response
      * @throws PlayerCheckException|Exception
      */
-    public function machineByCode(Request $request, string $code): Response
+    public function machineById(Request $request, string $machineId): Response
     {
         $player = checkPlayer();
 
-        // 依機台編號查詢，限該玩家所属店家的机台
+        // 依機台ID查詢，限該玩家所属店家的机台
+        /** @var Machine $machine */
         $machine = Machine::query()
             ->with(['machineLabel', 'machineCategory'])
-            ->where('code', $code)
+            ->where('id', $machineId)
             ->where('status', 1)
             ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
             ->whereHas('machineLabel', function (Builder $query) {
@@ -277,9 +271,9 @@ class MachineController
     /**
      * 綁定機台
      * @param Request $request
-     * @param string $code 機台編號
+     * @param string $machineId
      * @return Response
-     * @throws PlayerCheckException|Exception
+     * @throws PlayerCheckException
      */
     public function bind(Request $request, string $machineId): Response
     {
@@ -500,130 +494,13 @@ class MachineController
         return 'idle';
     }
 
-    /**
-     * 機台登出（單台)
-     * @param Request $request
-     * @return Response
-     * @throws PlayerCheckException|Exception
-     */
-    public function machinesLogout(Request $request): Response
-    {
-        $player = checkPlayer();
-
-        if (empty($player->channel->status_machine) || empty($player->status_machine)) {
-            return apiFailResponse(trans('platform_no_permission', [], 'message'));
-        }
-
-        // ---------------------------------------- 參數檢查 ----------------------------------------
-        $data = $request->all();
-        $validator = Validator::key('machine_id', Validator::intVal()->notEmpty()->setName(trans('machine_id', [], 'message')));
-
-        try {
-            $validator->assert($data);
-        } catch (AllOfException $e) {
-            return apiFailResponse(getValidationMessages($e));
-        }
-
-        // ---------------------------------------- 冪等性處理 ----------------------------------------
-        $requestId = $data['request_id'] ?? null;
-        $machineId = $data['machine_id'] ?? 0;
-        $operation = 'machines-logout:' . $player->id . ':' . $machineId;
-        $checkIdempotent = $this->checkIdempotent($requestId, $operation, $player->id);
-
-        if ($checkIdempotent) {
-            return $checkIdempotent;
-        }
-
-        if (! $this->reserveIdempotent($requestId, $operation, $player->id)) {
-            $response = $this->checkIdempotent($requestId, $operation, $player->id);
-            return $response ?? apiFailResponse(trans('request_processing', [], 'message'));
-        }
-
-        // ---------------------------------------- 機台離線 ----------------------------------------
-        $machine = Machine::query()
-            ->where('id', $data['machine_id'])
-            ->where('gaming_user_id', $player->id)
-            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
-            ->whereHas('channelMachines', function ($query) use ($player) {
-                // ✅ 只能登出绑定到玩家所属店家的机台
-                $query->where('store_admin_id', $player->store_admin_id);
-            })
-            ->first();
-
-        if (! $machine) {
-            $response = apiFailResponse(trans('machine_not_found', [], 'message'));
-            $this->saveIdempotent($requestId, $response, $operation, $player->id);
-
-            return $response;
-        }
-
-        $action = 'leave';
-        $language = locale() ?? 'zh_TW';
-        $language = Str::replace('_', '-', $language);
-
-        try {
-            $services = MachineServices::createServices($machine, $language);
-
-            // 機台鎖定
-            if ($services->has_lock == 1) {
-                $this->releaseIdempotent($requestId);
-                return apiFailResponse(trans('machine_has_lock', [], 'message'));
-            }
-
-            // 機台開獎中
-            if ($services->reward_status == 1) {
-                $this->releaseIdempotent($requestId);
-                return apiFailResponse(trans('machine_reward_drawing', ['{code}' => $machine->code], 'message'));
-            }
-
-            Log::channel('machine_operations')
-                ->info('[MachineWashV2] 开始洗分', [
-                    'player_id' => $player->id,
-                    'machine_id' => $machine->id,
-                    'action' => $action,
-                    'lang' => $language
-                ]);
-
-            // 调用 gk_work 完整业务逻辑
-            // 超时30秒，因为要处理完整的数据库事务
-            $client = new MachineClient(null, 30);
-
-            $result = $client->washMachine(
-                $machine->id, $player->id, $action, true, 0, $language
-            );
-
-            if (! $result['success']) {
-                $this->releaseIdempotent($requestId);
-                return apiFailResponse($result['message'] ?? trans('machine_wash_command_failed', [], 'message'));
-            }
-
-            Log::channel('machine_operations')
-                ->info('[MachineWashV2] 洗分成功', [
-                    'player_id' => $player->id,
-                    'machine_id' => $machine->id,
-                    'has_lottery' => $result['data']['has_lottery'] ?? false,
-                ]);
-        } catch (Exception $e) {
-            Log::error($e->getMessage());
-            $this->releaseIdempotent($requestId);
-
-            return apiFailResponse($e->getMessage());
-        }
-
-        $response = apiSuccessResponse(trans('machine_logout', [], 'message'));
-        $this->saveIdempotent($requestId, $response, $operation, $player->id);
-
-        return $response;
-    }
-
     #[RateLimiter(limit: 20)]
     /**
      * 機台操作（統一入口：直接调用 v1 的 jackPotAction 和 slotAction）
      *
      * @param Request $request
-     * @param string $code 機台編號
+     * @param string $machineId
      * @return Response
-     * @throws PlayerCheckException
      */
     public function machineOperation(Request $request, string $machineId): Response
     {
@@ -637,6 +514,7 @@ class MachineController
             }
 
             // ---------------------------------------- 機台檢查 ----------------------------------------
+            /** @var Machine $machine */
             $machine = Machine::query()
                 ->where('id', $machineId)
                 ->where('status', 1)
@@ -682,5 +560,4 @@ class MachineController
             return apiFailResponse($e->getMessage() ?: trans('system_error', [], 'message'));
         }
     }
-
 }
