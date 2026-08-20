@@ -171,13 +171,9 @@ class MachineController
     {
         $player = checkPlayer();
 
-        // 智能识别是 ID 还是 Code
-        // 纯数字视为 ID，其他视为 Code
-        $isNumeric = ctype_digit($identifier);
-
         // 依機台ID或Code查詢，限該玩家所属店家的机台
         /** @var Machine $machine */
-        $query = Machine::query()
+        $machine = Machine::query()
             ->with(['machineLabel', 'machineCategory'])
             ->where('status', 1)
             ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
@@ -187,16 +183,13 @@ class MachineController
             ->whereHas('channelMachines', function (Builder $query) use ($player) {
                 // ✅ 只查询绑定到玩家所属店家的机台
                 $query->where('store_admin_id', $player->store_admin_id);
-            });
-
-        // 根据类型添加查询条件
-        if ($isNumeric) {
-            $query->where('id', $identifier);
-        } else {
-            $query->where('code', $identifier);
-        }
-
-        $machine = $query->first();
+            })
+            ->where(function (Builder $query) use ($identifier) {
+                // 同时查询 ID 和 Code，避免 Code 为纯数字时的判断问题
+                $query->where('id', $identifier)
+                      ->orWhere('code', $identifier);
+            })
+            ->first();
         if (!$machine) {
             return apiFailResponse(trans('machine_not_found', [], 'message'));
         }
