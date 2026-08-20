@@ -19,46 +19,6 @@ use support\Request;
 use support\Response;
 use Webman\RateLimiter\Annotation\RateLimiter;
 
-/**
- * Request 包装类，用于注入额外参数
- */
-class RequestWrapper extends Request
-{
-    private array $injectedData = [];
-
-    public function __construct(Request $originalRequest)
-    {
-        // 复制原始请求的所有属性
-        foreach (get_object_vars($originalRequest) as $key => $value) {
-            $this->$key = $value;
-        }
-    }
-
-    public function injectData(array $data): void
-    {
-        $this->injectedData = array_merge($this->injectedData, $data);
-    }
-
-    public function post(?string $name = null, mixed $default = null): mixed
-    {
-        $postData = parent::post();
-        if (!is_array($postData)) {
-            $postData = [];
-        }
-        $mergedData = array_merge($postData, $this->injectedData);
-
-        if ($name === null) {
-            return $mergedData;
-        }
-        return $mergedData[$name] ?? $default;
-    }
-
-    public function all(): mixed
-    {
-        return $this->get() + $this->post();
-    }
-}
-
 class MachineController
 {
     use \support\IdempotentTrait;
@@ -449,18 +409,17 @@ class MachineController
                 return apiFailResponse(trans('machine_not_found', [], 'message'));
             }
 
-            // ---------------------------------------- 构造包含 machine_id 的新请求 ----------------------------------------
-            // 使用 RequestWrapper 注入 machine_id 参数
-            $wrappedRequest = new RequestWrapper($request);
-            $wrappedRequest->injectData(['machine_id' => $machine->id]);
+            // ---------------------------------------- 注入 machine_id 参数 ----------------------------------------
+            // 使用 Webman Request 内置的 setPost 方法注入参数
+            $request->setPost('machine_id', $machine->id);
 
             // ---------------------------------------- 根據機台類型調用 v1 的方法 ----------------------------------------
             $v1Controller = new \app\api\controller\v1\MachineController();
 
             if ($machine->type == GameType::TYPE_STEEL_BALL) {
-                return $v1Controller->jackPotAction($wrappedRequest);
+                return $v1Controller->jackPotAction($request);
             } elseif ($machine->type == GameType::TYPE_SLOT) {
-                return $v1Controller->slotAction($wrappedRequest);
+                return $v1Controller->slotAction($request);
             } else {
                 return apiFailResponse(trans('machine_type_not_supported', [], 'message'));
             }
