@@ -39,7 +39,7 @@ class RequestWrapper extends Request
         $this->injectedData = array_merge($this->injectedData, $data);
     }
 
-    public function post($name = null, $default = null)
+    public function post(?string $name = null, mixed $default = null): mixed
     {
         $postData = parent::post();
         if (!is_array($postData)) {
@@ -53,7 +53,7 @@ class RequestWrapper extends Request
         return $mergedData[$name] ?? $default;
     }
 
-    public function all()
+    public function all(): mixed
     {
         return $this->get() + $this->post();
     }
