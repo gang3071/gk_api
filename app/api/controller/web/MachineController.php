@@ -854,4 +854,71 @@ class MachineController
         return $response;
     }
 
+    #[RateLimiter(limit: 20)]
+    /**
+     * 機台操作（統一入口：直接调用 v1 的 jackPotAction 和 slotAction）
+     *
+     * @param Request $request
+     * @param string $code 機台編號
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function machineOperation(Request $request, string $code): Response
+    {
+        try {
+            $player = checkPlayer();
+            $action = $request->input('action');
+
+            // ---------------------------------------- 參數驗證 ----------------------------------------
+            if (empty($action)) {
+                return apiFailResponse(trans('action_required', [], 'message'), [], 'INVALID_PARAMS');
+            }
+
+            // ---------------------------------------- 機台檢查 ----------------------------------------
+            $machine = Machine::query()
+                ->where('code', $code)
+                ->where('status', 1)
+                ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
+                ->whereHas('machineLabel', function (Builder $query) {
+                    $query->where('status', 1);
+                })
+                ->whereHas('channelMachines', function (Builder $query) use ($player) {
+                    $query->where('store_admin_id', $player->store_admin_id);
+                })
+                ->first();
+
+            if (! $machine) {
+                return apiFailResponse(trans('machine_not_found', [], 'message'));
+            }
+
+            // ---------------------------------------- 构造包含 machine_id 的新请求 ----------------------------------------
+            // 使用反射临时添加 machine_id 参数
+            $reflection = new \ReflectionClass($request);
+            $property = $reflection->getProperty('_data');
+            $property->setAccessible(true);
+            $data = $property->getValue($request);
+            $data['machine_id'] = $machine->id;
+            $property->setValue($request, $data);
+
+            // ---------------------------------------- 根據機台類型調用 v1 的方法 ----------------------------------------
+            $v1Controller = new \app\api\controller\v1\MachineController();
+
+            if ($machine->type == GameType::TYPE_STEEL_BALL) {
+                return $v1Controller->jackPotAction($request);
+            } elseif ($machine->type == GameType::TYPE_SLOT) {
+                return $v1Controller->slotAction($request);
+            } else {
+                return apiFailResponse(trans('machine_type_not_supported', [], 'message'));
+            }
+        } catch (Exception $e) {
+            Log::error('[MachineOperation] Error', [
+                'code' => $code,
+                'action' => $action ?? '',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return apiFailResponse($e->getMessage() ?: trans('system_error', [], 'message'));
+        }
+    }
+
 }

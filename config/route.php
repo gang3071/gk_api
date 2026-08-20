@@ -50,6 +50,8 @@ Route::group('/api', function () {
         Route::post('/machines/{code}/bind', [\app\api\controller\web\MachineController::class, 'bind']);
         // 機台上分 / 下分
         Route::post('/machines/{code}/transfer', [\app\api\controller\web\MachineController::class, 'transfer']);
+        // 機台操作（鋼珠機 + 斯洛機所有操作）
+        Route::post('/machines/{code}/operation', [\app\api\controller\web\MachineController::class, 'machineOperation']);
         // 門店機台列表
         Route::get('/stores/{storeId}/machines', [\app\api\controller\web\MachineController::class, 'storeMachines']);
         // 登出機台(單台)
