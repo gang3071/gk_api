@@ -44,14 +44,12 @@ Route::group('/api', function () {
         Route::post('/me/rebate/claim', [\app\api\controller\web\PlayerController::class, 'rebateClaim']);
         // 我的機台清單
         Route::post('/me/machines', [\app\api\controller\web\PlayerController::class, 'machines']);
-        // 掃碼 / 查詢單機
-        Route::get('/machines/{code}', [\app\api\controller\web\MachineController::class, 'machineByCode']);
-        // 綁定機台
-        Route::post('/machines/{code}/bind', [\app\api\controller\web\MachineController::class, 'bind']);
-        // 機台上分 / 下分
-        Route::post('/machines/{code}/transfer', [\app\api\controller\web\MachineController::class, 'transfer']);
-        // 機台操作（鋼珠機 + 斯洛機所有操作）
-        Route::post('/machines/{code}/operation', [\app\api\controller\web\MachineController::class, 'machineOperation']);
+        // 掃碼 / 查詢單機（通过机台编号获取机台信息，返回包含 machine_id）
+        Route::get('/machines/by-code/{code}', [\app\api\controller\web\MachineController::class, 'machineByCode']);
+        // 綁定機台（使用 machine_id）
+        Route::post('/machines/{machineId}/bind', [\app\api\controller\web\MachineController::class, 'bind']);
+        // 機台操作（鋼珠機 + 斯洛機所有操作，使用 machine_id）
+        Route::post('/machines/{machineId}/operation', [\app\api\controller\web\MachineController::class, 'machineOperation']);
         // 門店機台列表
         Route::get('/stores/{storeId}/machines', [\app\api\controller\web\MachineController::class, 'storeMachines']);
         // 登出機台(單台)
