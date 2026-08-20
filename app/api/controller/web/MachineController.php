@@ -167,13 +167,21 @@ class MachineController
      * @return Response
      * @throws PlayerCheckException|Exception
      */
-    public function getMachine(Request $request, string $identifier): Response
+    public function getMachine(Request $request): Response
     {
         $player = checkPlayer();
 
+        // 从查询参数获取 id 或 code
+        $machineId = $request->input('id');
+        $machineCode = $request->input('code');
+
+        if (!$machineId && !$machineCode) {
+            return apiFailResponse(trans('invalid_params', [], 'message'));
+        }
+
         // 依機台ID或Code查詢，限該玩家所属店家的机台
         /** @var Machine $machine */
-        $machine = Machine::query()
+        $query = Machine::query()
             ->with(['machineLabel', 'machineCategory'])
             ->where('status', 1)
             ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
@@ -183,13 +191,16 @@ class MachineController
             ->whereHas('channelMachines', function (Builder $query) use ($player) {
                 // ✅ 只查询绑定到玩家所属店家的机台
                 $query->where('store_admin_id', $player->store_admin_id);
-            })
-            ->where(function (Builder $query) use ($identifier) {
-                // 同时查询 ID 和 Code，避免 Code 为纯数字时的判断问题
-                $query->where('id', $identifier)
-                      ->orWhere('code', $identifier);
-            })
-            ->first();
+            });
+
+        // 优先使用 id，其次使用 code
+        if ($machineId) {
+            $query->where('id', $machineId);
+        } elseif ($machineCode) {
+            $query->where('code', $machineCode);
+        }
+
+        $machine = $query->first();
         if (!$machine) {
             return apiFailResponse(trans('machine_not_found', [], 'message'));
         }
