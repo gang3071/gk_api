@@ -69,9 +69,9 @@ class MachineController
     public function storeMachines(Request $request, string $storeId): Response
     {
         $player = checkPlayer();
-        $page = (int)$request->get('page', 1);
-        $pageSize = (int)$request->get('pageSize', 10);
-        $status = $request->get('status', '');
+        $page = (int) $request->get('page', 1);
+        $pageSize = (int) $request->get('pageSize', 10);
+        $status = (string) $request->get('status', ''); // 机台状态筛选
 
         // 門店 = 店家管理員（AdminUser.type=4）
         $store = AdminUser::query()
@@ -209,8 +209,8 @@ class MachineController
         $player = checkPlayer();
 
         // 从查询参数获取 id 或 code
-        $machineId = $request->input('id');
-        $machineCode = $request->input('code');
+        $machineId = $request->input('id') ? (int) $request->input('id') : null;     // 机台ID（整数）
+        $machineCode = $request->input('code') ? (string) $request->input('code') : null; // 机台编号（字符串）
 
         if (!$machineId && !$machineCode) {
             return apiFailResponse(trans('invalid_params', [], 'message'));
@@ -556,7 +556,7 @@ class MachineController
     {
         try {
             $player = checkPlayer();
-            $action = $request->input('action');
+            $action = (string) $request->input('action', '');
 
             // ---------------------------------------- 參數驗證 ----------------------------------------
             if (empty($action)) {
