@@ -33,9 +33,9 @@ class MachineController
     public function storeMachines(Request $request, string $storeId): Response
     {
         $player = checkPlayer();
-        $page = (int)$request->get('page', 1);
-        $pageSize = (int)$request->get('pageSize', 10);
-        $status = (string)$request->get('status', ''); // 机台状态筛选
+        $page = (int) $request->get('page', 1);
+        $pageSize = (int) $request->get('pageSize', 10);
+        $status = (string) $request->get('status', ''); // 机台状态筛选
 
         // 門店 = 店家管理員（AdminUser.type=4）
         $store = AdminUser::query()->where('id', $storeId)->where('type', AdminUser::TYPE_STORE)->whereNull('deleted_at')->first();
@@ -84,9 +84,20 @@ class MachineController
         $lang = Str::replace('_', '-', $lang);
         $list = [];
 
+        // 统计各状态机台数量
+        $statusCount = [
+            'idle' => 0,        // 空闲中
+            'in-use' => 0,      // 使用中
+            'maintenance' => 0, // 维护中
+        ];
+
         /** @var Machine $machine */
         foreach ($machines as $machine) {
             $venueStatus = self::aggregateVenueStatus($machine);
+
+            // 统计状态数量（统计所有机台，不受筛选影响）
+            $statusCount[$venueStatus] = ($statusCount[$venueStatus] ?? 0) + 1;
+
             if (!empty($status) && $venueStatus != $status) {
                 continue;
             }
@@ -108,7 +119,13 @@ class MachineController
         $total = count($list);
         $list = array_slice($list, ($page - 1) * $pageSize, $pageSize);
 
-        return apiSuccessResponse('ok', ['list' => $list, 'page' => $page, 'pageSize' => $pageSize, 'total' => $total,]);
+        return apiSuccessResponse('ok', [
+            'list' => $list,
+            'page' => $page,
+            'pageSize' => $pageSize,
+            'total' => $total,
+            'statusCount' => $statusCount, // 各状态机台数量统计
+        ]);
     }
 
     /**
