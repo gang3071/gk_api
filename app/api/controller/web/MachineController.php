@@ -222,8 +222,37 @@ class MachineController
             }
         }
 
-        return apiSuccessResponse('ok', ['id' => $machine->id, 'code' => $machine->code, 'name' => $machine->machineLabel->name ?? $machine->name, 'type' => $machine->type, 'pictureUrl' => $machine->picture_url, 'point' => $machine->machineLabel->point ?? 0, 'turn' => $machine->machineLabel->turn ?? 0, 'score' => $machine->machineLabel->score ?? 0, 'courtyard' => $machine->machineLabel->courtyard ?? '', 'correct_rate' => $machine->machineLabel->correct_rate ?? $machine->correct_rate ?? '', 'odds_x' => $machine->odds_x, 'odds_y' => $machine->odds_y, 'venueStatus' => $venueStatus, 'bindable' => $venueStatus === 'idle' && $occupiedCount < $machinePlayNum, 'occupiedBy' => $occupiedBy, // ✅ 新增：機台即時狀態
-            'maintaining' => $machine->maintaining, 'gamingUserId' => $machine->gaming_user_id, 'keeping' => $machineServices->keeping, 'gaming' => $machineServices->gaming, 'isUse' => $machine->is_use, 'rewardStatus' => $machineServices->reward_status, 'nowTurn' => $nowTurn ? intval($nowTurn) : 0, 'bet' => $machineServices->bet ?? 0, 'keepSeconds' => $machineServices->keep_seconds, 'onlineStatus' => $onlineStatus, 'lastPlayTime' => $machineServices->last_play_time ?? null,]);
+        return apiSuccessResponse('ok', [
+            'id' => $machine->id,
+            'code' => $machine->code,
+            'name' => $machine->machineLabel->name ?? $machine->name,
+            'type' => $machine->type,
+            'pictureUrl' => $machine->picture_url,
+            'point' => $machine->machineLabel->point ?? 0,
+            'turn' => $machine->machineLabel->turn ?? 0,
+            'score' => $machine->machineLabel->score ?? 0,
+            'courtyard' => $machine->machineLabel->courtyard ?? '',
+            'correct_rate' => $machine->machineLabel->correct_rate ?? $machine->correct_rate ?? '',
+            'odds_x' => $machine->odds_x,
+            'odds_y' => $machine->odds_y,
+            'venueStatus' => $venueStatus,
+            'bindable' => $venueStatus === 'idle' && $occupiedCount < $machinePlayNum,
+            'occupiedBy' => $occupiedBy,
+            // ✅ 機台即時狀態
+            'maintaining' => $machine->maintaining,
+            'gamingUserId' => $machine->gaming_user_id,
+            'keeping' => $machineServices->keeping,
+            'gaming' => $machineServices->gaming,
+            'isUse' => $machine->is_use,
+            'rewardStatus' => $machineServices->reward_status,
+            'nowTurn' => $nowTurn ? intval($nowTurn) : 0,
+            'bet' => $machineServices->bet ?? 0,
+            'keepSeconds' => $machineServices->keep_seconds,
+            'onlineStatus' => $onlineStatus,
+            'lastPlayTime' => $machineServices->last_play_time ?? null,
+            // ✅ 机台配置
+            'pending_minutes' => $machine->machineCategory->keep_minutes ?? 0, // 机台闲置自动进入保留的时间（分钟）
+        ]);
     }
 
     /**
