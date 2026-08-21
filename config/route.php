@@ -56,6 +56,8 @@ Route::group('/api', function () {
         Route::post('/tickets/current-activity', [\app\api\controller\web\LotteryTicketController::class, 'currentActivity']);
         // 系統公告
         Route::get('/announcements', [\app\api\controller\web\IndexController::class, 'announcements']);
+        // 跑马灯
+        Route::get('/marquee', [\app\api\controller\web\IndexController::class, 'marquee']);
     });
 });
 

@@ -269,6 +269,27 @@ class IndexController
         ]);
     }
 
+    /**
+     * 查询跑马灯
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function marquee(Request $request): Response
+    {
+        $player = checkPlayer();
+
+        $marqueeContent = SystemSetting::query()
+            ->where('feature', 'marquee')
+            ->where('department_id', $player->department_id)
+            ->where('status', 1)
+            ->value('content');
+
+        return apiSuccessResponse('ok', [
+            'content' => $marqueeContent ?? '',
+        ]);
+    }
+
     #[RateLimiter(limit: 5)]
     /**
      * 登出
