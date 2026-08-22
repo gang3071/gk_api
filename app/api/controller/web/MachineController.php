@@ -314,13 +314,11 @@ class MachineController
             ]);
         } else {
             // 钢珠机：当前分数、当前转数、当前得分、自动状态、开奖状态
-            $nowTurn = (int) ($machineServices->now_turn ?? 0);
-
             return apiSuccessResponse('ok', [
                 'machineId' => $machine->id,
                 'type' => 'jackpot',
                 'point' => (int) ($machineServices->point ?? 0),           // 当前分数
-                'nowTurn' => $nowTurn,                                     // 当前转数
+                'turn' => (int) ($machineServices->turn ?? 0),           // 当前转数
                 'score' => (int) ($machineServices->score ?? 0),           // 当前得分（珠数）
                 'auto' => (int) ($machineServices->auto ?? 0),             // 自动状态（0=关闭，1=开启）
                 'rewardStatus' => (int) ($machineServices->reward_status ?? 0), // 开奖状态（0=未开奖，1=开奖中）
