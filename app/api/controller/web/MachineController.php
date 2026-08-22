@@ -222,6 +222,22 @@ class MachineController
             }
         }
 
+        // 获取机台闲置自动保留时间配置
+        $pendingMinutes = SystemSetting::query()
+            ->where('feature', 'pending_minutes')
+            ->where('department_id', $player->department_id)
+            ->where('status', 1)
+            ->value('num');
+
+        // 如果没有渠道级配置，尝试获取全局配置
+        if ($pendingMinutes === null) {
+            $pendingMinutes = SystemSetting::query()
+                ->where('feature', 'pending_minutes')
+                ->where('department_id', 0)
+                ->where('status', 1)
+                ->value('num');
+        }
+
         return apiSuccessResponse('ok', [
             'id' => $machine->id,
             'code' => $machine->code,
@@ -251,7 +267,7 @@ class MachineController
             'onlineStatus' => $onlineStatus,
             'lastPlayTime' => $machineServices->last_play_time ?? null,
             // ✅ 机台配置
-            'pending_minutes' => $machine->machineCategory->keep_minutes ?? 0, // 机台闲置自动进入保留的时间（分钟）
+            'pending_minutes' => $pendingMinutes ?? 0, // 机台闲置自动进入保留的时间（分钟）
         ]);
     }
 
