@@ -272,6 +272,63 @@ class MachineController
     }
 
     /**
+     * 获取机台实时状态
+     * @param Request $request
+     * @param string $machineId 机台ID
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function getMachineStatus(Request $request, string $machineId): Response
+    {
+        $player = checkPlayer();
+
+        // 查询机台
+        /** @var Machine $machine */
+        $machine = Machine::query()
+            ->where('id', $machineId)
+            ->where('status', 1)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
+            ->whereHas('channelMachines', function (Builder $query) use ($player) {
+                $query->where('store_admin_id', $player->store_admin_id);
+            })
+            ->first();
+
+        if (!$machine) {
+            return apiFailResponse(trans('machine_not_found', [], 'message'));
+        }
+
+        // 获取机台实时状态
+        $lang = locale() ?? 'zh_TW';
+        $lang = Str::replace('_', '-', $lang);
+        $machineServices = MachineServices::createServices($machine, $lang);
+
+        // 根据机台类型返回不同的状态
+        if ($machine->type == GameType::TYPE_SLOT) {
+            // 斯洛机：当前分数、自动状态、开奖状态
+            return apiSuccessResponse('ok', [
+                'machineId' => $machine->id,
+                'type' => 'slot',
+                'point' => (int) ($machineServices->point ?? 0),           // 当前分数
+                'auto' => (int) ($machineServices->auto ?? 0),             // 自动状态（0=关闭，1=开启）
+                'rewardStatus' => (int) ($machineServices->reward_status ?? 0), // 开奖状态（0=未开奖，1=开奖中）
+            ]);
+        } else {
+            // 钢珠机：当前分数、当前转数、当前得分、自动状态、开奖状态
+            $nowTurn = (int) ($machineServices->now_turn ?? 0);
+
+            return apiSuccessResponse('ok', [
+                'machineId' => $machine->id,
+                'type' => 'jackpot',
+                'point' => (int) ($machineServices->point ?? 0),           // 当前分数
+                'nowTurn' => $nowTurn,                                     // 当前转数
+                'score' => (int) ($machineServices->score ?? 0),           // 当前得分（珠数）
+                'auto' => (int) ($machineServices->auto ?? 0),             // 自动状态（0=关闭，1=开启）
+                'rewardStatus' => (int) ($machineServices->reward_status ?? 0), // 开奖状态（0=未开奖，1=开奖中）
+            ]);
+        }
+    }
+
+    /**
      * 綁定機台
      * @param Request $request
      * @param string $machineId

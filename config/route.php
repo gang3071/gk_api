@@ -46,6 +46,8 @@ Route::group('/api', function () {
         Route::post('/me/machines', [\app\api\controller\web\PlayerController::class, 'machines']);
         // 查詢單機（通过 ?id=123 或 ?code=M00001 参数查询）
         Route::get('/machines', [\app\api\controller\web\MachineController::class, 'getMachine']);
+        // 获取机台实时状态
+        Route::get('/machines/{machineId}/status', [\app\api\controller\web\MachineController::class, 'getMachineStatus']);
         // 綁定機台（使用 machine_id）
         Route::post('/machines/{machineId}/bind', [\app\api\controller\web\MachineController::class, 'bind']);
         // 機台操作（鋼珠機 + 斯洛機所有操作，使用 machine_id）
