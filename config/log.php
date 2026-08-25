@@ -520,4 +520,29 @@ return [
             ]
         ],
     ],
+
+    // ========================================
+    // 钱包解锁进程日志
+    // ========================================
+    // 用途：记录 WalletUnlockWorker 的运行状态和解锁操作
+    // - 进程启动/停止
+    // - Redis Pub/Sub 订阅状态
+    // - 钱包解锁成功/失败
+    // - 机台分数计算详情
+    'wallet_unlock' => [
+        'handlers' => [
+            [
+                'class' => Monolog\Handler\RotatingFileHandler::class,
+                'constructor' => [
+                    runtime_path() . '/logs/wallet_unlock.log',
+                    7, // 保留 7 天
+                    Monolog\Logger::DEBUG,
+                ],
+                'formatter' => [
+                    'class' => Monolog\Formatter\LineFormatter::class,
+                    'constructor' => [null, 'Y-m-d H:i:s', true],
+                ],
+            ]
+        ],
+    ],
 ];
