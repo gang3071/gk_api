@@ -222,7 +222,7 @@ class WalletUnlockWorker
 
         // ✅ 只在充值/结算/加款时检查解锁（避免不必要的数据库查询）
         // 下注时余额减少，不需要检查解锁
-        if (!in_array($reason, ['recharge', 'settle', 'win', 'cancel'])) {
+        if (!in_array($reason, ['recharge', 'settle', 'win', 'cancel', 'admin_adjust'])) {
             return;
         }
 
