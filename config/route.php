@@ -60,6 +60,8 @@ Route::group('/api', function () {
         Route::get('/announcements', [\app\api\controller\web\IndexController::class, 'announcements']);
         // 跑马灯
         Route::get('/marquee', [\app\api\controller\web\IndexController::class, 'marquee']);
+        // 彩金列表
+        Route::post('/lottery-list', [\app\api\controller\web\LotteryController::class, 'lotteryList']);
     });
 });
 

@@ -24,11 +24,10 @@ use support\Db;
 use support\Log;
 use support\Request;
 use support\Response;
+use Webman\RateLimiter\Annotation\RateLimiter;
 
 class PlayerController
 {
-    use \support\IdempotentTrait;
-
     /**
      * 個人資料
      * @return Response
@@ -381,6 +380,7 @@ class PlayerController
         }
     }
 
+    #[RateLimiter(limit: 5)]
     /**
      * 我的機台清單
      * @return Response

@@ -12,9 +12,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use support\Request;
 use support\Response;
+use Webman\RateLimiter\Annotation\RateLimiter;
 
 class LotteryTicketController
 {
+    #[RateLimiter(limit: 10)]
     /**
      * 智能获取摸奖券活动（按优先级返回）
      * @param Request $request
