@@ -62,6 +62,8 @@ Route::group('/api', function () {
         Route::get('/marquee', [\app\api\controller\web\IndexController::class, 'marquee']);
         // 彩金列表
         Route::post('/lottery-list', [\app\api\controller\web\LotteryController::class, 'lotteryList']);
+        // 彩金中奖记录
+        Route::post('/lottery-record-list', [\app\api\controller\web\LotteryController::class, 'lotteryRecordList']);
     });
 });
 

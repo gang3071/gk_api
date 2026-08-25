@@ -6,6 +6,7 @@ use app\exception\PlayerCheckException;
 use app\model\GameLottery;
 use app\model\GameType;
 use app\model\Lottery;
+use app\model\PlayerLotteryRecord;
 use app\service\GameLotteryServices;
 use app\service\LotteryServices;
 use Exception;
@@ -105,6 +106,97 @@ class LotteryController
 
         return apiSuccessResponse('success', [
             'list' => $list
+        ]);
+    }
+
+    #[RateLimiter(limit: 5)]
+    /**
+     * 彩金中獎記錄
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException|Exception
+     */
+    public function lotteryRecordList(Request $request): Response
+    {
+        checkPlayer();
+        $data = $request->all();
+        $validator = Validator::key('type',
+            Validator::in([GameType::TYPE_SLOT, GameType::TYPE_STEEL_BALL, GameType::TYPE_GAME])->notEmpty()->setName(trans('game_type', [], 'message')))
+            ->key('id', Validator::intVal()->setName(trans('id', [], 'message')), false)
+            ->key('page', Validator::intVal()->setName(trans('page', [], 'message')), false)
+            ->key('size', Validator::intVal()->setName(trans('size', [], 'message')), false);
+
+        try {
+            $validator->assert($data);
+        } catch (AllOfException $e) {
+            return apiFailResponse(getValidationMessages($e));
+        }
+
+        $recordList = PlayerLotteryRecord::query()
+            ->with(['player:id,store_admin_id', 'player.storeAdmin:id,nickname'])
+            ->when($data['type'] == GameType::TYPE_SLOT || $data['type'] == GameType::TYPE_STEEL_BALL, function ($query) use ($data) {
+                $query->where('game_type', $data['type']);
+            })
+            ->when($data['type'] == GameType::TYPE_GAME, function ($query) use ($data) {
+                $query->whereIn('source', [PlayerLotteryRecord::SOURCE_GAME, PlayerLotteryRecord::SOURCE_MANUAL]);
+            })
+            ->where('status', PlayerLotteryRecord::STATUS_COMPLETE)
+            ->when(!empty($data['id']), function ($query) use ($data) {
+                $query->where('lottery_id', $data['id']);
+            })
+            ->select([
+                'id',
+                'player_id',
+                'player_name',
+                'lottery_name',
+                'amount',
+                'machine_code',
+                'machine_name',
+                'created_at',
+                'uuid',
+                'machine_id'
+            ])
+            ->orderBy('lottery_type', 'asc')
+            ->orderBy('id', 'desc')
+            ->forPage($data['page'] ?? 1, $data['size'] ?? 20)
+            ->get();
+
+        $list = [];
+        /** @var PlayerLotteryRecord $item */
+        foreach ($recordList as $item) {
+            $storeName = $item->player?->storeAdmin?->nickname ?? '';
+            $playerNameWithStore = $item->player_name . ($storeName ? '/' . $storeName : '');
+
+            $list[] = [
+                'id' => $item->id,
+                'player_name' => $playerNameWithStore,
+                'lottery_name' => $item->lottery_name,
+                'amount' => $item->amount,
+                'created_at' => date('Y-m-d H:i:s', strtotime($item->created_at)),
+                'uuid' => $item->uuid,
+            ];
+        }
+
+        if ($data['type'] == GameType::TYPE_GAME) {
+            $lotteryNameList = GameLottery::query()
+                ->whereNull('deleted_at')
+                ->where('status', 1)
+                ->select(['id', 'name'])
+                ->orderBy('sort', 'desc')
+                ->get();
+        } else {
+            $lotteryNameList = Lottery::query()
+                ->where('game_type', $data['type'])
+                ->whereNull('deleted_at')
+                ->where('status', 1)
+                ->select(['id', 'name'])
+                ->orderBy('sort', 'desc')
+                ->get();
+        }
+
+        return apiSuccessResponse('success', [
+            'lottery_list' => $lotteryNameList,
+            'lottery_record_list' => $list
         ]);
     }
 }
