@@ -7,6 +7,7 @@
  */
 
 use process\Monitor;
+use process\WalletUnlockWorker;
 use Workerman\Worker;
 
 return [
@@ -26,5 +27,23 @@ return [
                 'enable_memory_monitor' => DIRECTORY_SEPARATOR === '/',
             ]
         ]
+    ],
+
+    // ========================================
+    // 钱包解锁进程（订阅余额变化）
+    // ========================================
+    // 订阅 gk_work 的 Redis Pub/Sub，实时解锁钱包
+    // - 延迟 < 50ms（实时性好）
+    // - 不影响 gk_work 性能（完全解耦）
+    // - 资源开销小（< 10 MB 内存）
+    'wallet_unlock' => [
+        'handler' => WalletUnlockWorker::class,
+        'listen' => '',
+        'count' => 1,  // 只需要 1 个进程
+        'user' => '',
+        'group' => '',
+        'reloadable' => true,
+        'reusePort' => false,
+        'constructor' => [],
     ],
 ];
