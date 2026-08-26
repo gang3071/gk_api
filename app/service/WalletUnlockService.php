@@ -242,12 +242,13 @@ class WalletUnlockService
 
         switch ($machine->type) {
             case GameType::TYPE_SLOT:
-                // Slot机台：当前分数（point）通过 turn_used_point 转换
+                // Slot机台：当前分数（point）通过比值转换
                 $currentPoint = (int)($services->point ?? 0);
-                $turnUsedPoint = $machine->machineCategory?->turn_used_point ?? 1;  // ✅ 空安全操作符
-                $scoreToSettle = bcmul((string)$currentPoint, (string)$turnUsedPoint, 2);
+                $ratio = ($machine->odds_x > 0 && $machine->odds_y > 0)
+                    ? bcdiv((string)$machine->odds_x, (string)$machine->odds_y, 6)
+                    : 1;
+                $scoreToSettle = bcmul((string)$currentPoint, (string)$ratio, 2);
                 break;
-
             case GameType::TYPE_STEEL_BALL:
                 // 钢珠机台：机器分数（通过比值转换） + 转数分数
                 $turnUsedPoint = $machine->machineCategory?->turn_used_point ?? 0;  // ✅ 空安全操作符
