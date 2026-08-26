@@ -60,8 +60,9 @@ class WalletUnlockWorker
             'subscribe_channel' => 'balance:change',
         ]);
 
-        // 延迟启动订阅，确保 Redis 服务已就绪（重启场景）
+        // ✅ 性能优化：启动时同步锁定玩家列表到 Redis
         \Workerman\Timer::add(1, function () {
+            $this->syncLockedPlayersToRedis();
             $this->subscribeWithRetry();
         }, [], false);  // 只执行一次
     }
@@ -244,6 +245,55 @@ class WalletUnlockWorker
                     $result['details']
                 ));
             }
+        }
+    }
+
+    /**
+     * ✅ 性能优化：同步锁定玩家列表到 Redis
+     *
+     * 用途：
+     * - Worker 启动时同步数据库中的锁定状态到 Redis
+     * - 防止服务重启后 Redis 集合丢失
+     *
+     * 性能影响：
+     * - 仅在启动时执行一次
+     * - 假设 500 个锁定玩家，耗时 < 50ms
+     */
+    private function syncLockedPlayersToRedis(): void
+    {
+        try {
+            // 从数据库查询所有锁定的玩家
+            $lockedPlayerIds = \app\model\PlayerPlatformCash::query()
+                ->where('platform_id', \app\model\PlayerPlatformCash::PLATFORM_SELF)
+                ->where('wallet_locked', 1)
+                ->pluck('player_id')
+                ->toArray();
+
+            if (empty($lockedPlayerIds)) {
+                $this->log->info("✅ 同步锁定玩家：无锁定钱包");
+                return;
+            }
+
+            // 清空旧数据
+            \support\Redis::del('wallet:locked_players');
+
+            // 批量加入 Redis
+            \support\Redis::sadd('wallet:locked_players', ...$lockedPlayerIds);
+
+            $this->log->info("✅ 同步锁定玩家到 Redis 完成", [
+                'count' => count($lockedPlayerIds),
+                'sample_ids' => array_slice($lockedPlayerIds, 0, 10), // 只记录前10个
+            ]);
+
+        } catch (\Throwable $e) {
+            $this->log->error("❌ 同步锁定玩家失败", [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            // ⚠️ 同步失败不影响启动，但性能优化会失效
+            // 服务会降级到每次查数据库的模式
         }
     }
 
