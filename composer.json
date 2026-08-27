@@ -45,7 +45,8 @@
     "symfony/cache": "^5.4",
     "robmorgan/phinx": "^0.14.0",
     "ext-curl": "*",
-    "ext-posix": "*"
+    "ext-posix": "*",
+    "ext-redis": "*"
   },
   "autoload": {
     "psr-4": {

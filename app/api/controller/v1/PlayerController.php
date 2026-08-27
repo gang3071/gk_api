@@ -214,7 +214,6 @@ class PlayerController
             ->where('player_id', $player->id)
             ->where('created_at', '>=', $todayStart)
             ->where('created_at', '<', $todayEnd)
-            ->whereNotIn('platform_id', $this->getExcludedPlatformIds())
             ->sum('bet');
 
         // 获取昨日电子游戏打码量
@@ -222,7 +221,6 @@ class PlayerController
             ->where('player_id', $player->id)
             ->where('created_at', '>=', $yesterdayStart)
             ->where('created_at', '<', $yesterdayEnd)
-            ->whereNotIn('platform_id', $this->getExcludedPlatformIds())
             ->sum('bet');
 
         // 反水池待领取总额 & 可领取额度

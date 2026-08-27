@@ -31,4 +31,27 @@ return [
             ],
         ],
     ],
+
+    // ========================================
+    // gk_work Redis 连接（用于订阅 Pub/Sub）
+    // ========================================
+    // 用途：WalletUnlockWorker 订阅 balance:change 频道
+    // 注意：需要连接到 gk_work 的 Redis 服务器
+    'work_remote' => [
+        'host' => env('WORK_REDIS_HOST', '127.0.0.1'),
+        'password' => env('WORK_REDIS_PASSWORD', null),
+        'port' => env('WORK_REDIS_PORT', 6379),
+        'database' => env('WORK_REDIS_DB', 0),  // 确保与 gk_work 的 db 一致
+        'timeout' => 2,
+        'read_timeout' => 2,
+        'persistent' => false,  // Pub/Sub 不需要持久连接
+        'retry_interval' => 100,
+
+        'options' => [
+            'prefix' => '',  // Pub/Sub 不需要前缀
+            'parameters' => [
+                'tcp_nodelay' => true,
+            ],
+        ],
+    ],
 ];

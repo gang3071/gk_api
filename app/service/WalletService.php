@@ -1367,6 +1367,17 @@ LUA;
                 ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
                 ->update(['wallet_locked' => 1]);
 
+            // ✅ 性能优化：同时加入 Redis 锁定玩家集合
+            try {
+                \support\Redis::sadd('wallet:locked_players', $playerId);
+            } catch (\Throwable $redisError) {
+                // Redis 失败不影响主流程，仅记录日志
+                Log::warning('WalletService: Redis 同步锁定状态失败', [
+                    'player_id' => $playerId,
+                    'error' => $redisError->getMessage(),
+                ]);
+            }
+
             Log::info('WalletService: 钱包已锁定', [
                 'player_id' => $playerId,
                 'reason' => $reason,
@@ -1395,6 +1406,17 @@ LUA;
                 ->where('player_id', $playerId)
                 ->where('platform_id', PlayerPlatformCash::PLATFORM_SELF)
                 ->update(['wallet_locked' => 0]);
+
+            // ✅ 性能优化：同时从 Redis 锁定玩家集合移除
+            try {
+                \support\Redis::srem('wallet:locked_players', $playerId);
+            } catch (\Throwable $redisError) {
+                // Redis 失败不影响主流程，仅记录日志
+                Log::warning('WalletService: Redis 同步解锁状态失败', [
+                    'player_id' => $playerId,
+                    'error' => $redisError->getMessage(),
+                ]);
+            }
 
             Log::info('WalletService: 钱包已解锁', [
                 'player_id' => $playerId,
