@@ -28,6 +28,7 @@ use Webman\RateLimiter\Annotation\RateLimiter;
 
 class PlayerController
 {
+    use \support\IdempotentTrait;
     /**
      * 個人資料
      * @return Response
