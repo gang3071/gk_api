@@ -86,7 +86,7 @@ class ActivityController
     public function activityInfo(Request $request): Response
     {
         /** @var SystemSetting $setting */
-        $setting = SystemSetting::where('feature', 'activity_open')->first();
+        $setting = SystemSetting::query()->where('feature', 'activity_open')->first();
         if ($setting->status == 0) {
             return jsonFailResponse(trans('activity_off', [], 'message'));
         }
