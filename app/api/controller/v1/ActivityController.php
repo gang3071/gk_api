@@ -9,9 +9,9 @@ use app\model\Notice;
 use app\model\PlayerActivityPhaseRecord;
 use app\model\SystemSetting;
 use Illuminate\Support\Str;
-use support\Db;
 use Respect\Validation\Exceptions\AllOfException;
 use Respect\Validation\Validator as v;
+use support\Db;
 use support\Request;
 use support\Response;
 use think\Exception;
@@ -35,7 +35,7 @@ class ActivityController
     public function activityList(Request $request): Response
     {
         /** @var SystemSetting $setting */
-        $setting = SystemSetting::where('feature', 'activity_open')->first();
+        $setting = SystemSetting::query()->where('feature', 'activity_open')->first();
         if ($setting->status == 0) {
             return jsonFailResponse(trans('activity_off', [], 'message'));
         }
