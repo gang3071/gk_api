@@ -207,7 +207,7 @@ class IndexController
         }
 
         /** @var Player $player */
-        $player = Player::where('id', $extend['id'])->where('department_id', request()->department_id)->first();
+        $player = Player::query()->where('id', $extend['id'])->where('department_id', request()->department_id)->first();
         if (empty($player)) {
             return apiFailResponse(trans('player_not_fount', [], 'message'), [], 'PLAYER_NOT_FOUND');
         }
