@@ -66,13 +66,19 @@ class CreateDishTable extends AbstractMigration
                 'scale' => 2,
                 'null' => false,
                 'default' => '0.00',
-                'comment' => '金額(積分)'
+                'comment' => '價格'
+            ])
+            ->addColumn('daily_limit', 'integer', [
+                'signed' => false,
+                'null' => false,
+                'default' => 0,
+                'comment' => '每人每天限量（0=不限量）'
             ])
             ->addColumn('status', 'tinyinteger', [
                 'signed' => false,
                 'null' => false,
                 'default' => 1,
-                'comment' => '狀態（1=啟用 2=停用 3=售完）'
+                'comment' => '狀態（1=啟用 0=停用）'
             ])
             ->addColumn('top', 'tinyinteger', [
                 'signed' => false,
@@ -83,18 +89,12 @@ class CreateDishTable extends AbstractMigration
             ->addColumn('sort', 'integer', [
                 'signed' => false,
                 'null' => false,
-                'default' => 100,
+                'default' => 0,
                 'comment' => '排序'
             ])
             ->addColumn('remark', 'text', [
                 'null' => true,
                 'comment' => '備註'
-            ])
-            ->addColumn('daily_limit', 'integer', [
-                'signed' => false,
-                'null' => false,
-                'default' => 0,
-                'comment' => '每人每天限量（0=不限量）'
             ])
             ->addColumn('created_at', 'timestamp', [
                 'null' => true,
