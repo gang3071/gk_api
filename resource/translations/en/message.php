@@ -549,6 +549,15 @@ return [
     'ticket_machine_is_opening' => 'Machine :code is drawing, cannot use welfare/experience ticket',
     'ticket_cross_store_not_allowed' => 'This open score code does not belong to current store and cannot be used',
 
+    // Ticket Split/Merge
+    'ticket_split_success' => 'Ticket split successfully',
+    'ticket_merge_success' => 'Ticket merge successfully',
+    'ticket_split_score_invalid' => 'Invalid split score',
+    'ticket_split_score_too_large' => 'Split score cannot be greater than or equal to original ticket score',
+    'ticket_not_withdraw_type' => 'Only wash type tickets can be split or merged',
+    'ticket_order_ids_empty' => 'Order ID list cannot be empty',
+    'ticket_merge_min_two' => 'Merge requires at least two tickets',
+
     // Machine Commands
     'machine_command_failed' => 'Machine command failed',
     'machine_action_failed' => 'Machine action failed',

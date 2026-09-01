@@ -555,6 +555,15 @@ return [
     'ticket_machine_is_opening' => '機台:code正在開獎中，無法使用福利卷/體驗卷',
     'ticket_cross_store_not_allowed' => '此開分碼不屬於當前店鋪，無法使用',
 
+    // 拆票/合票相關
+    'ticket_split_success' => '拆票成功',
+    'ticket_merge_success' => '合票成功',
+    'ticket_split_score_invalid' => '拆分分值無效',
+    'ticket_split_score_too_large' => '拆分分值不能大於等於原票分值',
+    'ticket_not_withdraw_type' => '只有洗分類型的票據才能進行拆分/合併操作',
+    'ticket_order_ids_empty' => '訂單號列表不能為空',
+    'ticket_merge_min_two' => '合票至少需要兩張票據',
+
     // 機台指令相關
     'machine_command_failed' => '機台指令發送失敗',
     'machine_action_failed' => '機台操作執行失敗',

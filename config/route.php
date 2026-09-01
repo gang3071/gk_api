@@ -196,6 +196,12 @@ Route::group('/api', function () {
         Route::post('/ticket/scan-open-score', [\app\api\controller\v1\TicketController::class, 'scanOpenScore']);
         // 查询出票记录
         Route::post('/ticket/records', [\app\api\controller\v1\TicketController::class, 'ticketRecords']);
+        // 扫码获取票据详情
+        Route::post('/ticket/scan-detail', [\app\api\controller\v1\TicketController::class, 'scanDetail']);
+        // 拆票
+        Route::post('/ticket/split', [\app\api\controller\v1\TicketController::class, 'splitTicket']);
+        // 合票
+        Route::post('/ticket/merge', [\app\api\controller\v1\TicketController::class, 'mergeTicket']);
 
         // line登录
         Route::post('/line-login', [\app\api\controller\v1\IndexController::class, 'lineLogin']);

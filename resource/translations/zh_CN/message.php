@@ -565,6 +565,15 @@ return [
     'ticket_machine_is_opening' => '机台:code正在开奖中，无法使用福利卷/体验卷',
     'ticket_cross_store_not_allowed' => '此开分码不属于当前店铺，无法使用',
 
+    // 拆票/合票相关
+    'ticket_split_success' => '拆票成功',
+    'ticket_merge_success' => '合票成功',
+    'ticket_split_score_invalid' => '拆分分值无效',
+    'ticket_split_score_too_large' => '拆分分值不能大于等于原票分值',
+    'ticket_not_withdraw_type' => '只有洗分类型的票据才能进行拆分/合并操作',
+    'ticket_order_ids_empty' => '订单号列表不能为空',
+    'ticket_merge_min_two' => '合票至少需要两张票据',
+
     // 机台指令相关
     'machine_command_failed' => '机台指令发送失败',
     'machine_action_failed' => '机台操作执行失败',

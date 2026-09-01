@@ -546,6 +546,15 @@ return [
     'ticket_machine_is_opening' => 'マシン:codeが抽選中、福利券/体験券を使用できません',
     'ticket_cross_store_not_allowed' => 'この開分コードは現在の店舗に属していないため、使用できません',
 
+    // チケット分割/結合関連
+    'ticket_split_success' => 'チケット分割成功',
+    'ticket_merge_success' => 'チケット結合成功',
+    'ticket_split_score_invalid' => '分割スコアが無効です',
+    'ticket_split_score_too_large' => '分割スコアは元のチケットスコア以上にすることはできません',
+    'ticket_not_withdraw_type' => 'ウォッシュタイプのチケットのみ分割/結合操作が可能です',
+    'ticket_order_ids_empty' => '注文IDリストは空にできません',
+    'ticket_merge_min_two' => '結合には少なくとも2枚のチケットが必要です',
+
     // マシンコマンド関連
     'machine_command_failed' => 'マシンコマンド送信失敗',
     'machine_action_failed' => 'マシン操作実行失敗',
