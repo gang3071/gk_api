@@ -258,4 +258,46 @@ class DishController
             'order' => $order
         ]);
     }
+
+    #[RateLimiter(limit: 5)]
+    /**
+     * 取消訂單（客人）
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function cancel(Request $request): Response
+    {
+        $player = checkPlayer();
+        $data = $request->all();
+
+        $validator = v::key('order_id', v::intVal()->setName(trans('order_id', [], 'message')));
+        try {
+            $validator->assert($data);
+        } catch (AllOfException $e) {
+            return jsonFailResponse(getValidationMessages($e));
+        }
+
+        $order = DishOrder::query()
+            ->where('id', $data['order_id'])
+            ->where('player_id', $player->id)
+            ->first();
+
+        if (empty($order)) {
+            return jsonFailResponse(trans('dish_order_not_found', [], 'message'));
+        }
+
+        // 僅待確認/已確認狀態可由玩家取消；製作中之後客戶端無法取消
+        if (!in_array($order->status, [DishOrder::STATUS_PENDING, DishOrder::STATUS_CONFIRMED])) {
+            return jsonFailResponse(trans('dish_cancel_not_allowed', [], 'message'));
+        }
+
+        $order->status = DishOrder::STATUS_CANCELLED;
+        $order->save();
+
+        return jsonSuccessResponse('success', [
+            'order_id' => $order->id,
+            'status' => $order->status,
+        ]);
+    }
 }

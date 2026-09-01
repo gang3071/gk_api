@@ -576,4 +576,5 @@ return [
     'dish_order_invalid_status' => '無効な注文ステータスです',
     'dish_order_status_transition_error' => '現在の注文ステータスではこの操作はできません',
     'order_id' => '注文ID',
+    'dish_cancel_not_allowed' => '注文が調理中でキャンセルできません',
 ];

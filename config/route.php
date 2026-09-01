@@ -325,6 +325,8 @@ Route::group('/api', function () {
         Route::post('/dish/my-orders', [\app\api\controller\v1\DishController::class, 'myOrders']);
         // 訂單詳情（客人）
         Route::post('/dish/order-detail', [\app\api\controller\v1\DishController::class, 'orderDetail']);
+        // 取消訂單（客人）
+        Route::post('/dish/cancel', [\app\api\controller\v1\DishController::class, 'cancel']);
         // 店家訂單列表
         Route::post('/dish-admin/order-list', [\app\api\controller\v1\DishAdminController::class, 'orderList']);
         // 店家訂單詳情

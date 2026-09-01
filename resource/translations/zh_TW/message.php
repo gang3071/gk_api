@@ -585,4 +585,5 @@ return [
     'dish_order_invalid_status' => '無效的訂單狀態',
     'dish_order_status_transition_error' => '訂單目前狀態不允許此操作',
     'order_id' => '訂單ID',
+    'dish_cancel_not_allowed' => '訂單已進入製作，無法取消',
 ];

@@ -128,10 +128,26 @@ class DishAdminController
             return jsonFailResponse(trans('dish_order_not_found', [], 'message'));
         }
 
-        // 狀態流轉校驗
+        // 已完成/已取消為終態，不可再變更
+        if (in_array($order->status, [DishOrder::STATUS_COMPLETED, DishOrder::STATUS_CANCELLED])) {
+            return jsonFailResponse(trans('dish_order_status_transition_error', [], 'message'));
+        }
+
+        // 後台可隨時取消（任意未終態狀態）
+        if ($newStatus === DishOrder::STATUS_CANCELLED) {
+            $order->status = $newStatus;
+            $order->save();
+
+            return jsonSuccessResponse('success', [
+                'order_id' => $order->id,
+                'status' => $order->status,
+            ]);
+        }
+
+        // 狀態流轉校驗（店家可一步完成/跳過）
         $allowedTransitions = [
-            DishOrder::STATUS_PENDING => [DishOrder::STATUS_CONFIRMED, DishOrder::STATUS_CANCELLED],
-            DishOrder::STATUS_CONFIRMED => [DishOrder::STATUS_COOKING, DishOrder::STATUS_CANCELLED],
+            DishOrder::STATUS_PENDING => [DishOrder::STATUS_CONFIRMED, DishOrder::STATUS_COOKING, DishOrder::STATUS_COMPLETED],
+            DishOrder::STATUS_CONFIRMED => [DishOrder::STATUS_COOKING, DishOrder::STATUS_COMPLETED],
             DishOrder::STATUS_COOKING => [DishOrder::STATUS_COMPLETED],
         ];
 
