@@ -20,7 +20,7 @@ use Wengg\WebmanApiSign\ApiSignMiddleware;
 return [
     // api应用中间件
     'api' => [
-//        ApiSignMiddleware::class,
+        ApiSignMiddleware::class,
         SiteAuthMiddleware::class,
         DeviceCollectMiddleware::class,
         Lang::class
