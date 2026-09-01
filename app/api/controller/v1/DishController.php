@@ -28,10 +28,8 @@ class DishController
     public function categoryList(Request $request): Response
     {
         checkPlayer();
-        $departmentId = $request->department_id;
 
         $list = DishCategory::query()
-            ->where('department_id', $departmentId)
             ->where('status', DishCategory::STATUS_ACTIVE)
             ->select(['id', 'title', 'content', 'picture', 'sort', 'top'])
             ->orderBy('top', 'desc')

@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property string content 餐點描述
  * @property string picture 餐點圖片
  * @property float price 金額(積分)
- * @property int status 狀態（1=啟用 2=停用 3=售完）
+ * @property int status 狀態（1=啟用 0=停用）
  * @property int top 置頂（1=置頂 0=沒置頂）
  * @property int sort 排序
  * @property string remark 備註
@@ -28,8 +28,7 @@ class Dish extends Model
     protected $guarded = [];
 
     const STATUS_ACTIVE = 1;    // 啟用
-    const STATUS_DISABLED = 2;  // 停用
-    const STATUS_SOLD_OUT = 3;  // 售完
+    const STATUS_DISABLED = 0;  // 停用
 
     const TOP_NO = 0;   // 沒置頂
     const TOP_YES = 1;  // 置頂
