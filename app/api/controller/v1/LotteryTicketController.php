@@ -612,7 +612,7 @@ class LotteryTicketController
                 'is_winning' => $isWinning,  // ✅ 通过预加载的中奖记录判断
                 'prize_type' => $winningRecord->prize_type ?? null,
                 'prize_name' => $winningRecord->prize_name ?? '',
-                'prize_amount' => (int)($winningRecord->prize_amount ?? 0),
+                'prize_amount' => $this->formatAmount((float)($winningRecord->prize_amount ?? 0)),
                 'issued_at' => $ticket->issued_at,
                 'used_at' => $ticket->used_at,
                 'expired_at' => $ticket->expired_at,
