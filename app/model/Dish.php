@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * Class Dish
  * @property int id
- * @property int department_id 部門ID
+ * @property int department_id 渠道ID
+ * @property int admin_user_id 門店ID
  * @property int category_id 類別ID
  * @property string title 餐點名稱
  * @property string content 餐點描述

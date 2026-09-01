@@ -51,12 +51,11 @@ class DishController
      */
     public function dishList(Request $request): Response
     {
-        checkPlayer();
+        $player = checkPlayer();
         $data = $request->all();
-        $departmentId = $request->department_id;
 
         $query = Dish::query()
-            ->where('department_id', $departmentId)
+            ->where('admin_user_id', $player->store_admin_id ?? 0)
             ->where('status', Dish::STATUS_ACTIVE)
             ->select(['id', 'title', 'content', 'picture', 'price', 'sort', 'top', 'remark', 'daily_limit']);
 
@@ -107,7 +106,7 @@ class DishController
         $dishIds = array_column($dishes, 'dish_id');
         $dishList = Dish::query()
             ->whereIn('id', $dishIds)
-            ->where('department_id', $departmentId)
+            ->where('admin_user_id', $player->store_admin_id ?? 0)
             ->where('status', Dish::STATUS_ACTIVE)
             ->get()
             ->keyBy('id');
@@ -175,6 +174,7 @@ class DishController
             $order->order_no = DishOrder::generateOrderNo();
             $order->player_id = $player->id;
             $order->department_id = $departmentId;
+            $order->admin_user_id = $player->store_admin_id ?? 0;
             $order->total_amount = $totalAmount;
             $order->status = DishOrder::STATUS_PENDING;
             $order->remark = $data['remark'] ?? '';

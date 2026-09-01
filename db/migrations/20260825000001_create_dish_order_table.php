@@ -42,7 +42,7 @@ class CreateDishOrderTable extends AbstractMigration
                 'signed' => false,
                 'null' => false,
                 'default' => 0,
-                'comment' => '部門ID'
+                'comment' => '渠道ID'
             ])
             ->addColumn('total_amount', 'decimal', [
                 'precision' => 16,
