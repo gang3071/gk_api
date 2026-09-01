@@ -568,4 +568,12 @@ return [
     'amount_calculation_too_large' => '金額計算異常：単回限度（100万円）を超えました、マシンオッズ設定を確認してください',
     'machine_odds_config_error' => 'マシンオッズ設定エラー',
     'ticket_playing_machine' => '現在のマシンゲームを停止してください',
+    'dishes' => '料理リスト',
+    'dish_order_empty' => '注文料理が空です',
+    'dish_not_found' => '料理が見つかりません',
+    'dish_daily_limit_exceeded' => 'この料理は本日の限定数量に達しました',
+    'dish_order_not_found' => '注文が見つかりません',
+    'dish_order_invalid_status' => '無効な注文ステータスです',
+    'dish_order_status_transition_error' => '現在の注文ステータスではこの操作はできません',
+    'order_id' => '注文ID',
 ];

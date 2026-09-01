@@ -577,4 +577,12 @@ return [
     'amount_calculation_too_large' => '計算金額異常：超過單次限制（100萬元），請檢查機台賠率配置',
     'machine_odds_config_error' => '機台賠率配置錯誤',
     'ticket_playing_machine' => '請先停止當前遊玩機台',
+    'dishes' => '餐點列表',
+    'dish_order_empty' => '訂單餐點不能為空',
+    'dish_not_found' => '餐點不存在',
+    'dish_daily_limit_exceeded' => '該餐點今日已達每日限量，無法再點',
+    'dish_order_not_found' => '訂單不存在',
+    'dish_order_invalid_status' => '無效的訂單狀態',
+    'dish_order_status_transition_error' => '訂單目前狀態不允許此操作',
+    'order_id' => '訂單ID',
 ];

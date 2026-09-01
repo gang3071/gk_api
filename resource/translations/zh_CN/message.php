@@ -587,4 +587,12 @@ return [
     'amount_calculation_too_large' => '计算金额异常：超过单次限制（100万元），请检查机台赔率配置',
     'machine_odds_config_error' => '机台赔率配置错误',
     'ticket_playing_machine' => '请先停止当前游玩机台',
+    'dishes' => '菜品列表',
+    'dish_order_empty' => '订单菜品不能为空',
+    'dish_not_found' => '菜品不存在',
+    'dish_daily_limit_exceeded' => '该菜品今日已达每日限量，无法再点',
+    'dish_order_not_found' => '订单不存在',
+    'dish_order_invalid_status' => '无效的订单状态',
+    'dish_order_status_transition_error' => '订单当前状态不允许此操作',
+    'order_id' => '订单ID',
 ];

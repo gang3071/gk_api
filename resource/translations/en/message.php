@@ -571,4 +571,12 @@ return [
     'amount_calculation_too_large' => 'Amount calculation error: exceeds single operation limit (1 million yuan), please check machine odds configuration',
     'machine_odds_config_error' => 'Machine odds configuration error',
     'ticket_playing_machine' => 'Please stop the current machine game first',
+    'dishes' => 'Dish list',
+    'dish_order_empty' => 'Order dishes cannot be empty',
+    'dish_not_found' => 'Dish not found',
+    'dish_daily_limit_exceeded' => 'This dish has reached its daily limit, cannot order more',
+    'dish_order_not_found' => 'Order not found',
+    'dish_order_invalid_status' => 'Invalid order status',
+    'dish_order_status_transition_error' => 'Operation not allowed in current order status',
+    'order_id' => 'Order ID',
 ];
