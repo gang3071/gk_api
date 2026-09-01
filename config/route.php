@@ -202,6 +202,10 @@ Route::group('/api', function () {
         Route::post('/ticket/split', [\app\api\controller\v1\TicketController::class, 'splitTicket']);
         // 合票
         Route::post('/ticket/merge', [\app\api\controller\v1\TicketController::class, 'mergeTicket']);
+        // 获取购票配置
+        Route::post('/ticket/purchase-config', [\app\api\controller\v1\TicketController::class, 'getPurchaseConfig']);
+        // 购票
+        Route::post('/ticket/purchase', [\app\api\controller\v1\TicketController::class, 'purchaseTicket']);
 
         // line登录
         Route::post('/line-login', [\app\api\controller\v1\IndexController::class, 'lineLogin']);

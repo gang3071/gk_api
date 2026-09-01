@@ -552,8 +552,17 @@ return [
     'ticket_split_score_invalid' => '分割スコアが無効です',
     'ticket_split_score_too_large' => '分割スコアは元のチケットスコア以上にすることはできません',
     'ticket_not_withdraw_type' => 'ウォッシュタイプのチケットのみ分割/結合操作が可能です',
-    'ticket_order_ids_empty' => '注文IDリストは空にできません',
+    'ticket_id_required' => 'チケットIDは必須です',
+    'ticket_ids_required' => 'チケットIDリストは必須です',
     'ticket_merge_min_two' => '結合には少なくとも2枚のチケットが必要です',
+    'ticket_device_store_mismatch' => 'チケットとデバイスが同じ店舗にありません',
+
+    // 貯金機チケット購入関連
+    'device_not_storage_machine' => '貯金機のみがこの操作を実行できます',
+    'purchase_config_not_found' => '購入設定が見つかりません',
+    'purchase_score_invalid' => '購入スコアが無効です',
+    'purchase_score_not_allowed' => '購入スコアが許可範囲内にありません',
+    'purchase_ticket_success' => 'チケット購入成功',
 
     // マシンコマンド関連
     'machine_command_failed' => 'マシンコマンド送信失敗',

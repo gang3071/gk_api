@@ -561,8 +561,17 @@ return [
     'ticket_split_score_invalid' => '拆分分值無效',
     'ticket_split_score_too_large' => '拆分分值不能大於等於原票分值',
     'ticket_not_withdraw_type' => '只有洗分類型的票據才能進行拆分/合併操作',
-    'ticket_order_ids_empty' => '訂單號列表不能為空',
+    'ticket_id_required' => '票據ID不能為空',
+    'ticket_ids_required' => '票據ID列表不能為空',
     'ticket_merge_min_two' => '合票至少需要兩張票據',
+    'ticket_device_store_mismatch' => '票據和設備不在同一店鋪',
+
+    // 儲值機購票相關
+    'device_not_storage_machine' => '只有儲值機才能執行此操作',
+    'purchase_config_not_found' => '未找到購分配置',
+    'purchase_score_invalid' => '購分分值無效',
+    'purchase_score_not_allowed' => '購分分值不在允許範圍內',
+    'purchase_ticket_success' => '購票成功',
 
     // 機台指令相關
     'machine_command_failed' => '機台指令發送失敗',

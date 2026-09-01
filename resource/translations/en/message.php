@@ -555,8 +555,17 @@ return [
     'ticket_split_score_invalid' => 'Invalid split score',
     'ticket_split_score_too_large' => 'Split score cannot be greater than or equal to original ticket score',
     'ticket_not_withdraw_type' => 'Only wash type tickets can be split or merged',
-    'ticket_order_ids_empty' => 'Order ID list cannot be empty',
+    'ticket_id_required' => 'Ticket ID is required',
+    'ticket_ids_required' => 'Ticket ID list is required',
     'ticket_merge_min_two' => 'Merge requires at least two tickets',
+    'ticket_device_store_mismatch' => 'Ticket and device are not in the same store',
+
+    // Storage Machine Purchase
+    'device_not_storage_machine' => 'Only storage machines can perform this operation',
+    'purchase_config_not_found' => 'Purchase configuration not found',
+    'purchase_score_invalid' => 'Invalid purchase score',
+    'purchase_score_not_allowed' => 'Purchase score is not in the allowed range',
+    'purchase_ticket_success' => 'Ticket purchased successfully',
 
     // Machine Commands
     'machine_command_failed' => 'Machine command failed',

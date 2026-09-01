@@ -35,16 +35,19 @@ class DeviceCollectMiddleware implements MiddlewareInterface
             return jsonFailResponse(trans('device_disabled', [], 'message'), [], 403);
         }
 
-        // 已登录用户：校验跨店
-        $authHeader = $request->header('Authorization', '');
-        if (!empty($authHeader)) {
-            try {
-                $player = checkPlayer();
-                if ($device->store_admin_id != $player->store_admin_id) {
-                    return jsonFailResponse(trans('device_store_mismatch', [], 'message'), [], 403);
+        // 储值机（device_type=2）跳过跨店验证，因为不需要玩家登录
+        if ($device->device_type != AdminDevice::TYPE_VENDING_MACHINE) {
+            // 游戏机：已登录用户需要校验跨店
+            $authHeader = $request->header('Authorization', '');
+            if (!empty($authHeader)) {
+                try {
+                    $player = checkPlayer();
+                    if ($device->store_admin_id != $player->store_admin_id) {
+                        return jsonFailResponse(trans('device_store_mismatch', [], 'message'), [], 403);
+                    }
+                } catch (\Throwable $e) {
+                    // token 无效或过期，跳过跨店校验
                 }
-            } catch (\Throwable $e) {
-                // token 无效或过期，跳过跨店校验
             }
         }
 

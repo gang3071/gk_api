@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\api\controller\v1;
 
 use app\exception\PlayerCheckException;
+use app\model\AdminDevice;
 use app\model\AdminUser;
 use app\model\Channel;
 use app\model\Currency;
@@ -790,11 +791,11 @@ class TicketController
     {
         // 不需要玩家登录，使用站点和设备认证
 
-        $orderId = $request->post('order_id', '');
+        $ticketId = $request->post('ticket_id', 0);
         $splitScore = $request->post('split_score');
 
-        if (empty($orderId)) {
-            return jsonFailResponse(trans('ticket_order_id_empty', [], 'message'));
+        if (empty($ticketId) || intval($ticketId) <= 0) {
+            return jsonFailResponse(trans('ticket_id_required', [], 'message'));
         }
 
         if ($splitScore === null || $splitScore === '' || floatval($splitScore) <= 0) {
@@ -803,21 +804,29 @@ class TicketController
 
         $splitScore = floatval($splitScore);
 
+        // 验证设备（储值机才能执行拆票）
+        $deviceResult = $this->validateStorageDevice($request);
+        if ($deviceResult instanceof Response) {
+            return $deviceResult;
+        }
+        /** @var AdminDevice $device */
+        $device = $deviceResult;
+
         // 幂等性检查（不使用玩家ID）
         $requestId = $request->post('request_id');
-        $idempotentResponse = $this->checkIdempotent($requestId, 'ticket-split:' . $orderId, 0);
+        $idempotentResponse = $this->checkIdempotent($requestId, 'ticket-split:' . $ticketId, 0);
         if ($idempotentResponse !== null) {
             return $idempotentResponse;
         }
 
         // 提前占位（防止并发）
-        if (!$this->reserveIdempotent($requestId, 'ticket-split:' . $orderId, 0)) {
-            $response = $this->checkIdempotent($requestId, 'ticket-split:' . $orderId, 0);
+        if (!$this->reserveIdempotent($requestId, 'ticket-split:' . $ticketId, 0)) {
+            $response = $this->checkIdempotent($requestId, 'ticket-split:' . $ticketId, 0);
             return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
         }
 
         // 获取分布式锁
-        $lockKey = 'ticket:split_lock:' . $orderId;
+        $lockKey = 'ticket:split_lock:' . $ticketId;
         $lockTtl = 10;
         $lock = \support\Redis::set($lockKey, 1, 'EX', $lockTtl, 'NX');
 
@@ -827,31 +836,20 @@ class TicketController
         }
 
         try {
-            // 查询票据
+            // 查询票据（使用主键ID）
             /** @var TicketRecord $ticket */
-            $ticket = TicketRecord::where('order_id', $orderId)->first();
+            $ticket = TicketRecord::find($ticketId);
 
             if (!$ticket) {
                 $this->releaseIdempotent($requestId);
                 return jsonFailResponse(trans('ticket_not_found', [], 'message'));
             }
 
-            // 验证票据状态
-            if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
+            // 验证票据是否可操作
+            $validationResult = $this->validateTicketForOperation($ticket, $device, 'splitTicket');
+            if ($validationResult !== null) {
                 $this->releaseIdempotent($requestId);
-                return jsonFailResponse(trans('ticket_already_used', [], 'message'));
-            }
-
-            // 验证票据类型（必须是洗分类型）
-            if ((int)$ticket->ticket_type !== TicketRecord::TYPE_WITHDRAW) {
-                $this->releaseIdempotent($requestId);
-                return jsonFailResponse(trans('ticket_not_withdraw_type', [], 'message'));
-            }
-
-            // 检查是否过期
-            if ($ticket->isExpired()) {
-                $this->releaseIdempotent($requestId);
-                return jsonFailResponse(trans('ticket_expired', [], 'message'));
+                return $validationResult;
             }
 
             // 验证拆分分值
@@ -871,56 +869,9 @@ class TicketController
             DB::beginTransaction();
 
             try {
-                // 获取店家名称
-                $storeName = $ticket->store_name ?? '';
-
-                // 生成新票据1（拆分分值）
-                $orderId1 = TicketRecord::generateOrderId();
-                $qrCodeNo1 = TicketRecord::generateQrCodeNo();
-                $ticket1 = TicketRecord::create([
-                    'order_id' => $orderId1,
-                    'department_id' => $ticket->department_id,
-                    'store_admin_id' => $ticket->store_admin_id,
-                    'store_name' => $storeName,
-                    'machine_no' => 0,
-                    'machine_id' => 0,
-                    'player_id' => $ticket->player_id,
-                    'player_name' => $ticket->player_name ?? '',
-                    'score' => $splitScore,
-                    'qr_code' => $orderId1,
-                    'qr_code_no' => $qrCodeNo1,
-                    'encrypted_content' => $orderId1,
-                    'ticket_type' => TicketRecord::TYPE_WITHDRAW,
-                    'status' => TicketRecord::STATUS_NORMAL,
-                    'print_count' => 0,
-                    'source_ticket_id' => $ticket->id,
-                    'source_type' => TicketRecord::SOURCE_TYPE_SPLIT,
-                    'operation_type' => TicketRecord::OPERATION_NONE,
-                ]);
-
-                // 生成新票据2（剩余分值）
-                $orderId2 = TicketRecord::generateOrderId();
-                $qrCodeNo2 = TicketRecord::generateQrCodeNo();
-                $ticket2 = TicketRecord::create([
-                    'order_id' => $orderId2,
-                    'department_id' => $ticket->department_id,
-                    'store_admin_id' => $ticket->store_admin_id,
-                    'store_name' => $storeName,
-                    'machine_no' => 0,
-                    'machine_id' => 0,
-                    'player_id' => $ticket->player_id,
-                    'player_name' => $ticket->player_name ?? '',
-                    'score' => $remainScore,
-                    'qr_code' => $orderId2,
-                    'qr_code_no' => $qrCodeNo2,
-                    'encrypted_content' => $orderId2,
-                    'ticket_type' => TicketRecord::TYPE_WITHDRAW,
-                    'status' => TicketRecord::STATUS_NORMAL,
-                    'print_count' => 0,
-                    'source_ticket_id' => $ticket->id,
-                    'source_type' => TicketRecord::SOURCE_TYPE_SPLIT,
-                    'operation_type' => TicketRecord::OPERATION_NONE,
-                ]);
+                // 创建两张新票据
+                $ticket1 = $this->createNewTicket($ticket, $splitScore, TicketRecord::SOURCE_TYPE_SPLIT);
+                $ticket2 = $this->createNewTicket($ticket, $remainScore, TicketRecord::SOURCE_TYPE_SPLIT);
 
                 // 更新原票状态
                 $ticket->update([
@@ -936,6 +887,7 @@ class TicketController
                 // 保存幂等性记录
                 $response = jsonSuccessResponse(trans('ticket_split_success', [], 'message'), [
                     'original_ticket' => [
+                        'id' => $ticket->id,
                         'order_id' => $ticket->order_id,
                         'status' => TicketRecord::STATUS_SPLIT,
                         'status_name' => $ticket->status_name,
@@ -943,25 +895,25 @@ class TicketController
                     'new_tickets' => [
                         [
                             'id' => $ticket1->id,
-                            'order_id' => $orderId1,
+                            'order_id' => $ticket1->order_id,
                             'score' => $splitScore,
-                            'qr_code' => $orderId1,
-                            'qr_code_no' => $qrCodeNo1,
-                            'encrypted_content' => $orderId1,
-                            'store_name' => $storeName,
+                            'qr_code' => $ticket1->qr_code,
+                            'qr_code_no' => $ticket1->qr_code_no,
+                            'encrypted_content' => $ticket1->encrypted_content,
+                            'store_name' => $ticket1->store_name,
                         ],
                         [
                             'id' => $ticket2->id,
-                            'order_id' => $orderId2,
+                            'order_id' => $ticket2->order_id,
                             'score' => $remainScore,
-                            'qr_code' => $orderId2,
-                            'qr_code_no' => $qrCodeNo2,
-                            'encrypted_content' => $orderId2,
-                            'store_name' => $storeName,
+                            'qr_code' => $ticket2->qr_code,
+                            'qr_code_no' => $ticket2->qr_code_no,
+                            'encrypted_content' => $ticket2->encrypted_content,
+                            'store_name' => $ticket2->store_name,
                         ],
                     ],
                 ]);
-                $this->saveIdempotent($requestId, $response, 'ticket-split:' . $orderId, 0);
+                $this->saveIdempotent($requestId, $response, 'ticket-split:' . $ticketId, 0);
 
                 return $response;
 
@@ -975,14 +927,14 @@ class TicketController
         } catch (BusinessException $e) {
             $this->releaseIdempotent($requestId);
             Log::error('splitTicket: 业务异常', [
-                'order_id' => $orderId,
+                'ticket_id' => $ticketId,
                 'error' => $e->getMessage(),
             ]);
             return jsonFailResponse($e->getMessage());
         } catch (Throwable $e) {
             $this->releaseIdempotent($requestId);
             Log::error('splitTicket: 系统异常', [
-                'order_id' => $orderId,
+                'ticket_id' => $ticketId,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -1003,19 +955,27 @@ class TicketController
     {
         // 不需要玩家登录，使用站点和设备认证
 
-        $orderIdsStr = $request->post('order_ids', '');
-        if (empty($orderIdsStr)) {
-            return jsonFailResponse(trans('ticket_order_ids_empty', [], 'message'));
+        $ticketIdsStr = $request->post('ticket_ids', '');
+        if (empty($ticketIdsStr)) {
+            return jsonFailResponse(trans('ticket_ids_required', [], 'message'));
         }
 
-        $orderIds = array_filter(array_map('trim', explode(',', $orderIdsStr)));
-        if (count($orderIds) < 2) {
+        $ticketIds = array_filter(array_map('intval', explode(',', $ticketIdsStr)));
+        if (count($ticketIds) < 2) {
             return jsonFailResponse(trans('ticket_merge_min_two', [], 'message'));
         }
 
+        // 验证设备（储值机才能执行合票）
+        $deviceResult = $this->validateStorageDevice($request);
+        if ($deviceResult instanceof Response) {
+            return $deviceResult;
+        }
+        /** @var AdminDevice $device */
+        $device = $deviceResult;
+
         // 幂等性检查（不使用玩家ID）
         $requestId = $request->post('request_id');
-        $idempotentKey = 'ticket-merge:' . md5(implode(',', $orderIds));
+        $idempotentKey = 'ticket-merge:' . md5(implode(',', $ticketIds));
         $idempotentResponse = $this->checkIdempotent($requestId, $idempotentKey, 0);
         if ($idempotentResponse !== null) {
             return $idempotentResponse;
@@ -1028,7 +988,7 @@ class TicketController
         }
 
         // 获取分布式锁
-        $lockKey = 'ticket:merge_lock:' . md5(implode(',', $orderIds));
+        $lockKey = 'ticket:merge_lock:' . md5(implode(',', $ticketIds));
         $lockTtl = 10;
         $lock = \support\Redis::set($lockKey, 1, 'EX', $lockTtl, 'NX');
 
@@ -1038,83 +998,42 @@ class TicketController
         }
 
         try {
-            // 查询所有票据
+            // 查询所有票据（使用主键ID）
             /** @var TicketRecord[] $tickets */
-            $tickets = TicketRecord::whereIn('order_id', $orderIds)->get();
+            $tickets = TicketRecord::whereIn('id', $ticketIds)->get();
 
-            if ($tickets->count() !== count($orderIds)) {
+            if ($tickets->count() !== count($ticketIds)) {
                 $this->releaseIdempotent($requestId);
                 return jsonFailResponse(trans('ticket_not_found', [], 'message'));
             }
 
             // 验证所有票据
             $totalScore = 0;
-            $storeName = '';
-            $departmentId = 0;
-            $storeAdminId = 0;
-            $playerId = 0;
-            $playerName = '';
+            $firstTicket = null;
 
             foreach ($tickets as $ticket) {
-                // 验证状态
-                if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
+                // 验证票据是否可操作
+                $validationResult = $this->validateTicketForOperation($ticket, $device, 'mergeTicket');
+                if ($validationResult !== null) {
                     $this->releaseIdempotent($requestId);
-                    return jsonFailResponse(trans('ticket_already_used', [], 'message'));
-                }
-
-                // 验证类型（必须是洗分类型）
-                if ((int)$ticket->ticket_type !== TicketRecord::TYPE_WITHDRAW) {
-                    $this->releaseIdempotent($requestId);
-                    return jsonFailResponse(trans('ticket_not_withdraw_type', [], 'message'));
-                }
-
-                // 检查是否过期
-                if ($ticket->isExpired()) {
-                    $this->releaseIdempotent($requestId);
-                    return jsonFailResponse(trans('ticket_expired', [], 'message'));
+                    return $validationResult;
                 }
 
                 $totalScore = bcadd((string)$totalScore, (string)$ticket->score, 2);
 
                 // 使用第一张票的信息作为基础
-                if (empty($storeName)) {
-                    $storeName = $ticket->store_name ?? '';
-                    $departmentId = $ticket->department_id;
-                    $storeAdminId = $ticket->store_admin_id;
-                    $playerId = $ticket->player_id;
-                    $playerName = $ticket->player_name ?? '';
+                if ($firstTicket === null) {
+                    $firstTicket = $ticket;
                 }
             }
 
             DB::beginTransaction();
 
             try {
-                // 生成新票据
-                $newOrderId = TicketRecord::generateOrderId();
-                $newQrCodeNo = TicketRecord::generateQrCodeNo();
-
-                $newTicket = TicketRecord::create([
-                    'order_id' => $newOrderId,
-                    'department_id' => $departmentId,
-                    'store_admin_id' => $storeAdminId,
-                    'store_name' => $storeName,
-                    'machine_no' => 0,
-                    'machine_id' => 0,
-                    'player_id' => $playerId,
-                    'player_name' => $playerName,
-                    'score' => $totalScore,
-                    'qr_code' => $newOrderId,
-                    'qr_code_no' => $newQrCodeNo,
-                    'encrypted_content' => $newOrderId,
-                    'ticket_type' => TicketRecord::TYPE_WITHDRAW,
-                    'status' => TicketRecord::STATUS_NORMAL,
-                    'print_count' => 0,
-                    'source_type' => TicketRecord::SOURCE_TYPE_MERGE,
-                    'operation_type' => TicketRecord::OPERATION_NONE,
-                ]);
+                // 使用第一张票据作为来源创建新票据
+                $newTicket = $this->createNewTicket($firstTicket, $totalScore, TicketRecord::SOURCE_TYPE_MERGE);
 
                 // 更新原票状态
-                $ticketIds = $tickets->pluck('id')->toArray();
                 foreach ($tickets as $ticket) {
                     $ticket->update([
                         'status' => TicketRecord::STATUS_MERGED,
@@ -1131,6 +1050,7 @@ class TicketController
                 $response = jsonSuccessResponse(trans('ticket_merge_success', [], 'message'), [
                     'merged_tickets' => $tickets->map(function ($t) {
                         return [
+                            'id' => $t->id,
                             'order_id' => $t->order_id,
                             'status' => TicketRecord::STATUS_MERGED,
                             'status_name' => $t->status_name,
@@ -1138,12 +1058,12 @@ class TicketController
                     })->toArray(),
                     'new_ticket' => [
                         'id' => $newTicket->id,
-                        'order_id' => $newOrderId,
+                        'order_id' => $newTicket->order_id,
                         'score' => $totalScore,
-                        'qr_code' => $newOrderId,
-                        'qr_code_no' => $newQrCodeNo,
-                        'encrypted_content' => $newOrderId,
-                        'store_name' => $storeName,
+                        'qr_code' => $newTicket->qr_code,
+                        'qr_code_no' => $newTicket->qr_code_no,
+                        'encrypted_content' => $newTicket->encrypted_content,
+                        'store_name' => $newTicket->store_name,
                     ],
                 ]);
                 $this->saveIdempotent($requestId, $response, $idempotentKey, 0);
@@ -1160,14 +1080,14 @@ class TicketController
         } catch (BusinessException $e) {
             $this->releaseIdempotent($requestId);
             Log::error('mergeTicket: 业务异常', [
-                'order_ids' => $orderIdsStr,
+                'ticket_ids' => $ticketIdsStr,
                 'error' => $e->getMessage(),
             ]);
             return jsonFailResponse($e->getMessage());
         } catch (Throwable $e) {
             $this->releaseIdempotent($requestId);
             Log::error('mergeTicket: 系统异常', [
-                'order_ids' => $orderIdsStr,
+                'ticket_ids' => $ticketIdsStr,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
@@ -1175,6 +1095,246 @@ class TicketController
         } finally {
             \support\Redis::del($lockKey);
         }
+    }
+
+    /**
+     * 获取购票配置
+     *
+     * @param Request $request
+     * @return Response
+     */
+    public function getPurchaseConfig(Request $request): Response
+    {
+        // 验证设备（储值机）
+        $deviceResult = $this->validateStorageDevice($request);
+        if ($deviceResult instanceof Response) {
+            return $deviceResult;
+        }
+        /** @var AdminDevice $device */
+        $device = $deviceResult;
+
+        // 获取店铺的购分配置
+        $setting = \app\model\PurchaseScoreSetting::getByStoreId($device->store_admin_id);
+
+        if (!$setting) {
+            return jsonFailResponse(trans('purchase_config_not_found', [], 'message'));
+        }
+
+        return jsonSuccessResponse('success', [
+            'score_options' => $setting->getScoreOptions(),
+            'default_score' => (int)$setting->default_scores,
+        ]);
+    }
+
+    /**
+     * 购票 - 储值机购买票据
+     *
+     * @param Request $request
+     * @return Response
+     * @throws Throwable
+     */
+    public function purchaseTicket(Request $request): Response
+    {
+        // 不需要玩家登录，使用站点和设备认证
+
+        $score = $request->post('score');
+
+        if ($score === null || $score === '' || intval($score) <= 0) {
+            return jsonFailResponse(trans('purchase_score_invalid', [], 'message'));
+        }
+
+        $score = intval($score);
+
+        // 验证设备（储值机）
+        $deviceResult = $this->validateStorageDevice($request);
+        if ($deviceResult instanceof Response) {
+            return $deviceResult;
+        }
+        /** @var AdminDevice $device */
+        $device = $deviceResult;
+
+        // 获取店铺的购分配置
+        $setting = \app\model\PurchaseScoreSetting::getByStoreId($device->store_admin_id);
+        if (!$setting) {
+            return jsonFailResponse(trans('purchase_config_not_found', [], 'message'));
+        }
+
+        // 验证分值是否为有效选项
+        if (!$setting->isValidScore($score)) {
+            return jsonFailResponse(trans('purchase_score_not_allowed', [], 'message'));
+        }
+
+        // 幂等性检查
+        $requestId = $request->post('request_id');
+        $idempotentKey = 'ticket-purchase:' . $deviceCpuId . ':' . $score;
+        $idempotentResponse = $this->checkIdempotent($requestId, $idempotentKey, 0);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        // 提前占位
+        if (!$this->reserveIdempotent($requestId, $idempotentKey, 0)) {
+            $response = $this->checkIdempotent($requestId, $idempotentKey, 0);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        try {
+            // 获取店家信息
+            $storeAdmin = AdminUser::query()->find($device->store_admin_id);
+            $storeName = $storeAdmin ? ($storeAdmin->nickname ?? $storeAdmin->username ?? '') : '';
+
+            // 生成订单号
+            $orderId = TicketRecord::generateOrderId();
+            $qrCodeNo = TicketRecord::generateQrCodeNo();
+
+            // 创建票据记录
+            $ticket = TicketRecord::create([
+                'order_id' => $orderId,
+                'department_id' => $device->department_id ?? 0,
+                'store_admin_id' => $device->store_admin_id,
+                'store_name' => $storeName,
+                'machine_no' => 0,
+                'machine_id' => 0,
+                'player_id' => 0,
+                'player_name' => '',
+                'score' => $score,
+                'qr_code' => $orderId,
+                'qr_code_no' => $qrCodeNo,
+                'encrypted_content' => $orderId,
+                'ticket_type' => TicketRecord::TYPE_RECHARGE,
+                'status' => TicketRecord::STATUS_NORMAL,
+                'print_count' => 0,
+            ]);
+
+            // 保存幂等性记录
+            $response = jsonSuccessResponse(trans('purchase_ticket_success', [], 'message'), [
+                'id' => $ticket->id,
+                'order_id' => $orderId,
+                'score' => $score,
+                'qr_code' => $orderId,
+                'qr_code_no' => $qrCodeNo,
+                'encrypted_content' => $orderId,
+                'store_name' => $storeName,
+                'created_at' => $ticket->created_at->toDateTimeString(),
+            ]);
+            $this->saveIdempotent($requestId, $response, $idempotentKey, 0);
+
+            return $response;
+
+        } catch (Throwable $e) {
+            $this->releaseIdempotent($requestId);
+            Log::error('purchaseTicket: 系统异常', [
+                'device_cpu_id' => $deviceCpuId,
+                'score' => $score,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return jsonFailResponse(trans('system_error', [], 'message'));
+        }
+    }
+
+    /**
+     * 验证储值机设备
+     *
+     * @param Request $request 请求对象
+     * @return AdminDevice|Response 返回设备对象或错误响应
+     */
+    private function validateStorageDevice(Request $request): AdminDevice|Response
+    {
+        $deviceCpuId = $request->header('DeviceCpuID', '');
+        if (empty($deviceCpuId)) {
+            return jsonFailResponse(trans('device_cpu_id_required', [], 'message'));
+        }
+
+        /** @var AdminDevice $device */
+        $device = AdminDevice::query()->where('device_no', $deviceCpuId)->first();
+        if (!$device) {
+            return jsonFailResponse(trans('device_not_found', [], 'message'));
+        }
+
+        if ($device->status == 0) {
+            return jsonFailResponse(trans('device_disabled', [], 'message'));
+        }
+
+        if ((int)$device->device_type !== AdminDevice::TYPE_VENDING_MACHINE) {
+            return jsonFailResponse(trans('device_not_storage_machine', [], 'message'));
+        }
+
+        return $device;
+    }
+
+    /**
+     * 验证票据是否可操作（拆分/合并）
+     *
+     * @param TicketRecord $ticket 票据对象
+     * @param AdminDevice $device 设备对象
+     * @param string $operationType 操作类型（用于日志）
+     * @return Response|null 返回错误响应或null（验证通过）
+     */
+    private function validateTicketForOperation(TicketRecord $ticket, AdminDevice $device, string $operationType): ?Response
+    {
+        // 验证票据和设备在同一店铺
+        if ((int)$ticket->store_admin_id !== (int)$device->store_admin_id) {
+            Log::warning("{$operationType}: 票据和设备不在同一店铺", [
+                'ticket_id' => $ticket->id,
+                'order_id' => $ticket->order_id,
+                'ticket_store_admin_id' => $ticket->store_admin_id,
+                'device_store_admin_id' => $device->store_admin_id,
+            ]);
+            return jsonFailResponse(trans('ticket_device_store_mismatch', [], 'message'));
+        }
+
+        // 验证票据状态
+        if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
+            return jsonFailResponse(trans('ticket_already_used', [], 'message'));
+        }
+
+        // 验证票据类型（必须是洗分类型）
+        if ((int)$ticket->ticket_type !== TicketRecord::TYPE_WITHDRAW) {
+            return jsonFailResponse(trans('ticket_not_withdraw_type', [], 'message'));
+        }
+
+        // 检查是否过期
+        if ($ticket->isExpired()) {
+            return jsonFailResponse(trans('ticket_expired', [], 'message'));
+        }
+
+        return null;
+    }
+
+    /**
+     * 创建新票据
+     *
+     * @param TicketRecord $sourceTicket 来源票据
+     * @param float $score 分值
+     * @param string $sourceType 来源类型（split/merge）
+     * @return TicketRecord
+     */
+    private function createNewTicket(TicketRecord $sourceTicket, float $score, string $sourceType): TicketRecord
+    {
+        $orderId = TicketRecord::generateOrderId();
+        $qrCodeNo = TicketRecord::generateQrCodeNo();
+
+        return TicketRecord::create([
+            'order_id' => $orderId,
+            'department_id' => $sourceTicket->department_id,
+            'store_admin_id' => $sourceTicket->store_admin_id,
+            'store_name' => $sourceTicket->store_name ?? '',
+            'machine_no' => 0,
+            'machine_id' => 0,
+            'player_id' => $sourceTicket->player_id,
+            'player_name' => $sourceTicket->player_name ?? '',
+            'score' => $score,
+            'qr_code' => $orderId,
+            'qr_code_no' => $qrCodeNo,
+            'encrypted_content' => $orderId,
+            'ticket_type' => TicketRecord::TYPE_WITHDRAW,
+            'status' => TicketRecord::STATUS_NORMAL,
+            'print_count' => 0,
+            'source_ticket_id' => $sourceTicket->id,
+            'source_type' => $sourceType,
+            'operation_type' => TicketRecord::OPERATION_NONE,
+        ]);
     }
 
     /**

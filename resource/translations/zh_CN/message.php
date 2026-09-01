@@ -571,8 +571,17 @@ return [
     'ticket_split_score_invalid' => '拆分分值无效',
     'ticket_split_score_too_large' => '拆分分值不能大于等于原票分值',
     'ticket_not_withdraw_type' => '只有洗分类型的票据才能进行拆分/合并操作',
-    'ticket_order_ids_empty' => '订单号列表不能为空',
+    'ticket_id_required' => '票据ID不能为空',
+    'ticket_ids_required' => '票据ID列表不能为空',
     'ticket_merge_min_two' => '合票至少需要两张票据',
+    'ticket_device_store_mismatch' => '票据和设备不在同一店铺',
+
+    // 储值机购票相关
+    'device_not_storage_machine' => '只有储值机才能执行此操作',
+    'purchase_config_not_found' => '未找到购分配置',
+    'purchase_score_invalid' => '购分分值无效',
+    'purchase_score_not_allowed' => '购分分值不在允许范围内',
+    'purchase_ticket_success' => '购票成功',
 
     // 机台指令相关
     'machine_command_failed' => '机台指令发送失败',
