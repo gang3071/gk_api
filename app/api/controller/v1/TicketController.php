@@ -1163,19 +1163,9 @@ class TicketController
         /** @var AdminDevice $device */
         $device = $deviceResult;
 
-        // 获取店铺的购分配置
-        $setting = \app\model\PurchaseScoreSetting::getByStoreId($device->store_admin_id);
-        if (!$setting) {
-            return jsonFailResponse(trans('purchase_config_not_found', [], 'message'));
-        }
-
-        // 验证分值是否为有效选项
-        if (!$setting->isValidScore($score)) {
-            return jsonFailResponse(trans('purchase_score_not_allowed', [], 'message'));
-        }
-
         // 幂等性检查
         $requestId = $request->post('request_id');
+        $deviceCpuId = $request->header('DeviceCpuID', '');
         $idempotentKey = 'ticket-purchase:' . $deviceCpuId . ':' . $score;
         $idempotentResponse = $this->checkIdempotent($requestId, $idempotentKey, 0);
         if ($idempotentResponse !== null) {
