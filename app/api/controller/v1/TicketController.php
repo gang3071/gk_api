@@ -746,6 +746,16 @@ class TicketController
             return jsonFailResponse(trans('ticket_not_found', [], 'message'));
         }
 
+        // 验证票据和玩家在同一店铺
+        if ((int)$ticket->store_admin_id !== (int)$player->store_admin_id) {
+            Log::warning('scanDetail: 票据和玩家不在同一店铺', [
+                'order_id' => $orderId,
+                'ticket_store_admin_id' => $ticket->store_admin_id,
+                'player_store_admin_id' => $player->store_admin_id,
+            ]);
+            return jsonFailResponse(trans('ticket_device_store_mismatch', [], 'message'));
+        }
+
         // 检查是否过期
         $isExpired = $ticket->isExpired();
 
