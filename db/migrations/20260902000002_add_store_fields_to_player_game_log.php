@@ -15,8 +15,8 @@ use Phinx\Migration\AbstractMigration;
  * - 门店代理业绩统计
  *
  * 新增字段：
- * 1. store_id - 门店ID（可为NULL，仅门店机台记录时填充）
- * 2. store_agent_id - 门店所属代理玩家ID（可为NULL，用于门店代理分润）
+ * 1. store_id - 门店ID（关联admin_users.id，可为NULL，仅门店机台记录时填充）
+ * 2. store_agent_id - 门店代理ID（关联admin_users.id，即门店的parent_admin_id，用于门店代理分润）
  *
  * @author Claude Code
  * @date 2026-09-02
@@ -47,7 +47,7 @@ class AddStoreFieldsToPlayerGameLog extends AbstractMigration
             $table->addColumn('store_agent_id', 'integer', [
                 'null' => true,
                 'default' => null,
-                'comment' => '门店所属代理玩家ID（用于门店代理分润，可为NULL）',
+                'comment' => '门店代理ID（关联admin_users.id，即门店的parent_admin_id，用于门店代理分润，可为NULL）',
                 'after' => 'store_id',
             ]);
         }
@@ -91,8 +91,8 @@ class AddStoreFieldsToPlayerGameLog extends AbstractMigration
         $this->output->writeln('<info>✓ 已为 player_game_log 表添加门店相关字段</info>');
         $this->output->writeln('');
         $this->output->writeln('<comment>新增字段：</comment>');
-        $this->output->writeln('  - store_id: 门店ID（可为NULL）');
-        $this->output->writeln('  - store_agent_id: 门店所属代理玩家ID（可为NULL）');
+        $this->output->writeln('  - store_id: 门店ID（关联admin_users.id）');
+        $this->output->writeln('  - store_agent_id: 门店代理ID（关联admin_users.id，即门店的parent_admin_id）');
         $this->output->writeln('');
         $this->output->writeln('<comment>使用场景：</comment>');
         $this->output->writeln('  - 实体按键操作时（player_id=0, source_type=2）记录门店信息');
