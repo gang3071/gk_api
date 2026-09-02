@@ -8,9 +8,14 @@ use Phinx\Migration\AbstractMigration;
  * 目的：为已存在的 player_game_log 记录补充 store_id 和 store_agent_id
  *
  * 数据来源逻辑：
- * 1. 通过 machine_id 查找机台
- * 2. 通过 machine → channel_machine 获取 store_admin_id（门店ID）
- * 3. 通过 store_admin_id → admin_users 获取 parent_admin_id（门店代理ID）
+ * 1. 有玩家时（player_id > 0）：
+ *    - store_id = player.store_admin_id（优先）
+ *    - store_agent_id = player.agent_admin_id（优先）
+ *    - 降级：从 channel_machine 和 admin_users 获取
+ *
+ * 2. 无玩家时（player_id = 0）：
+ *    - store_id = channel_machine.store_admin_id
+ *    - store_agent_id = admin_users.parent_admin_id
  *
  * 处理策略：
  * - 分批处理，每批10000条，避免锁表过久
@@ -85,18 +90,22 @@ class BackfillStoreFieldsToPlayerGameLog extends AbstractMigration
                 ));
 
                 // 批量更新SQL
-                // 使用子查询获取门店信息，然后更新
+                // 优先从 Player 表获取门店信息（有玩家时）
+                // 降级从 channel_machine 获取（无玩家时）
                 $affected = $this->execute("
                     UPDATE player_game_log pgl
                     LEFT JOIN (
                         SELECT
                             pgl2.id,
-                            cm.store_admin_id as store_id,
-                            au.parent_admin_id as store_agent_id
+                            -- 优先从 player 表获取（有玩家时）
+                            COALESCE(p.store_admin_id, cm.store_admin_id) as store_id,
+                            -- 代理ID：优先从 player.agent_admin_id，降级从门店的 parent_admin_id
+                            COALESCE(p.agent_admin_id, au.parent_admin_id) as store_agent_id
                         FROM player_game_log pgl2
+                        LEFT JOIN player p ON pgl2.player_id = p.id
                         INNER JOIN machine m ON pgl2.machine_id = m.id
                         LEFT JOIN channel_machine cm ON m.id = cm.machine_id AND pgl2.department_id = cm.department_id
-                        LEFT JOIN admin_users au ON cm.store_admin_id = au.id
+                        LEFT JOIN admin_users au ON COALESCE(p.store_admin_id, cm.store_admin_id) = au.id
                         WHERE pgl2.store_id IS NULL
                         LIMIT {$batchSize}
                     ) AS store_data ON pgl.id = store_data.id
