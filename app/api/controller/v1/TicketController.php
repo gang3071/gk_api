@@ -729,8 +729,6 @@ class TicketController
      */
     public function scanDetail(Request $request): Response
     {
-        $player = checkPlayer();
-
         $orderId = $request->post('order_id', '');
         if (empty($orderId)) {
             return jsonFailResponse(trans('ticket_order_id_empty', [], 'message'));
@@ -1248,6 +1246,24 @@ class TicketController
         $deviceResult = $this->validateStorageDevice($request);
         if ($deviceResult instanceof Response) {
             return $deviceResult;
+        }
+        /** @var AdminDevice $device */
+        $device = $deviceResult;
+
+        // 跨店验证（需检查 device_collect 开关）
+        $setting = \app\model\SystemSetting::query()->where('feature', 'device_collect')->where('status', 1)->first();
+        if ($setting) {
+            $authHeader = $request->header('Authorization', '');
+            if (!empty($authHeader)) {
+                try {
+                    $player = checkPlayer();
+                    if ($device->store_admin_id != $player->store_admin_id) {
+                        return jsonFailResponse(trans('device_store_mismatch', [], 'message'), [], 403);
+                    }
+                } catch (\Throwable $e) {
+                    // token 无效或过期，跳过跨店校验
+                }
+            }
         }
 
         // 调用 MachineController 的 rechargeAndWithdraw 方法
