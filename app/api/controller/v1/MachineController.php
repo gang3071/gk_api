@@ -1127,8 +1127,6 @@ class MachineController
                         }
                         if ($action == 'plc_open_times') {
                             $money = (int)$data['open_point'] ?? 0;
-
-                            // ✅ CRITICAL FIX: 限制玩家自定义上分金额（与后台一致）
                             if ($money > 100000) {
                                 Log::warning('[slotAction] 玩家自定义上分超过限制', [
                                     'player_id' => $player->id,
