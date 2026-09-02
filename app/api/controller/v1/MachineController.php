@@ -1078,7 +1078,6 @@ class MachineController
      * 斯洛机台操作
      * @param Request $request
      * @return Response
-     * @throws PlayerCheckException
      */
     public function slotAction(Request $request): Response
     {
