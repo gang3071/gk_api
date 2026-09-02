@@ -1234,6 +1234,28 @@ class TicketController
     }
 
     /**
+     * 储值机投钞
+     * 逻辑与 MachineController::rechargeAndWithdraw 完全一致
+     * 用于区分储值机和游戏机调用，方便归类管理
+     *
+     * @param Request $request
+     * @return Response
+     * @throws Throwable
+     */
+    public function storageRechargeAndWithdraw(Request $request): Response
+    {
+        // 验证储值机设备
+        $deviceResult = $this->validateStorageDevice($request);
+        if ($deviceResult instanceof Response) {
+            return $deviceResult;
+        }
+
+        // 调用 MachineController 的 rechargeAndWithdraw 方法
+        $machineController = new MachineController();
+        return $machineController->rechargeAndWithdraw($request);
+    }
+
+    /**
      * 验证储值机设备
      *
      * @param Request $request 请求对象
