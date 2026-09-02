@@ -729,6 +729,14 @@ class TicketController
      */
     public function scanDetail(Request $request): Response
     {
+        // 验证储值机设备
+        $deviceResult = $this->validateStorageDevice($request);
+        if ($deviceResult instanceof Response) {
+            return $deviceResult;
+        }
+        /** @var AdminDevice $device */
+        $device = $deviceResult;
+
         $orderId = $request->post('order_id', '');
         if (empty($orderId)) {
             return jsonFailResponse(trans('ticket_order_id_empty', [], 'message'));
@@ -744,12 +752,12 @@ class TicketController
             return jsonFailResponse(trans('ticket_not_found', [], 'message'));
         }
 
-        // 验证票据和玩家在同一店铺
-        if ((int)$ticket->store_admin_id !== (int)$player->store_admin_id) {
-            Log::warning('scanDetail: 票据和玩家不在同一店铺', [
+        // 验证票据和储值机在同一店铺
+        if ((int)$ticket->store_admin_id !== (int)$device->store_admin_id) {
+            Log::warning('scanDetail: 票据和储值机不在同一店铺', [
                 'order_id' => $orderId,
                 'ticket_store_admin_id' => $ticket->store_admin_id,
-                'player_store_admin_id' => $player->store_admin_id,
+                'device_store_admin_id' => $device->store_admin_id,
             ]);
             return jsonFailResponse(trans('ticket_device_store_mismatch', [], 'message'));
         }
@@ -879,7 +887,7 @@ class TicketController
             try {
                 // 创建两张新票据
                 $ticket1 = $this->createNewTicket($ticket, $splitScore, TicketRecord::SOURCE_TYPE_SPLIT);
-                $ticket2 = $this->createNewTicket($ticket, $remainScore, TicketRecord::SOURCE_TYPE_SPLIT);
+                $ticket2 = $this->createNewTicket($ticket, (float)$remainScore, TicketRecord::SOURCE_TYPE_SPLIT);
 
                 // 更新原票状态
                 $ticket->update([
