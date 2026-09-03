@@ -3,15 +3,18 @@
 namespace app\api\controller\v1;
 
 use app\exception\PlayerCheckException;
+use app\model\AdminUser;
 use app\model\Dish;
 use app\model\DishCategory;
 use app\model\DishOrder;
 use app\model\DishOrderItem;
+use app\model\Notice;
 use Carbon\Carbon;
 use Exception;
 use Respect\Validation\Exceptions\AllOfException;
 use Respect\Validation\Validator as v;
 use support\Db;
+use support\Log;
 use support\Request;
 use support\Response;
 use Webman\RateLimiter\Annotation\RateLimiter;
@@ -186,6 +189,31 @@ class DishController
             DishOrderItem::insert($orderItems);
 
             Db::commit();
+
+            // 下單成功後，寫入通知至門店後台（notice 表，供 noticeList 查詢）
+            try {
+                $storeAdminId = intval($player->store_admin_id ?? 0);
+                if ($storeAdminId > 0) {
+                    $storeAdmin = AdminUser::find($storeAdminId);
+                    $notice = new Notice();
+                    $notice->department_id = $departmentId;
+                    $notice->player_id = $player->id;
+                    $notice->source_id = $order->id;              // 訂單ID
+                    $notice->type = Notice::TYPE_DISH_ORDER;      // 類型：餐點訂單
+                    $notice->receiver = Notice::RECEIVER_DEPARTMENT; // 接收方：子站（店家後台）
+                    $notice->admin_id = $storeAdminId;            // 店家管理員ID
+                    $notice->admin_name = $storeAdmin ? $storeAdmin->nickname : '';
+                    $notice->status = 0;                          // 未讀
+                    $notice->is_private = 1;                      // 私人消息
+                    $notice->save();
+                }
+            } catch (Exception $e) {
+                // Notice 儲存失敗不影響主流程，僅記錄日誌
+                Log::warning('餐點下單通知儲存失敗', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             return jsonSuccessResponse('success', [
                 'order_id' => $order->id,
