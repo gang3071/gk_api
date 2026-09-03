@@ -34,7 +34,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $source_ticket_id 来源原票ID
  * @property string|null $source_type 来源类型: split/merge
  * @property array|null $related_ticket_ids 关联的新票ID数组
- * @property int $operation_type 操作类型: 0=无操作, 1=拆分, 2=合并
+ * @property int $operation_type 操作类型: 0=无操作, 1=拆分, 2=合并, 3=购票
  * @property string|null $operated_at 操作时间
  * @property int|null $operated_by 操作人ID
  * @property string $remark 备注
@@ -76,6 +76,7 @@ class TicketRecord extends Model
     const OPERATION_NONE = 0;        // 无操作
     const OPERATION_SPLIT = 1;       // 拆分
     const OPERATION_MERGE = 2;       // 合并
+    const OPERATION_PURCHASE = 3;    // 购票
 
     // 来源类型常量
     const SOURCE_TYPE_SPLIT = 'split';    // 来源：拆分
@@ -103,8 +104,8 @@ class TicketRecord extends Model
         return match ($this->status) {
             self::STATUS_DISABLED => '禁用',
             self::STATUS_NORMAL => '正常',
-            self::STATUS_BACKEND_USED => '后台使用',
-            self::STATUS_MACHINE_USED => '机台使用',
+            self::STATUS_BACKEND_USED => '后台已使用',
+            self::STATUS_MACHINE_USED => '机台已使用',
             self::STATUS_SPLIT => '已拆分',
             self::STATUS_MERGED => '已合并',
             default => '未知',

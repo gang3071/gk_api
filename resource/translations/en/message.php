@@ -558,6 +558,7 @@ return [
     'ticket_id_required' => 'Ticket ID is required',
     'ticket_ids_required' => 'Ticket ID list is required',
     'ticket_merge_min_two' => 'Merge requires at least two tickets',
+    'ticket_merge_different_players' => 'Tickets from different players cannot be merged',
     'ticket_device_store_mismatch' => 'Ticket and device are not in the same store',
 
     // Storage Machine Purchase

@@ -555,6 +555,7 @@ return [
     'ticket_id_required' => 'チケットIDは必須です',
     'ticket_ids_required' => 'チケットIDリストは必須です',
     'ticket_merge_min_two' => '結合には少なくとも2枚のチケットが必要です',
+    'ticket_merge_different_players' => '異なるプレイヤーのチケットは結合できません',
     'ticket_device_store_mismatch' => 'チケットとデバイスが同じ店舗にありません',
 
     // 貯金機チケット購入関連

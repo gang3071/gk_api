@@ -564,6 +564,7 @@ return [
     'ticket_id_required' => '票據ID不能為空',
     'ticket_ids_required' => '票據ID列表不能為空',
     'ticket_merge_min_two' => '合票至少需要兩張票據',
+    'ticket_merge_different_players' => '不同玩家的票據不能合併',
     'ticket_device_store_mismatch' => '票據和設備不在同一店鋪',
 
     // 儲值機購票相關

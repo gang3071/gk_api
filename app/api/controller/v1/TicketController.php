@@ -441,9 +441,7 @@ class TicketController
                 // 验证玩家绑定关系
                 // player_id = 0: 未绑定，任何人都能扫码
                 // player_id > 0: 已绑定，只有绑定玩家能扫码
-                // 洗分票(TYPE_WITHDRAW)不限制绑定关系，允许任意玩家扫码开分
-                if ((int)$ticket->ticket_type !== TicketRecord::TYPE_WITHDRAW
-                    && (int)$ticket->player_id > 0
+                if ((int)$ticket->player_id > 0
                     && (int)$ticket->player_id !== (int)$player->id
                 ) {
                     $this->releaseIdempotent($requestId);
@@ -886,7 +884,7 @@ class TicketController
 
             try {
                 // 创建两张新票据
-                $ticket1 = $this->createNewTicket($ticket, $splitScore, TicketRecord::SOURCE_TYPE_SPLIT);
+                $ticket1 = $this->createNewTicket($ticket, (float)$splitScore, TicketRecord::SOURCE_TYPE_SPLIT);
                 $ticket2 = $this->createNewTicket($ticket, (float)$remainScore, TicketRecord::SOURCE_TYPE_SPLIT);
 
                 // 更新原票状态
@@ -1026,6 +1024,7 @@ class TicketController
             // 验证所有票据
             $totalScore = 0;
             $firstTicket = null;
+            $playerIds = [];  // 收集所有非零的 player_id
 
             foreach ($tickets as $ticket) {
                 // 验证票据是否可操作
@@ -1033,6 +1032,11 @@ class TicketController
                 if ($validationResult !== null) {
                     $this->releaseIdempotent($requestId);
                     return $validationResult;
+                }
+
+                // 收集绑定的玩家ID（排除未绑定的）
+                if ((int)$ticket->player_id > 0) {
+                    $playerIds[(int)$ticket->player_id] = true;
                 }
 
                 $totalScore = bcadd((string)$totalScore, (string)$ticket->score, 2);
@@ -1043,11 +1047,30 @@ class TicketController
                 }
             }
 
+            // 验证玩家绑定关系：不同玩家的票不能合在一起
+            if (count($playerIds) > 1) {
+                $this->releaseIdempotent($requestId);
+                Log::warning('mergeTicket: 不同玩家的票据不能合并', [
+                    'ticket_ids' => $ticketIds,
+                    'player_ids' => array_keys($playerIds),
+                ]);
+                return jsonFailResponse(trans('ticket_merge_different_players', [], 'message'));
+            }
+
             DB::beginTransaction();
 
             try {
-                // 使用第一张票据作为来源创建新票据
-                $newTicket = $this->createNewTicket($firstTicket, $totalScore, TicketRecord::SOURCE_TYPE_MERGE);
+                // 优先使用有玩家绑定的票据作为来源，确保合票继承绑定关系
+                $sourceTicket = $firstTicket;
+                foreach ($tickets as $ticket) {
+                    if ((int)$ticket->player_id > 0) {
+                        $sourceTicket = $ticket;
+                        break;
+                    }
+                }
+
+                // 使用来源票据创建新票据
+                $newTicket = $this->createNewTicket($sourceTicket, (float)$totalScore, TicketRecord::SOURCE_TYPE_MERGE);
 
                 // 更新原票状态
                 foreach ($tickets as $ticket) {
@@ -1209,6 +1232,7 @@ class TicketController
                 'encrypted_content' => $orderId,
                 'ticket_type' => TicketRecord::TYPE_RECHARGE,
                 'status' => TicketRecord::STATUS_NORMAL,
+                'operation_type' => TicketRecord::OPERATION_PURCHASE,
                 'print_count' => 0,
             ]);
 
@@ -1265,6 +1289,12 @@ class TicketController
             if (!empty($authHeader)) {
                 try {
                     $player = checkPlayer();
+
+                    // 🔒 检查钱包是否被锁定
+                    if (\app\service\WalletService::isWalletLocked($player->id)) {
+                        return jsonFailResponse(trans('wallet_locked', [], 'message'));
+                    }
+
                     if ($device->store_admin_id != $player->store_admin_id) {
                         return jsonFailResponse(trans('device_store_mismatch', [], 'message'), [], 403);
                     }
