@@ -324,6 +324,15 @@ Route::group('/api', function () {
 });
 
 Route::group('/chuzhi',function(){
+    // ========== 储值机专用接口 ==========
+    // 玩家登录
+    Route::post('/login', [\app\api\controller\v1\IndexController::class, 'login']);
+    // 获取用户信息
+    Route::post('/player-info', [\app\api\controller\v1\PlayerController::class, 'playerInfo']);
+    // 呼叫服务铃
+    Route::post('/call-service', [\app\api\controller\v1\DeviceServiceController::class, 'callService']);
+
+    // ========== 票据相关接口 ==========
     // 扫码获取票据详情
     Route::post('/ticket/scan-detail', [\app\api\controller\v1\TicketController::class, 'scanDetail']);
     // 拆票
