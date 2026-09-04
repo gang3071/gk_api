@@ -1661,6 +1661,12 @@ class MachineController
             return jsonFailResponse(trans('machine_crashed_cannot_recharge', [], 'message'));
         }
 
+
+        // 🔒 检查钱包是否被锁定
+        if (\app\service\WalletService::isWalletLocked($player->id)) {
+            return jsonFailResponse(trans('wallet_locked', [], 'message'));
+        }
+
         // 渠道检查
         /** @var Channel $channel */
         $channel = Channel::where('department_id', \request()->department_id)->first();

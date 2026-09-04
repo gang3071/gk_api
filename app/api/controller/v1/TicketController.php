@@ -760,6 +760,24 @@ class TicketController
             return jsonFailResponse(trans('ticket_device_store_mismatch', [], 'message'));
         }
 
+        // 验证票据状态
+        $ticketStatus = (int)$ticket->status;
+        if ($ticketStatus === TicketRecord::STATUS_DISABLED) {
+            return jsonFailResponse(trans('ticket_disabled', [], 'message'));
+        }
+        if ($ticketStatus === TicketRecord::STATUS_BACKEND_USED) {
+            return jsonFailResponse(trans('ticket_backend_used', [], 'message'));
+        }
+        if ($ticketStatus === TicketRecord::STATUS_MACHINE_USED) {
+            return jsonFailResponse(trans('ticket_machine_used', [], 'message'));
+        }
+        if ($ticketStatus === TicketRecord::STATUS_SPLIT) {
+            return jsonFailResponse(trans('ticket_already_split', [], 'message'));
+        }
+        if ($ticketStatus === TicketRecord::STATUS_MERGED) {
+            return jsonFailResponse(trans('ticket_already_merged', [], 'message'));
+        }
+
         // 检查是否过期
         $isExpired = $ticket->isExpired();
 
@@ -767,17 +785,21 @@ class TicketController
         $canSplit = false;
         $canMerge = false;
 
-        if ((int)$ticket->status === TicketRecord::STATUS_NORMAL
-            && (int)$ticket->ticket_type === TicketRecord::TYPE_WITHDRAW
-            && !$isExpired
-        ) {
-            $canSplit = true;
-            $canMerge = true;
+        if ((int)$ticket->status === TicketRecord::STATUS_NORMAL && !$isExpired) {
+            if ((int)$ticket->ticket_type === TicketRecord::TYPE_WITHDRAW) {
+                // 洗分票：可拆可合
+                $canSplit = true;
+                $canMerge = true;
+            } elseif ((int)$ticket->ticket_type === TicketRecord::TYPE_RECHARGE) {
+                // 开分票：只能合不能拆
+                $canMerge = true;
+            }
         }
 
         return jsonSuccessResponse('success', [
             'id' => $ticket->id,
             'order_id' => $ticket->order_id ?? '',
+            'player_id' => $ticket->player_id ?? 0,
             'qr_code' => $ticket->qr_code ?? '',
             'qr_code_no' => $ticket->qr_code_no ?? '',
             'score' => $ticket->score ?? 0,
@@ -785,6 +807,9 @@ class TicketController
             'ticket_type_name' => $ticket->ticket_type_name ?? '',
             'status' => $ticket->status ?? 0,
             'status_name' => $ticket->status_name ?? '',
+            'source_type' => $ticket->source_type ?? '',
+            'operation_type' => $ticket->operation_type ?? 0,
+            'operation_type_name' => $ticket->operation_type_name ?? '',
             'store_name' => $ticket->store_name ?? '',
             'player_name' => $ticket->player_name ?? '',
             'created_at' => $ticket->created_at ? $ticket->created_at->toDateTimeString() : '',
@@ -903,6 +928,7 @@ class TicketController
                     'original_ticket' => [
                         'id' => $ticket->id,
                         'order_id' => $ticket->order_id,
+                        'score' => $ticket->score,
                         'status' => TicketRecord::STATUS_SPLIT,
                         'status_name' => $ticket->status_name,
                     ],
@@ -911,18 +937,22 @@ class TicketController
                             'id' => $ticket1->id,
                             'order_id' => $ticket1->order_id,
                             'score' => $splitScore,
+                            'ticket_type' => $ticket1->ticket_type,
+                            'ticket_type_name' => $ticket1->ticket_type_name,
+                            'source_type' => $ticket1->source_type,
                             'qr_code' => $ticket1->qr_code,
                             'qr_code_no' => $ticket1->qr_code_no,
-                            'encrypted_content' => $ticket1->encrypted_content,
                             'store_name' => $ticket1->store_name,
                         ],
                         [
                             'id' => $ticket2->id,
                             'order_id' => $ticket2->order_id,
                             'score' => $remainScore,
+                            'ticket_type' => $ticket2->ticket_type,
+                            'ticket_type_name' => $ticket2->ticket_type_name,
+                            'source_type' => $ticket2->source_type,
                             'qr_code' => $ticket2->qr_code,
                             'qr_code_no' => $ticket2->qr_code_no,
-                            'encrypted_content' => $ticket2->encrypted_content,
                             'store_name' => $ticket2->store_name,
                         ],
                     ],
@@ -1060,17 +1090,14 @@ class TicketController
             DB::beginTransaction();
 
             try {
-                // 优先使用有玩家绑定的票据作为来源，确保合票继承绑定关系
-                $sourceTicket = $firstTicket;
-                foreach ($tickets as $ticket) {
-                    if ((int)$ticket->player_id > 0) {
-                        $sourceTicket = $ticket;
-                        break;
-                    }
-                }
+                // 使用第一张票据作为来源创建新票据
+                $newTicket = $this->createNewTicket($firstTicket, (float)$totalScore, TicketRecord::SOURCE_TYPE_MERGE);
 
-                // 使用来源票据创建新票据
-                $newTicket = $this->createNewTicket($sourceTicket, (float)$totalScore, TicketRecord::SOURCE_TYPE_MERGE);
+                // 合票产生的新票不绑定用户
+                $newTicket->update([
+                    'player_id' => 0,
+                    'player_name' => '',
+                ]);
 
                 // 更新原票状态
                 foreach ($tickets as $ticket) {
@@ -1233,6 +1260,7 @@ class TicketController
                 'ticket_type' => TicketRecord::TYPE_RECHARGE,
                 'status' => TicketRecord::STATUS_NORMAL,
                 'operation_type' => TicketRecord::OPERATION_PURCHASE,
+                'source_type' => TicketRecord::SOURCE_TYPE_PURCHASE,
                 'print_count' => 0,
             ]);
 
@@ -1289,11 +1317,6 @@ class TicketController
             if (!empty($authHeader)) {
                 try {
                     $player = checkPlayer();
-
-                    // 🔒 检查钱包是否被锁定
-                    if (\app\service\WalletService::isWalletLocked($player->id)) {
-                        return jsonFailResponse(trans('wallet_locked', [], 'message'));
-                    }
 
                     if ($device->store_admin_id != $player->store_admin_id) {
                         return jsonFailResponse(trans('device_store_mismatch', [], 'message'), [], 403);
@@ -1365,8 +1388,17 @@ class TicketController
             return jsonFailResponse(trans('ticket_already_used', [], 'message'));
         }
 
-        // 验证票据类型（必须是洗分类型）
-        if ((int)$ticket->ticket_type !== TicketRecord::TYPE_WITHDRAW) {
+        // 验证票据类型
+        $ticketType = (int)$ticket->ticket_type;
+
+        if ($ticketType === TicketRecord::TYPE_WITHDRAW) {
+            // 洗分票：可拆可合
+        } elseif ($ticketType === TicketRecord::TYPE_RECHARGE) {
+            // 开分票：只能合不能拆
+            if ($operationType === 'splitTicket') {
+                return jsonFailResponse(trans('ticket_cannot_split', [], 'message'));
+            }
+        } else {
             return jsonFailResponse(trans('ticket_not_withdraw_type', [], 'message'));
         }
 
@@ -1388,7 +1420,7 @@ class TicketController
      */
     private function createNewTicket(TicketRecord $sourceTicket, float $score, string $sourceType): TicketRecord
     {
-        $orderId = TicketRecord::generateOrderId();
+        $orderId = TicketRecord::generateOrderId((int)$sourceTicket->ticket_type);
         $qrCodeNo = TicketRecord::generateQrCodeNo();
 
         return TicketRecord::create([
@@ -1404,7 +1436,7 @@ class TicketController
             'qr_code' => $orderId,
             'qr_code_no' => $qrCodeNo,
             'encrypted_content' => $orderId,
-            'ticket_type' => TicketRecord::TYPE_WITHDRAW,
+            'ticket_type' => $sourceTicket->ticket_type,
             'status' => TicketRecord::STATUS_NORMAL,
             'print_count' => 0,
             'source_ticket_id' => $sourceTicket->id,

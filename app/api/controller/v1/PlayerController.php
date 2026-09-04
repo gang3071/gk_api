@@ -245,6 +245,7 @@ class PlayerController
             'recommend_code' => $player->recommend_code,
             'recommend_player_uuid' => $player->recommend_player->uuid ?? '',
             'money' => \app\service\WalletService::getBalance($player->id), // ✅ Redis 实时余额
+            'wallet_locked' => \app\service\WalletService::isWalletLocked($player->id), // 钱包是否锁定
             'name' => $player->name,
             'is_promoter' => $player->is_promoter == 1 && $player->player_promoter->status == 1,
             'recommend_id' => $player->recommend_id ?? 0,
