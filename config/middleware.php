@@ -30,4 +30,11 @@ return [
     'wallet' => [
         Lang::class
     ],
+    //储值机中间件
+    'chuzhi' => [
+        ChuzhiVersionMiddleware::class,
+        DeviceCollectMiddleware::class,
+        ApiSignMiddleware::class,
+        Lang::class
+    ],
 ];
