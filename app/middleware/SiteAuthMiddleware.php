@@ -35,7 +35,7 @@ class SiteAuthMiddleware implements MiddlewareInterface
         $clientVersion = $request->header('Client-Version', '');
         $appVersion = $request->header('App-Version', '');
         // 排除接口
-        if (preg_match('/^\/agent\/.*/', $request->path())) {
+        if (preg_match('/^\/agent\/.*/', $request->path()) || preg_match('/^\/chuzhi\/.*/', $request->path())) {
             return $handler($request);
         }
         // 排除接口

@@ -13,10 +13,7 @@
  */
 
 use app\middleware\ChuzhiVersionMiddleware;
-use app\middleware\DeviceCollectMiddleware;
-use app\middleware\Lang;
 use Webman\Route;
-use Wengg\WebmanApiSign\ApiSignMiddleware;
 
 Route::options('[{path:.+}]', function () {
     return response('');
@@ -343,9 +340,6 @@ Route::group('/chuzhi',function(){
     Route::post('/storage-recharge-and-withdraw', [\app\api\controller\v1\TicketController::class, 'storageRechargeAndWithdraw']);
 })->middleware([
     ChuzhiVersionMiddleware::class,
-    DeviceCollectMiddleware::class,
-    ApiSignMiddleware::class,
-    Lang::class
 ]);
 
 // 外部API
