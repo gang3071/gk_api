@@ -206,6 +206,8 @@ Route::group('/api', function () {
         Route::post('/ticket/purchase-config', [\app\api\controller\v1\TicketController::class, 'getPurchaseConfig']);
         // 购票
         Route::post('/ticket/purchase', [\app\api\controller\v1\TicketController::class, 'purchaseTicket']);
+        // 获取储值机版本号
+        Route::post('/ticket/version', [\app\api\controller\v1\TicketController::class, 'getVersion']);
         // 储值机投钞（内部调用 rechargeAndWithdraw）
         Route::post('/storage-recharge-and-withdraw', [\app\api\controller\v1\TicketController::class, 'storageRechargeAndWithdraw']);
         // line登录

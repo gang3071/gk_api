@@ -32,7 +32,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $last_print_time 最后打印时间
  * @property array|null $extra_data 扩展数据
  * @property int|null $source_ticket_id 来源原票ID
- * @property string|null $source_type 来源类型: split/merge
+ * @property string|null $source_type 来源类型: split/merge/purchase
  * @property array|null $related_ticket_ids 关联的新票ID数组
  * @property int $operation_type 操作类型: 0=无操作, 1=拆分, 2=合并, 3=购票
  * @property string|null $operated_at 操作时间
@@ -79,8 +79,9 @@ class TicketRecord extends Model
     const OPERATION_PURCHASE = 3;    // 购票
 
     // 来源类型常量
-    const SOURCE_TYPE_SPLIT = 'split';    // 来源：拆分
-    const SOURCE_TYPE_MERGE = 'merge';    // 来源：合并
+    const SOURCE_TYPE_SPLIT = 'split';       // 来源：拆分
+    const SOURCE_TYPE_MERGE = 'merge';       // 来源：合并
+    const SOURCE_TYPE_PURCHASE = 'purchase'; // 来源：购票
 
     /**
      * 获取票据类型名称
@@ -108,6 +109,20 @@ class TicketRecord extends Model
             self::STATUS_MACHINE_USED => '机台已使用',
             self::STATUS_SPLIT => '已拆分',
             self::STATUS_MERGED => '已合并',
+            default => '未知',
+        };
+    }
+
+    /**
+     * 获取操作类型名称
+     */
+    public function getOperationTypeNameAttribute(): string
+    {
+        return match ((int)$this->operation_type) {
+            self::OPERATION_NONE => '无操作',
+            self::OPERATION_SPLIT => '拆分',
+            self::OPERATION_MERGE => '合并',
+            self::OPERATION_PURCHASE => '购票',
             default => '未知',
         };
     }

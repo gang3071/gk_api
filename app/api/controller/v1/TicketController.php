@@ -15,6 +15,7 @@ use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerRechargeRecord;
 use app\model\PlayerWithdrawRecord;
+use app\model\SystemSetting;
 use app\model\TicketRecord;
 use app\service\machine\MachineServices;
 use app\service\WalletService;
@@ -816,6 +817,40 @@ class TicketController
             'is_expired' => $isExpired,
             'can_split' => $canSplit,
             'can_merge' => $canMerge,
+        ]);
+    }
+
+    /**
+     * 获取储值机版本号和下载链接
+     *
+     * @param Request $request
+     * @return Response
+     */
+    public function getVersion(Request $request): Response
+    {
+        // 验证储值机设备
+        $deviceResult = $this->validateStorageDevice($request);
+        if ($deviceResult instanceof Response) {
+            return $deviceResult;
+        }
+        /** @var AdminDevice $device */
+        $device = $deviceResult;
+
+        // 根据储值机所属渠道获取版本号
+        $versionSetting = SystemSetting::where('department_id', $device->department_id)
+            ->where('feature', 'ticket_machine_version')
+            ->where('status', 1)
+            ->first();
+
+        // 根据储值机所属渠道获取下载链接
+        $downloadSetting = SystemSetting::where('department_id', $device->department_id)
+            ->where('feature', 'ticket_machine_download_url')
+            ->where('status', 1)
+            ->first();
+
+        return jsonSuccessResponse('success', [
+            'version' => $versionSetting ? $versionSetting->content : '',
+            'download_url' => $downloadSetting ? $downloadSetting->content : '',
         ]);
     }
 
