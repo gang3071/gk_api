@@ -5,6 +5,7 @@ namespace app\middleware;
 use app\model\AdminDevice;
 use app\model\SystemSetting;
 use support\Cache;
+use support\Log;
 use Webman\Http\Request;
 use Webman\Http\Response;
 use Webman\MiddlewareInterface;
@@ -25,7 +26,7 @@ class ChuzhiVersionMiddleware implements MiddlewareInterface
         }
 
         // 获取储值机版本号
-        $clientVersion = $request->header('CHUZHI_VERSION', '');
+        $clientVersion = $request->header('App-Version', '');
 
         // 通过设备CPU ID查找设备
         $cacheKey = "chuzhi_device_" . $deviceCpuId;
@@ -63,7 +64,7 @@ class ChuzhiVersionMiddleware implements MiddlewareInterface
         $settingVersion = Cache::get($versionCacheKey);
 
         if (empty($settingVersion)) {
-            $setting = SystemSetting::where('department_id', $departmentId)
+            $setting = SystemSetting::query()->where('department_id', $departmentId)
                 ->where('feature', 'ticket_machine_version')
                 ->where('status', 1)
                 ->first();
@@ -72,7 +73,7 @@ class ChuzhiVersionMiddleware implements MiddlewareInterface
             // 缓存版本号（10分钟）
             Cache::set($versionCacheKey, $settingVersion, 600);
         }
-
+        Log::error('数据', [$settingVersion, $clientVersion, $deviceCpuId]);
         // 版本号比对（只有配置了版本号且客户端传递了版本号才进行比对）
         if (!empty($settingVersion) && !empty($clientVersion) && $settingVersion > $clientVersion) {
             // 获取下载链接
@@ -80,7 +81,7 @@ class ChuzhiVersionMiddleware implements MiddlewareInterface
             $downloadUrl = Cache::get($downloadCacheKey);
 
             if (empty($downloadUrl)) {
-                $downloadSetting = SystemSetting::where('department_id', $departmentId)
+                $downloadSetting = SystemSetting::query()->where('department_id', $departmentId)
                     ->where('feature', 'ticket_machine_download_url')
                     ->where('status', 1)
                     ->first();

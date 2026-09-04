@@ -342,9 +342,9 @@ Route::group('/chuzhi',function(){
     // 储值机投钞（内部调用 rechargeAndWithdraw）
     Route::post('/storage-recharge-and-withdraw', [\app\api\controller\v1\TicketController::class, 'storageRechargeAndWithdraw']);
 })->middleware([
-    ApiSignMiddleware::class,
     ChuzhiVersionMiddleware::class,
     DeviceCollectMiddleware::class,
+    ApiSignMiddleware::class,
     Lang::class
 ]);
 
