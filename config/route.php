@@ -196,20 +196,6 @@ Route::group('/api', function () {
         Route::post('/ticket/scan-open-score', [\app\api\controller\v1\TicketController::class, 'scanOpenScore']);
         // 查询出票记录
         Route::post('/ticket/records', [\app\api\controller\v1\TicketController::class, 'ticketRecords']);
-        // 扫码获取票据详情
-        Route::post('/ticket/scan-detail', [\app\api\controller\v1\TicketController::class, 'scanDetail']);
-        // 拆票
-        Route::post('/ticket/split', [\app\api\controller\v1\TicketController::class, 'splitTicket']);
-        // 合票
-        Route::post('/ticket/merge', [\app\api\controller\v1\TicketController::class, 'mergeTicket']);
-        // 获取购票配置
-        Route::post('/ticket/purchase-config', [\app\api\controller\v1\TicketController::class, 'getPurchaseConfig']);
-        // 购票
-        Route::post('/ticket/purchase', [\app\api\controller\v1\TicketController::class, 'purchaseTicket']);
-        // 获取储值机版本号
-        Route::post('/ticket/version', [\app\api\controller\v1\TicketController::class, 'getVersion']);
-        // 储值机投钞（内部调用 rechargeAndWithdraw）
-        Route::post('/storage-recharge-and-withdraw', [\app\api\controller\v1\TicketController::class, 'storageRechargeAndWithdraw']);
         // line登录
         Route::post('/line-login', [\app\api\controller\v1\IndexController::class, 'lineLogin']);
         // line绑定
@@ -333,6 +319,24 @@ Route::group('/api', function () {
         // 获取Q-talk账号信息
         Route::post('/get-talk-profile', [\app\api\controller\Auth\TalkOAuthController::class, 'getTalkProfile']);
     });
+
+});
+
+Route::group('/chuzhi',function(){
+    // 扫码获取票据详情
+    Route::post('/ticket/scan-detail', [\app\api\controller\v1\TicketController::class, 'scanDetail']);
+    // 拆票
+    Route::post('/ticket/split', [\app\api\controller\v1\TicketController::class, 'splitTicket']);
+    // 合票
+    Route::post('/ticket/merge', [\app\api\controller\v1\TicketController::class, 'mergeTicket']);
+    // 获取购票配置
+    Route::post('/ticket/purchase-config', [\app\api\controller\v1\TicketController::class, 'getPurchaseConfig']);
+    // 购票
+    Route::post('/ticket/purchase', [\app\api\controller\v1\TicketController::class, 'purchaseTicket']);
+    // 获取储值机版本号
+    Route::post('/ticket/version', [\app\api\controller\v1\TicketController::class, 'getVersion']);
+    // 储值机投钞（内部调用 rechargeAndWithdraw）
+    Route::post('/storage-recharge-and-withdraw', [\app\api\controller\v1\TicketController::class, 'storageRechargeAndWithdraw']);
 });
 
 // 外部API

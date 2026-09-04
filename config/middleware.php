@@ -12,6 +12,7 @@
  * @license   http://www.opensource.org/licenses/mit-license.php MIT License
  */
 
+use app\middleware\ChuzhiVersionMiddleware;
 use app\middleware\DeviceCollectMiddleware;
 use app\middleware\Lang;
 use app\middleware\SiteAuthMiddleware;
@@ -23,6 +24,13 @@ return [
         ApiSignMiddleware::class,
         SiteAuthMiddleware::class,
         DeviceCollectMiddleware::class,
+        Lang::class
+    ],
+    //单一钱包中间件
+    'chuzhi' => [
+        ApiSignMiddleware::class,
+        DeviceCollectMiddleware::class,
+        ChuzhiVersionMiddleware::class,
         Lang::class
     ],
     //单一钱包中间件

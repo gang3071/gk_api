@@ -579,6 +579,7 @@ return [
     'purchase_score_invalid' => '購分分值無效',
     'purchase_score_not_allowed' => '購分分值不在允許範圍內',
     'purchase_ticket_success' => '購票成功',
+    'chuzhi_version_incorrect' => '儲值機版本號不正確，請更新',
 
     // 機台指令相關
     'machine_command_failed' => '機台指令發送失敗',

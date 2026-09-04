@@ -570,6 +570,7 @@ return [
     'purchase_score_invalid' => '購入スコアが無効です',
     'purchase_score_not_allowed' => '購入スコアが許可範囲内にありません',
     'purchase_ticket_success' => 'チケット購入成功',
+    'chuzhi_version_incorrect' => 'ストレージマシンのバージョンが正しくありません。更新してください',
 
     // マシンコマンド関連
     'machine_command_failed' => 'マシンコマンド送信失敗',
