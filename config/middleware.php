@@ -27,13 +27,6 @@ return [
         Lang::class
     ],
     //单一钱包中间件
-    'chuzhi' => [
-        ApiSignMiddleware::class,
-        DeviceCollectMiddleware::class,
-        ChuzhiVersionMiddleware::class,
-        Lang::class
-    ],
-    //单一钱包中间件
     'wallet' => [
         Lang::class
     ],

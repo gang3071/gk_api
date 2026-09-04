@@ -573,6 +573,7 @@ return [
     'purchase_score_invalid' => 'Invalid purchase score',
     'purchase_score_not_allowed' => 'Purchase score is not in the allowed range',
     'purchase_ticket_success' => 'Ticket purchased successfully',
+    'chuzhi_version_incorrect' => 'Storage machine version is incorrect, please update',
 
     // Machine Commands
     'machine_command_failed' => 'Machine command failed',
