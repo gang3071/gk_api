@@ -18,11 +18,6 @@ class ChuzhiVersionMiddleware implements MiddlewareInterface
 {
     public function process(Request $request, callable $handler): Response
     {
-        // 获取版本号接口不做版本校验
-        if ($request->path() === '/chuzhi/ticket/version') {
-            return $handler($request);
-        }
-
         // 获取设备CPU ID
         $deviceCpuId = $request->header('DeviceCpuID', '');
         if (empty($deviceCpuId)) {
@@ -79,7 +74,7 @@ class ChuzhiVersionMiddleware implements MiddlewareInterface
         }
 
         // 版本号比对（只有配置了版本号且客户端传递了版本号才进行比对）
-        if (!empty($settingVersion) && !empty($clientVersion) && $settingVersion !== $clientVersion) {
+        if (!empty($settingVersion) && !empty($clientVersion) && $settingVersion > $clientVersion) {
             // 获取下载链接
             $downloadCacheKey = "chuzhi_download_" . $departmentId;
             $downloadUrl = Cache::get($downloadCacheKey);
