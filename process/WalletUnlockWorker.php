@@ -75,11 +75,11 @@ class WalletUnlockWorker
         $maxRetries = 10;
 
         try {
-            // ✅ 连接到 gk_work 的 Redis（使用 work_remote 连接池）
-            $config = config('redis.work_remote');
+            // ✅ 使用默认 Redis 连接（三个项目共用同一个Redis）
+            $config = config('redis.default');
 
             if (!$config) {
-                throw new \Exception('Redis work_remote 配置不存在，请在 config/redis.php 中添加');
+                throw new \Exception('Redis default 配置不存在');
             }
 
             $this->redis = new \Redis();
