@@ -1364,7 +1364,7 @@ class TicketController
 
         // 调用 MachineController 的 rechargeAndWithdraw 方法
         $machineController = new MachineController();
-        return $machineController->rechargeAndWithdraw($request);
+        return $machineController->rechargeAndWithdraw($request, 'storage_recharge');
     }
 
     /**
