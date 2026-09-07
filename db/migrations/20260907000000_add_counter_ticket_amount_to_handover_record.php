@@ -38,6 +38,30 @@ class AddCounterTicketAmountToHandoverRecord extends AbstractMigration
             ]);
         }
 
+        // 添加储值机购票字段
+        if (!$table->hasColumn('storage_ticket_purchase')) {
+            $table->addColumn('storage_ticket_purchase', 'decimal', [
+                'null' => false,
+                'precision' => 12,
+                'scale' => 2,
+                'default' => '0.00',
+                'comment' => '储值机购票金额（source_type=purchase）',
+                'after' => 'counter_redeem_amount',
+            ]);
+        }
+
+        // 添加储值机储值字段
+        if (!$table->hasColumn('storage_recharge')) {
+            $table->addColumn('storage_recharge', 'decimal', [
+                'null' => false,
+                'precision' => 12,
+                'scale' => 2,
+                'default' => '0.00',
+                'comment' => '储值机储值金额（投钞类型，source=storage_recharge）',
+                'after' => 'storage_ticket_purchase',
+            ]);
+        }
+
         $table->update();
     }
 
