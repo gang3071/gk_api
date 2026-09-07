@@ -1621,7 +1621,7 @@ class MachineController
      * @throws PlayerCheckException
      * @throws \think\Exception
      */
-    public function rechargeAndWithdraw(Request $request): Response
+    public function rechargeAndWithdraw(Request $request, string $deliverySource = 'machine_put_coins'): Response
     {
         $player = checkPlayer();
         $data = $request->all();
@@ -1736,7 +1736,7 @@ class MachineController
             $playerDeliveryRecord->target = $playerRechargeRecord->getTable();
             $playerDeliveryRecord->target_id = $playerRechargeRecord->id;
             $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_MACHINE;
-            $playerDeliveryRecord->source = 'machine_put_coins';
+            $playerDeliveryRecord->source = $deliverySource;
             $playerDeliveryRecord->amount = $playerRechargeRecord->point;
             $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
             $playerDeliveryRecord->amount_after = $afterGameAmount;
