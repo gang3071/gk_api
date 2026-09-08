@@ -1090,6 +1090,8 @@ class TicketController
             $totalScore = 0;
             $firstTicket = null;
             $playerIds = [];  // 收集所有非零的 player_id
+            $hasWithdrawType = false;  // 是否包含洗分票
+            $withdrawTicket = null;    // 第一张洗分票
 
             foreach ($tickets as $ticket) {
                 // 验证票据是否可操作
@@ -1097,6 +1099,14 @@ class TicketController
                 if ($validationResult !== null) {
                     $this->releaseIdempotent($requestId);
                     return $validationResult;
+                }
+
+                // 收集票据类型
+                if ((int)$ticket->ticket_type === TicketRecord::TYPE_WITHDRAW) {
+                    $hasWithdrawType = true;
+                    if ($withdrawTicket === null) {
+                        $withdrawTicket = $ticket;
+                    }
                 }
 
                 // 收集绑定的玩家ID（排除未绑定的）
@@ -1125,8 +1135,11 @@ class TicketController
             DB::beginTransaction();
 
             try {
-                // 使用第一张票据作为来源创建新票据
-                $newTicket = $this->createNewTicket($firstTicket, (float)$totalScore, TicketRecord::SOURCE_TYPE_MERGE);
+                // 确定新票类型：有洗分票则为洗分类型，全为开分票则为开分类型
+                $sourceTicket = $hasWithdrawType ? $withdrawTicket : $firstTicket;
+
+                // 使用确定的来源票据创建新票据
+                $newTicket = $this->createNewTicket($sourceTicket, (float)$totalScore, TicketRecord::SOURCE_TYPE_MERGE);
 
                 // 合票产生的新票不绑定用户
                 $newTicket->update([
