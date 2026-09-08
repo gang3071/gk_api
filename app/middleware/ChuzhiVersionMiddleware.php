@@ -73,7 +73,6 @@ class ChuzhiVersionMiddleware implements MiddlewareInterface
             // 缓存版本号（10分钟）
             Cache::set($versionCacheKey, $settingVersion, 600);
         }
-        Log::error('数据', [$settingVersion, $clientVersion, $deviceCpuId]);
         // 版本号比对（只有配置了版本号且客户端传递了版本号才进行比对）
         if (!empty($settingVersion) && !empty($clientVersion) && $settingVersion > $clientVersion) {
             // 获取下载链接
