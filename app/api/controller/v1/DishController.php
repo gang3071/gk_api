@@ -34,7 +34,7 @@ class DishController
 
         $list = DishCategory::query()
             ->where('status', DishCategory::STATUS_ACTIVE)
-            ->select(['id', 'title', 'content', 'picture', 'sort', 'top'])
+            ->select(['id', 'title', 'sort', 'top'])
             ->orderBy('top', 'desc')
             ->orderBy('sort', 'desc')
             ->orderBy('id', 'asc')
