@@ -556,6 +556,32 @@ return [
     'ticket_machine_is_opening' => 'マシン:codeが抽選中、福利券/体験券を使用できません',
     'ticket_cross_store_not_allowed' => 'この開分コードは現在の店舗に属していないため、使用できません',
 
+    // チケット分割/結合関連
+    'ticket_split_success' => 'チケット分割成功',
+    'ticket_merge_success' => 'チケット結合成功',
+    'ticket_split_score_invalid' => '分割スコアが無効です',
+    'ticket_split_score_too_large' => '分割スコアは元のチケットスコア以上にすることはできません',
+    'ticket_not_withdraw_type' => 'ウォッシュタイプのチケットのみ分割/結合操作が可能です',
+    'ticket_cannot_split' => 'チャージタイプのチケットは分割できません',
+    'ticket_disabled' => 'このチケットは無効になっています',
+    'ticket_backend_used' => 'このチケットはバックエンドで使用済みです',
+    'ticket_machine_used' => 'このチケットはマシンで使用済みです',
+    'ticket_already_split' => 'このチケットは分割済みです',
+    'ticket_already_merged' => 'このチケットは結合済みです',
+    'ticket_id_required' => 'チケットIDは必須です',
+    'ticket_ids_required' => 'チケットIDリストは必須です',
+    'ticket_merge_min_two' => '結合には少なくとも2枚のチケットが必要です',
+    'ticket_merge_different_players' => '異なるプレイヤーのチケットは結合できません',
+    'ticket_device_store_mismatch' => 'チケットとデバイスが同じ店舗にありません',
+
+    // 貯金機チケット購入関連
+    'device_not_storage_machine' => '貯金機のみがこの操作を実行できます',
+    'purchase_config_not_found' => '購入設定が見つかりません',
+    'purchase_score_invalid' => '購入スコアが無効です',
+    'purchase_score_not_allowed' => '購入スコアが許可範囲内にありません',
+    'purchase_ticket_success' => 'チケット購入成功',
+    'chuzhi_version_incorrect' => 'ストレージマシンのバージョンが正しくありません。更新してください',
+
     // マシンコマンド関連
     'machine_command_failed' => 'マシンコマンド送信失敗',
     'machine_action_failed' => 'マシン操作実行失敗',
@@ -589,4 +615,13 @@ return [
     'ticket_kind_exchange_desc' => '交換券は近日公開予定です。',
     'ticket_kind_wheel' => '回転盤券',
     'ticket_kind_wheel_desc' => '回転盤券は近日公開予定です。',
+    'dishes' => '料理リスト',
+    'dish_order_empty' => '注文料理が空です',
+    'dish_not_found' => '料理が見つかりません',
+    'dish_daily_limit_exceeded' => 'この料理は本日の限定数量に達しました',
+    'dish_order_not_found' => '注文が見つかりません',
+    'dish_order_invalid_status' => '無効な注文ステータスです',
+    'dish_order_status_transition_error' => '現在の注文ステータスではこの操作はできません',
+    'order_id' => '注文ID',
+    'dish_cancel_not_allowed' => '注文が調理中でキャンセルできません',
 ];

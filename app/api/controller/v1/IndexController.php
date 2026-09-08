@@ -14,18 +14,18 @@ use app\model\Notice;
 use app\model\PhoneSmsLog;
 use app\model\Player;
 use app\model\PlayerActivityPhaseRecord;
+use app\model\PlayerDeliveryRecord;
 use app\model\PlayerLotteryRecord;
 use app\model\PlayerRechargeRecord;
 use app\model\PlayerRegisterRecord;
 use app\model\PlayerReverseWaterDetail;
 use app\model\PlayerWithdrawRecord;
-use app\model\PlayerDeliveryRecord;
 use app\model\PlayGameRecord;
 use app\model\SystemSetting;
 use app\service\ActivityServices;
 use app\service\LineServices;
-use app\service\WalletService;
 use app\service\SmsServicesServices;
+use app\service\WalletService;
 use Illuminate\Support\Carbon;
 use Respect\Validation\Exceptions\AllOfException;
 use Respect\Validation\Validator as v;
@@ -201,21 +201,7 @@ class IndexController
             'client' => $deviceType, // ✅ 添加设备类型，用于单点登录区分
         ];
 
-        \support\Log::info('[Login] 密码登录成功，生成token', [
-            'player_id' => $player->id,
-            'phone' => $player->phone,
-            'department_id' => request()->department_id,
-            'ip' => request()->getRealIp(),
-            'device_type' => $deviceType, // 记录设备类型
-        ]);
-
         $token = JwtToken::generateToken($tokenPayload);
-
-        \support\Log::info('[Login] Token生成完成', [
-            'player_id' => $player->id,
-            'token_type' => gettype($token),
-            'token_is_array' => is_array($token),
-        ]);
 
         return jsonSuccessResponse('success', [
             'token' => $token,

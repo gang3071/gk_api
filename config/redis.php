@@ -13,7 +13,12 @@
  */
 
 return [
-    // ========== 向后兼容：default 指向 api ==========
+    // ========== 默认连接 ==========
+    // ⚠️ 三个项目（gk_admin、gk_work、gk_api）共用同一个Redis
+    // 用途：
+    //   1. 业务缓存（玩家信息、配置等）
+    //   2. 队列（redis-queue）
+    //   3. Pub/Sub（balance:change 频道）
     'default' => [
         'host' => env('REDIS_HOST', '127.0.0.1'),
         'password' => env('REDIS_PASSWORD', null),
@@ -26,29 +31,6 @@ return [
 
         'options' => [
             'prefix' => env('REDIS_PREFIX', ''),
-            'parameters' => [
-                'tcp_nodelay' => true,
-            ],
-        ],
-    ],
-
-    // ========================================
-    // gk_work Redis 连接（用于订阅 Pub/Sub）
-    // ========================================
-    // 用途：WalletUnlockWorker 订阅 balance:change 频道
-    // 注意：需要连接到 gk_work 的 Redis 服务器
-    'work_remote' => [
-        'host' => env('WORK_REDIS_HOST', '127.0.0.1'),
-        'password' => env('WORK_REDIS_PASSWORD', null),
-        'port' => env('WORK_REDIS_PORT', 6379),
-        'database' => env('WORK_REDIS_DB', 0),  // 确保与 gk_work 的 db 一致
-        'timeout' => 2,
-        'read_timeout' => 2,
-        'persistent' => false,  // Pub/Sub 不需要持久连接
-        'retry_interval' => 100,
-
-        'options' => [
-            'prefix' => '',  // Pub/Sub 不需要前缀
             'parameters' => [
                 'tcp_nodelay' => true,
             ],

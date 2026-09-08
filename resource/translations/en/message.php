@@ -559,6 +559,32 @@ return [
     'ticket_machine_is_opening' => 'Machine :code is drawing, cannot use welfare/experience ticket',
     'ticket_cross_store_not_allowed' => 'This open score code does not belong to current store and cannot be used',
 
+    // Ticket Split/Merge
+    'ticket_split_success' => 'Ticket split successfully',
+    'ticket_merge_success' => 'Ticket merge successfully',
+    'ticket_split_score_invalid' => 'Invalid split score',
+    'ticket_split_score_too_large' => 'Split score cannot be greater than or equal to original ticket score',
+    'ticket_not_withdraw_type' => 'Only wash type tickets can be split or merged',
+    'ticket_cannot_split' => 'Recharge type tickets cannot be split',
+    'ticket_disabled' => 'This ticket has been disabled',
+    'ticket_backend_used' => 'This ticket has been used by backend',
+    'ticket_machine_used' => 'This ticket has been used at machine',
+    'ticket_already_split' => 'This ticket has already been split',
+    'ticket_already_merged' => 'This ticket has already been merged',
+    'ticket_id_required' => 'Ticket ID is required',
+    'ticket_ids_required' => 'Ticket ID list is required',
+    'ticket_merge_min_two' => 'Merge requires at least two tickets',
+    'ticket_merge_different_players' => 'Tickets from different players cannot be merged',
+    'ticket_device_store_mismatch' => 'Ticket and device are not in the same store',
+
+    // Storage Machine Purchase
+    'device_not_storage_machine' => 'Only storage machines can perform this operation',
+    'purchase_config_not_found' => 'Purchase configuration not found',
+    'purchase_score_invalid' => 'Invalid purchase score',
+    'purchase_score_not_allowed' => 'Purchase score is not in the allowed range',
+    'purchase_ticket_success' => 'Ticket purchased successfully',
+    'chuzhi_version_incorrect' => 'Storage machine version is incorrect, please update',
+
     // Machine Commands
     'machine_command_failed' => 'Machine command failed',
     'machine_action_failed' => 'Machine action failed',
@@ -592,4 +618,13 @@ return [
     'ticket_kind_exchange_desc' => 'Exchange tickets are coming soon.',
     'ticket_kind_wheel' => 'Wheel Ticket',
     'ticket_kind_wheel_desc' => 'Wheel tickets are coming soon.',
+    'dishes' => 'Dish list',
+    'dish_order_empty' => 'Order dishes cannot be empty',
+    'dish_not_found' => 'Dish not found',
+    'dish_daily_limit_exceeded' => 'This dish has reached its daily limit, cannot order more',
+    'dish_order_not_found' => 'Order not found',
+    'dish_order_invalid_status' => 'Invalid order status',
+    'dish_order_status_transition_error' => 'Operation not allowed in current order status',
+    'order_id' => 'Order ID',
+    'dish_cancel_not_allowed' => 'Order is being prepared, cannot be cancelled',
 ];

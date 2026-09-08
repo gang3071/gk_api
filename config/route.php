@@ -12,6 +12,7 @@
  * @license   http://www.opensource.org/licenses/mit-license.php MIT License
  */
 
+use app\middleware\ChuzhiVersionMiddleware;
 use Webman\Route;
 
 Route::options('[{path:.+}]', function () {
@@ -245,7 +246,6 @@ Route::group('/api', function () {
         Route::post('/ticket/scan-open-score', [\app\api\controller\v1\TicketController::class, 'scanOpenScore']);
         // 查询出票记录
         Route::post('/ticket/records', [\app\api\controller\v1\TicketController::class, 'ticketRecords']);
-
         // line登录
         Route::post('/line-login', [\app\api\controller\v1\IndexController::class, 'lineLogin']);
         // line绑定
@@ -362,6 +362,26 @@ Route::group('/api', function () {
         Route::post('/deposit-bonus/withdrawable-balance', [\app\api\controller\v1\DepositBonusPlayerController::class, 'getWithdrawableBalance']);
         // 获取首页押码量卡片
         Route::post('/deposit-bonus/home-bet-card', [\app\api\controller\v1\DepositBonusPlayerController::class, 'getHomeBetCard']);
+
+        // ========== 點餐系統 ==========
+        // 菜品分類列表
+        Route::post('/dish/category-list', [\app\api\controller\v1\DishController::class, 'categoryList']);
+        // 菜品列表
+        Route::post('/dish/list', [\app\api\controller\v1\DishController::class, 'dishList']);
+        // 客人下單
+        Route::post('/dish/order', [\app\api\controller\v1\DishController::class, 'dishOrder']);
+        // 我的訂單列表
+        Route::post('/dish/my-orders', [\app\api\controller\v1\DishController::class, 'myOrders']);
+        // 訂單詳情（客人）
+        Route::post('/dish/order-detail', [\app\api\controller\v1\DishController::class, 'orderDetail']);
+        // 取消訂單（客人）
+        Route::post('/dish/cancel', [\app\api\controller\v1\DishController::class, 'cancel']);
+        // 店家訂單列表
+        Route::post('/dish-admin/order-list', [\app\api\controller\v1\DishAdminController::class, 'orderList']);
+        // 店家訂單詳情
+        Route::post('/dish-admin/order-detail', [\app\api\controller\v1\DishAdminController::class, 'orderDetail']);
+        // 店家更新訂單狀態（出餐）
+        Route::post('/dish-admin/update-status', [\app\api\controller\v1\DishAdminController::class, 'updateStatus']);
     });
     Route::group('/auth', function () {
         // 绑定Q-talk账号
@@ -369,7 +389,36 @@ Route::group('/api', function () {
         // 获取Q-talk账号信息
         Route::post('/get-talk-profile', [\app\api\controller\Auth\TalkOAuthController::class, 'getTalkProfile']);
     });
+
 });
+
+Route::group('/chuzhi',function(){
+    // ========== 储值机专用接口 ==========
+    // 玩家登录
+    Route::post('/login', [\app\api\controller\v1\IndexController::class, 'login']);
+    // 获取用户信息
+    Route::post('/player-info', [\app\api\controller\v1\PlayerController::class, 'playerInfo']);
+    // 呼叫服务铃
+    Route::post('/call-service', [\app\api\controller\v1\DeviceServiceController::class, 'callService']);
+
+    // ========== 票据相关接口 ==========
+    // 扫码获取票据详情
+    Route::post('/ticket/scan-detail', [\app\api\controller\v1\TicketController::class, 'scanDetail']);
+    // 拆票
+    Route::post('/ticket/split', [\app\api\controller\v1\TicketController::class, 'splitTicket']);
+    // 合票
+    Route::post('/ticket/merge', [\app\api\controller\v1\TicketController::class, 'mergeTicket']);
+    // 获取购票配置
+    Route::post('/ticket/purchase-config', [\app\api\controller\v1\TicketController::class, 'getPurchaseConfig']);
+    // 购票
+    Route::post('/ticket/purchase', [\app\api\controller\v1\TicketController::class, 'purchaseTicket']);
+    // 获取储值机版本号
+    Route::post('/ticket/version', [\app\api\controller\v1\TicketController::class, 'getVersion']);
+    // 储值机投钞（内部调用 rechargeAndWithdraw）
+    Route::post('/storage-recharge-and-withdraw', [\app\api\controller\v1\TicketController::class, 'storageRechargeAndWithdraw']);
+})->middleware([
+    ChuzhiVersionMiddleware::class,
+]);
 
 // 外部API
 Route::group('/external', function () {

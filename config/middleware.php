@@ -29,5 +29,5 @@ return [
     //单一钱包中间件
     'wallet' => [
         Lang::class
-    ],
+    ]
 ];

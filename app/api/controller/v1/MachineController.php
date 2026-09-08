@@ -1620,7 +1620,7 @@ class MachineController
      * @throws PlayerCheckException
      * @throws \think\Exception
      */
-    public function rechargeAndWithdraw(Request $request): Response
+    public function rechargeAndWithdraw(Request $request, string $deliverySource = 'machine_put_coins'): Response
     {
         $player = checkPlayer();
         $data = $request->all();
@@ -1658,6 +1658,12 @@ class MachineController
         if ($crashCheck['crashed']) {
             $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('machine_crashed_cannot_recharge', [], 'message'));
+        }
+
+
+        // 🔒 检查钱包是否被锁定
+        if (\app\service\WalletService::isWalletLocked($player->id)) {
+            return jsonFailResponse(trans('wallet_locked', [], 'message'));
         }
 
         // 渠道检查
@@ -1729,7 +1735,7 @@ class MachineController
             $playerDeliveryRecord->target = $playerRechargeRecord->getTable();
             $playerDeliveryRecord->target_id = $playerRechargeRecord->id;
             $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_MACHINE;
-            $playerDeliveryRecord->source = 'machine_put_coins';
+            $playerDeliveryRecord->source = $deliverySource;
             $playerDeliveryRecord->amount = $playerRechargeRecord->point;
             $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
             $playerDeliveryRecord->amount_after = $afterGameAmount;

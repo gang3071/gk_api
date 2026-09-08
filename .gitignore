@@ -83,6 +83,7 @@ Desktop.ini
 /*.sql
 !db/migrations/*.sql
 /*.sh
+/.scratch
 !deploy*.sh
 
 # 忽略文档目录

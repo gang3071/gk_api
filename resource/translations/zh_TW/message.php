@@ -565,6 +565,32 @@ return [
     'ticket_machine_is_opening' => '機台:code正在開獎中，無法使用福利卷/體驗卷',
     'ticket_cross_store_not_allowed' => '此開分碼不屬於當前店鋪，無法使用',
 
+    // 拆票/合票相關
+    'ticket_split_success' => '拆票成功',
+    'ticket_merge_success' => '合票成功',
+    'ticket_split_score_invalid' => '拆分分值無效',
+    'ticket_split_score_too_large' => '拆分分值不能大於等於原票分值',
+    'ticket_not_withdraw_type' => '只有洗分類型的票據才能進行拆分/合併操作',
+    'ticket_cannot_split' => '開分類型的票據不能拆分',
+    'ticket_disabled' => '該票據已被禁用',
+    'ticket_backend_used' => '該票據已被後台使用',
+    'ticket_machine_used' => '該票據已在機台使用',
+    'ticket_already_split' => '該票據已拆分',
+    'ticket_already_merged' => '該票據已合併',
+    'ticket_id_required' => '票據ID不能為空',
+    'ticket_ids_required' => '票據ID列表不能為空',
+    'ticket_merge_min_two' => '合票至少需要兩張票據',
+    'ticket_merge_different_players' => '不同玩家的票據不能合併',
+    'ticket_device_store_mismatch' => '票據和設備不在同一店鋪',
+
+    // 儲值機購票相關
+    'device_not_storage_machine' => '只有儲值機才能執行此操作',
+    'purchase_config_not_found' => '未找到購分配置',
+    'purchase_score_invalid' => '購分分值無效',
+    'purchase_score_not_allowed' => '購分分值不在允許範圍內',
+    'purchase_ticket_success' => '購票成功',
+    'chuzhi_version_incorrect' => '儲值機版本號不正確，請更新',
+
     // 機台指令相關
     'machine_command_failed' => '機台指令發送失敗',
     'machine_action_failed' => '機台操作執行失敗',
@@ -587,6 +613,15 @@ return [
     'amount_calculation_too_large' => '計算金額異常：超過單次限制（100萬元），請檢查機台賠率配置',
     'machine_odds_config_error' => '機台賠率配置錯誤',
     'ticket_playing_machine' => '請先停止當前遊玩機台',
+    'dishes' => '餐點列表',
+    'dish_order_empty' => '訂單餐點不能為空',
+    'dish_not_found' => '餐點不存在',
+    'dish_daily_limit_exceeded' => '該餐點今日已達每日限量，無法再點',
+    'dish_order_not_found' => '訂單不存在',
+    'dish_order_invalid_status' => '無效的訂單狀態',
+    'dish_order_status_transition_error' => '訂單目前狀態不允許此操作',
+    'order_id' => '訂單ID',
+    'dish_cancel_not_allowed' => '訂單已進入製作，無法取消',
     'store_not_found' => '未找到門店',
 
     // 劵匣
