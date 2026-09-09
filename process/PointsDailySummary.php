@@ -29,6 +29,11 @@ class PointsDailySummary
      */
     private $log;
 
+    /**
+     * @var Crontab[] 保存定时任务实例，防止被GC回收
+     */
+    private array $crontabs = [];
+
     public function __construct()
     {
         $this->log = Log::channel('player_points');
@@ -55,7 +60,8 @@ class PointsDailySummary
 
         // 注册定时任务
         // 默认：每天凌晨 2:00 执行
-        new Crontab($cron, function () {
+        // ⚠️ 必须保存 Crontab 实例，否则会被GC回收导致进程退出
+        $this->crontabs[] = new Crontab($cron, function () {
             $this->executeDailySummary();
         });
 
@@ -64,7 +70,7 @@ class PointsDailySummary
         ]);
 
         // 每分钟批量同步脏数据（高频打码的玩家）
-        new Crontab('* * * * *', function () {
+        $this->crontabs[] = new Crontab('* * * * *', function () {
             $this->executeSyncDirtyPlayers();
         });
 
@@ -74,7 +80,7 @@ class PointsDailySummary
         ]);
 
         // 每小时全量同步一次 Redis 到 MySQL（兜底保证数据一致性）
-        new Crontab('0 * * * *', function () {
+        $this->crontabs[] = new Crontab('0 * * * *', function () {
             $this->executeSyncToMySQL();
         });
 
