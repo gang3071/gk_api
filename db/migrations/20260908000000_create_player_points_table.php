@@ -1,7 +1,6 @@
 <?php
 
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Database\Migrations\Migration;
+use Phinx\Migration\AbstractMigration;
 use support\Db;
 
 /**
@@ -15,7 +14,7 @@ use support\Db;
  * @author Claude Code
  * @date 2026-09-08
  */
-class CreatePlayerPointsTable extends Migration
+class CreatePlayerPointsTable extends AbstractMigration
 {
     /**
      * Run the migrations.
