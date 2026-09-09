@@ -27,9 +27,12 @@ class PlayerPointsSyncDaily
             return;
         }
 
+        // ✅ 显式绑定 $this，避免闭包作用域问题
+        $self = $this;
+
         // 每天凌晨2点执行
-        new Crontab($cron, function () {
-            $this->sync();
+        new Crontab($cron, function () use ($self) {
+            $self->sync();
         });
 
         Log::channel('player_points')->info('PlayerPointsSyncDaily: 已启动', [
@@ -65,9 +68,6 @@ class PlayerPointsSyncDaily
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
-
-            // 可选：发送告警通知
-            // $this->sendAlert('积分每日汇总失败', $e->getMessage());
         }
     }
 }

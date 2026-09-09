@@ -17,9 +17,12 @@ class PlayerPointsSyncMinutely
 {
     public function onWorkerStart()
     {
+        // ✅ 显式绑定 $this，避免闭包作用域问题
+        $self = $this;
+
         // 每分钟执行
-        new Crontab('* * * * *', function () {
-            $this->sync();
+        new Crontab('* * * * *', function () use ($self) {
+            $self->sync();
         });
 
         Log::channel('player_points')->info('PlayerPointsSyncMinutely: 已启动', [
