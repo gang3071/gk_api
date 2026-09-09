@@ -287,7 +287,7 @@ class PlayerPointsService
                     'total_points' => Db::raw('total_points + ' . (int)$points),
                     'available_points' => Db::raw('available_points + ' . (int)$points),
                     'version' => $currentVersion + 1,
-                    'updated_at' => now(),
+                    'updated_at' => date('Y-m-d H:i:s'),
                 ]);
 
             if ($affected === 0) {
@@ -744,7 +744,7 @@ LUA;
                     'available_points' => Db::raw('available_points - ' . (int)$points),
                     'used_points' => Db::raw('used_points + ' . (int)$points),
                     'version' => $currentVersion + 1,
-                    'updated_at' => now(),
+                    'updated_at' => date('Y-m-d H:i:s'),
                 ]);
 
             if ($affected === 0) {
@@ -915,7 +915,7 @@ LUA;
                     'available_points' => Db::raw('available_points - ' . (int)$points),
                     'frozen_points' => Db::raw('frozen_points + ' . (int)$points),
                     'version' => $currentVersion + 1,
-                    'updated_at' => now(),
+                    'updated_at' => date('Y-m-d H:i:s'),
                 ]);
 
             if ($affected === 0) {
@@ -1027,7 +1027,7 @@ LUA;
             $updateData = [
                 'frozen_points' => Db::raw('frozen_points - ' . (int)$points),
                 'version' => $currentVersion + 1,
-                'updated_at' => now(),
+                'updated_at' => date('Y-m-d H:i:s'),
             ];
 
             if ($deduct) {
@@ -1494,7 +1494,7 @@ LUA;
                                 'available_points' => $redisPoints['available_points'],
                                 'frozen_points' => $redisPoints['frozen_points'],
                                 'version' => $currentVersion + 1,
-                                'updated_at' => now(),
+                                'updated_at' => date('Y-m-d H:i:s'),
                             ]);
 
                         if ($affected > 0) {
@@ -1645,7 +1645,7 @@ LUA;
                                 'available_points' => $redisPoints['available_points'],
                                 'frozen_points' => $redisPoints['frozen_points'],
                                 'version' => $currentVersion + 1,
-                                'updated_at' => now(),
+                                'updated_at' => date('Y-m-d H:i:s'),
                             ]);
 
                         if ($affected > 0) {
