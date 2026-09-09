@@ -94,7 +94,7 @@ class PlayerPointsService
             if (!empty($recordIds)) {
                 // ✅ 优化：只查第一条记录的平台代码（避免JOIN大量记录）
                 $platformCode = PlayGameRecord::query()
-                    ->whereIn('id', $recordIds)
+                    ->whereIn('play_game_record.id', $recordIds)
                     ->join('game_platform', 'play_game_record.platform_id', '=', 'game_platform.id')
                     ->limit(1)
                     ->value('game_platform.code') ?? 'DEFAULT';
