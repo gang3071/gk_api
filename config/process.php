@@ -48,16 +48,38 @@ return [
     ],
 
     // ========================================
-    // 积分每日汇总定时任务
+    // 积分同步定时任务（拆分为3个独立进程）
     // ========================================
-    // 每天凌晨 2:00 执行
-    // - 汇总昨天的积分数据
-    // - 同步 Redis 数据到 MySQL
-    // - 确保数据一致性
-    'points_daily_summary' => [
-        'handler' => \process\PointsDailySummary::class,
+
+    // 每分钟批量同步脏数据（高频打码玩家）
+    'points_sync_minutely' => [
+        'handler' => \process\PlayerPointsSyncMinutely::class,
         'listen' => '',
-        'count' => 1,  // 只需要 1 个进程
+        'count' => 1,
+        'user' => '',
+        'group' => '',
+        'reloadable' => true,
+        'reusePort' => false,
+        'constructor' => [],
+    ],
+
+    // 每小时全量同步（兜底机制）
+    'points_sync_hourly' => [
+        'handler' => \process\PlayerPointsSyncHourly::class,
+        'listen' => '',
+        'count' => 1,
+        'user' => '',
+        'group' => '',
+        'reloadable' => true,
+        'reusePort' => false,
+        'constructor' => [],
+    ],
+
+    // 每日汇总统计（凌晨2点）
+    'points_sync_daily' => [
+        'handler' => \process\PlayerPointsSyncDaily::class,
+        'listen' => '',
+        'count' => 1,
         'user' => '',
         'group' => '',
         'reloadable' => true,
