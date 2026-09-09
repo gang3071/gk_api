@@ -20,7 +20,7 @@ class PlayerPointsSyncDaily
         // 获取配置
         $config = config('points_config');
         $enabled = $config['daily_summary_enabled'] ?? true;
-        $cron = $config['summary_cron'] ?? '0 2 * * *';
+        $cron = $config['summary_cron'] ?? '0 0 2 * * *';
 
         if (!$enabled) {
             Log::channel('player_points')->warning('PlayerPointsSyncDaily: 每日汇总已禁用');
@@ -36,7 +36,7 @@ class PlayerPointsSyncDaily
         });
 
         Log::channel('player_points')->info('PlayerPointsSyncDaily: 已启动', [
-            'schedule' => $cron,
+            'schedule' => $cron . ' (秒 分 时 日 月 周)',
             'description' => '每日汇总统计',
         ]);
     }

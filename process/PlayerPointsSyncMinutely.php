@@ -20,8 +20,8 @@ class PlayerPointsSyncMinutely
         // ✅ 显式绑定 $this，避免闭包作用域问题
         $self = $this;
 
-        // 每分钟执行
-        new Crontab('* * * * *', function () use ($self) {
+        // 每分钟的第0秒执行
+        new Crontab('0 * * * * *', function () use ($self) {
             $self->sync();
         });
 
