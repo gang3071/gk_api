@@ -12,6 +12,7 @@
  * @license   http://www.opensource.org/licenses/mit-license.php MIT License
  */
 
+use app\middleware\ApiSignGuardMiddleware;
 use app\middleware\DeviceCollectMiddleware;
 use app\middleware\Lang;
 use app\middleware\SiteAuthMiddleware;
