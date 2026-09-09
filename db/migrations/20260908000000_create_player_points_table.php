@@ -15,7 +15,7 @@ use support\Db;
  * @author Claude Code
  * @date 2026-09-08
  */
-return new class extends Migration
+class CreatePlayerPointsTable extends Migration
 {
     /**
      * Run the migrations.
@@ -72,4 +72,4 @@ return new class extends Migration
         $schema->dropIfExists('player_points');
         echo "✅ 已删除 player_points 表\n";
     }
-};
+}

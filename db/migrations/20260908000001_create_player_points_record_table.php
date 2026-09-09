@@ -26,7 +26,7 @@ use support\Db;
  * @author Claude Code
  * @date 2026-09-08
  */
-return new class extends Migration
+class CreatePlayerPointsRecordTable extends Migration
 {
     /**
      * Run the migrations.
@@ -108,4 +108,4 @@ return new class extends Migration
         $schema->dropIfExists('player_points_record');
         echo "✅ 已删除 player_points_record 表\n";
     }
-};
+}
