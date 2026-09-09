@@ -9,6 +9,8 @@ use app\model\DishCategory;
 use app\model\DishOrder;
 use app\model\DishOrderItem;
 use app\model\Notice;
+use app\model\PlayerPointsRecord;
+use app\service\PlayerPointsService;
 use Carbon\Carbon;
 use Exception;
 use Respect\Validation\Exceptions\AllOfException;
@@ -171,6 +173,14 @@ class DishController
             }
         }
 
+        // 检查玩家积分是否足够
+        $pointsNeeded = intval($totalAmount);
+        if (!PlayerPointsService::hasEnoughPoints($player->id, $pointsNeeded)) {
+            return jsonFailResponse(trans('points_not_enough', [], 'message'), [
+                'points_needed' => $pointsNeeded,
+            ]);
+        }
+
         Db::beginTransaction();
         try {
             $order = new DishOrder();
@@ -187,6 +197,25 @@ class DishController
                 $oi['order_id'] = $order->id;
             }
             DishOrderItem::insert($orderItems);
+
+            // 扣除积分（useTransaction=false，使用外层事务）
+            $deductSuccess = PlayerPointsService::deductPoints(
+                $player->id,
+                $pointsNeeded,
+                2, // 类型：兑换消耗
+                '点餐消费：' . $order->order_no,
+                [
+                    'order_id' => $order->id,
+                    'order_no' => $order->order_no,
+                    'source_type' => 'dish_order',
+                ],
+                null,  // adminInfo
+                false  // ✅ 不使用事务，复用外层事务
+            );
+
+            if (!$deductSuccess) {
+                throw new Exception('扣除积分失败');
+            }
 
             Db::commit();
 
@@ -306,26 +335,67 @@ class DishController
             return jsonFailResponse(getValidationMessages($e));
         }
 
-        $order = DishOrder::query()
-            ->where('id', $data['order_id'])
-            ->where('player_id', $player->id)
-            ->first();
+        Db::beginTransaction();
+        try {
+            // ✅ 使用悲观锁防止并发取消（FOR UPDATE）
+            $order = DishOrder::query()
+                ->where('id', $data['order_id'])
+                ->where('player_id', $player->id)
+                ->lockForUpdate()  // 行级锁，防止并发修改
+                ->first();
 
-        if (empty($order)) {
-            return jsonFailResponse(trans('dish_order_not_found', [], 'message'));
+            if (empty($order)) {
+                Db::rollBack();
+                return jsonFailResponse(trans('dish_order_not_found', [], 'message'));
+            }
+
+            // ✅ 在锁内再次检查状态（防止并发竞态）
+            // 僅待確認/已確認狀態可由玩家取消；製作中之後客戶端無法取消
+            if (!in_array($order->status, [DishOrder::STATUS_PENDING, DishOrder::STATUS_CONFIRMED])) {
+                Db::rollBack();
+                return jsonFailResponse(trans('dish_cancel_not_allowed', [], 'message'));
+            }
+
+            // 更新订单状态为已取消
+            $order->status = DishOrder::STATUS_CANCELLED;
+            $order->save();
+
+            // 返还积分
+            $pointsToReturn = intval($order->total_amount);
+            if ($pointsToReturn > 0) {
+                $returnResult = PlayerPointsService::addPoints(
+                    $player->id,
+                    $pointsToReturn,
+                    PlayerPointsRecord::TYPE_REFUND, // 类型：订单退款
+                    PlayerPointsRecord::SOURCE_REFUND, // 来源：退款
+                    '取消订单退款：' . $order->order_no,
+                    [
+                        'order_id' => $order->id,
+                        'order_no' => $order->order_no,
+                        'source_type' => 'dish_order_cancel',
+                    ]
+                );
+
+                if (!isset($returnResult['points_added'])) {
+                    throw new Exception('返还积分失败');
+                }
+            }
+
+            Db::commit();
+
+            return jsonSuccessResponse('success', [
+                'order_id' => $order->id,
+                'status' => $order->status,
+                'points_returned' => $pointsToReturn,
+            ]);
+        } catch (Exception $e) {
+            Db::rollBack();
+            Log::error('取消订单失败', [
+                'order_id' => $data['order_id'] ?? 0,
+                'player_id' => $player->id,
+                'error' => $e->getMessage(),
+            ]);
+            return jsonFailResponse(trans('system_error', [], 'message'));
         }
-
-        // 僅待確認/已確認狀態可由玩家取消；製作中之後客戶端無法取消
-        if (!in_array($order->status, [DishOrder::STATUS_PENDING, DishOrder::STATUS_CONFIRMED])) {
-            return jsonFailResponse(trans('dish_cancel_not_allowed', [], 'message'));
-        }
-
-        $order->status = DishOrder::STATUS_CANCELLED;
-        $order->save();
-
-        return jsonSuccessResponse('success', [
-            'order_id' => $order->id,
-            'status' => $order->status,
-        ]);
     }
 }

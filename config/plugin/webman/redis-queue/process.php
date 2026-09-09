@@ -1,17 +1,43 @@
 <?php
 /**
  * Redis 队列进程配置
- * 注意：本项目只作为生产者发送消息，消费者进程在 worker 服务器运行
- * 因此这里禁用消费者进程，避免重复消费
+ *
+ * 架构说明：
+ * - gk_api：处理积分队列消费（本项目）
+ * - gk_work：发送积分队列消息（跨项目投递）
+ *
+ * 跨项目队列：
+ * - gk_work 和 gk_api 共用同一个 Redis
+ * - gk_work 可以通过 \Webman\RedisQueue\Client::send() 发送到任何队列
+ * - gk_api 的消费者会自动消费队列消息
+ * - 队列名称作为路由，不受项目限制
  */
 return [
-    'consumer'  => [
-        'handler'     => Webman\RedisQueue\Process\Consumer::class,
-        'count'       => 0, // 设置为 0 禁用消费者进程
-        'enable'      => false, // 禁用消费者
+    // ============================================================
+    // 快业务消费者（积分队列）
+    // ============================================================
+    // 处理玩家积分相关的实时业务
+    // 包括：打码获得积分、积分兑换、积分过期等
+    // ============================================================
+    'redis_consumer_fast' => [
+        'handler' => Webman\RedisQueue\Process\Consumer::class,
+        'count' => 2, // 2个进程处理积分队列（根据实际负载调整）
         'constructor' => [
-            // 消费者类目录
-            'consumer_dir' => app_path() . '/queue/redis'
+            'consumer_dir' => app_path() . '/queue/redis/fast'
+        ]
+    ],
+
+    // ============================================================
+    // 慢业务消费者（积分记录汇总）
+    // ============================================================
+    // 处理可以延迟的后台任务
+    // 包括：每日积分汇总、积分统计等
+    // ============================================================
+    'redis_consumer_slow' => [
+        'handler' => Webman\RedisQueue\Process\Consumer::class,
+        'count' => 1, // 1个进程处理慢业务
+        'constructor' => [
+            'consumer_dir' => app_path() . '/queue/redis/slow'
         ]
     ]
 ];

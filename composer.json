@@ -37,6 +37,7 @@
     "webman/log": "^1.1",
     "webman/redis-queue": "^1.2",
     "webman/push": "^1.0",
+    "workerman/crontab": "^1.0",
     "yzh52521/webman-lock": "^1.0",
     "graham-campbell/result-type": "^1.1",
     "phpoption/phpoption": "^1.9",

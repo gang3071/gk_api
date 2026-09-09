@@ -545,4 +545,30 @@ return [
             ]
         ],
     ],
+
+    // ========================================
+    // 玩家积分系统日志
+    // ========================================
+    // 用途：记录积分系统的所有操作
+    // - 打码获得积分
+    // - 扣除积分（兑换、订单）
+    // - 冻结/解冻积分
+    // - 批量同步 Redis → MySQL
+    // - 每日汇总任务
+    'player_points' => [
+        'handlers' => [
+            [
+                'class' => Monolog\Handler\RotatingFileHandler::class,
+                'constructor' => [
+                    runtime_path() . '/logs/player_points.log',
+                    7, // 保留 7 天
+                    Monolog\Logger::DEBUG,
+                ],
+                'formatter' => [
+                    'class' => Monolog\Formatter\LineFormatter::class,
+                    'constructor' => [null, 'Y-m-d H:i:s', true],
+                ],
+            ]
+        ],
+    ],
 ];

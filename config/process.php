@@ -46,4 +46,22 @@ return [
         'reusePort' => false,
         'constructor' => [],
     ],
+
+    // ========================================
+    // 积分每日汇总定时任务
+    // ========================================
+    // 每天凌晨 2:00 执行
+    // - 汇总昨天的积分数据
+    // - 同步 Redis 数据到 MySQL
+    // - 确保数据一致性
+    'points_daily_summary' => [
+        'handler' => \process\PointsDailySummary::class,
+        'listen' => '',
+        'count' => 1,  // 只需要 1 个进程
+        'user' => '',
+        'group' => '',
+        'reloadable' => true,
+        'reusePort' => false,
+        'constructor' => [],
+    ],
 ];
