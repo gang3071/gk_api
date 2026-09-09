@@ -1,74 +1,87 @@
 <?php
 
 use Phinx\Migration\AbstractMigration;
-use support\Db;
 
 /**
  * 创建玩家积分主表
- *
- * 用于记录玩家的积分余额和累计统计
- * - 通过打码量获得积分
- * - 支持积分兑换、冻结、过期等操作
- * - 使用乐观锁保证并发安全
- *
- * @author Claude Code
- * @date 2026-09-08
  */
 class CreatePlayerPointsTable extends AbstractMigration
 {
-    /**
-     * Run the migrations.
-     *
-     *
-     *
-     * @return void
-     */
-    public function up(): void
+    public function change()
     {
-        $schema = Db::schema();
+        $table = $this->table('player_points', [
+            'id' => false,
+            'primary_key' => ['id'],
+            'engine' => 'InnoDB',
+            'collation' => 'utf8mb4_unicode_ci',
+            'comment' => '玩家积分余额表',
+        ]);
 
-        if ($schema->hasTable('player_points')) {
-            echo "⚠️  表 player_points 已存在，跳过创建\n";
-            return;
-        }
-
-        $schema->create('player_points', function (Blueprint $table) {
-            $table->id()->comment('主键ID');
-            $table->unsignedInteger('player_id')->comment('玩家ID');
-            $table->unsignedInteger('department_id')->default(0)->comment('渠道ID');
-
-            // ✅ 积分统计字段（使用unsigned，积分不应为负）
-            $table->unsignedBigInteger('total_points')->default(0)->comment('总积分（历史累计，只增不减）');
-            $table->unsignedBigInteger('available_points')->default(0)->comment('可用积分（当前余额）');
-            $table->unsignedBigInteger('frozen_points')->default(0)->comment('冻结积分（兑换处理中）');
-            $table->unsignedBigInteger('used_points')->default(0)->comment('已使用积分（兑换消耗累计）');
-            $table->unsignedBigInteger('expired_points')->default(0)->comment('已过期积分（过期扣除累计）');
-
-            // 并发控制
-            $table->unsignedInteger('version')->default(0)->comment('乐观锁版本号');
-
-            // 时间戳
-            $table->timestamps();
-
-            // 索引
-            $table->unique('player_id', 'uk_player_id');
-            $table->index('department_id', 'idx_department_id');
-            $table->index('available_points', 'idx_available_points');
-            $table->index('created_at', 'idx_created_at');
-        });
-
-        echo "✅ 成功创建 player_points 表\n";
-    }
-
-    /**
-     * Reverse the migrations.
-     *
-     * @return void
-     */
-    public function down(): void
-    {
-        $schema = Db::schema();
-        $schema->dropIfExists('player_points');
-        echo "✅ 已删除 player_points 表\n";
+        $table
+            ->addColumn('id', 'biginteger', [
+                'null' => false,
+                'signed' => false,
+                'identity' => true,
+                'comment' => '主键ID',
+            ])
+            ->addColumn('player_id', 'integer', [
+                'null' => false,
+                'signed' => false,
+                'comment' => '玩家ID',
+            ])
+            ->addColumn('department_id', 'integer', [
+                'null' => false,
+                'signed' => false,
+                'comment' => '部门/渠道ID',
+            ])
+            ->addColumn('available_points', 'biginteger', [
+                'null' => false,
+                'signed' => false,
+                'default' => 0,
+                'comment' => '可用积分',
+            ])
+            ->addColumn('frozen_points', 'biginteger', [
+                'null' => false,
+                'signed' => false,
+                'default' => 0,
+                'comment' => '冻结积分',
+            ])
+            ->addColumn('total_points', 'biginteger', [
+                'null' => false,
+                'signed' => false,
+                'default' => 0,
+                'comment' => '累计获得总积分',
+            ])
+            ->addColumn('used_points', 'biginteger', [
+                'null' => false,
+                'signed' => false,
+                'default' => 0,
+                'comment' => '累计已用积分',
+            ])
+            ->addColumn('version', 'integer', [
+                'null' => false,
+                'signed' => false,
+                'default' => 0,
+                'comment' => '版本号（乐观锁）',
+            ])
+            ->addColumn('created_at', 'datetime', [
+                'null' => false,
+                'default' => 'CURRENT_TIMESTAMP',
+                'comment' => '创建时间',
+            ])
+            ->addColumn('updated_at', 'datetime', [
+                'null' => false,
+                'default' => 'CURRENT_TIMESTAMP',
+                'update' => 'CURRENT_TIMESTAMP',
+                'comment' => '更新时间',
+            ])
+            ->addIndex(['player_id'], [
+                'unique' => true,
+                'name' => 'uk_player_id',
+            ])
+            ->addIndex(['department_id'], [
+                'name' => 'idx_department',
+            ])
+            ->create();
     }
 }
