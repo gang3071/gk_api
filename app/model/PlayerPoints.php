@@ -16,7 +16,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $available_points 可用积分（当前余额）
  * @property int $frozen_points 冻结积分
  * @property int $used_points 已使用积分
- * @property int $expired_points 已过期积分
  * @property int $version 乐观锁版本号
  * @property string $created_at 创建时间
  * @property string $updated_at 更新时间
@@ -37,7 +36,6 @@ class PlayerPoints extends Model
         'available_points',
         'frozen_points',
         'used_points',
-        'expired_points',
         'version',
     ];
 
@@ -48,7 +46,6 @@ class PlayerPoints extends Model
         'available_points' => 'integer',
         'frozen_points' => 'integer',
         'used_points' => 'integer',
-        'expired_points' => 'integer',
         'version' => 'integer',
     ];
 
@@ -85,7 +82,6 @@ class PlayerPoints extends Model
                 'available_points' => 0,
                 'frozen_points' => 0,
                 'used_points' => 0,
-                'expired_points' => 0,
                 'version' => 0,
             ]
         );
