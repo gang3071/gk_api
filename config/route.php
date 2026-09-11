@@ -353,6 +353,10 @@ Route::group('/chuzhi',function(){
     Route::post('/call-service', [\app\api\controller\v1\DeviceServiceController::class, 'callService']);
 
     // ========== 票据相关接口 ==========
+    // 获取体验券/福利券信息
+    Route::post('/ticket/voucher-info', [\app\api\controller\v1\TicketController::class, 'getVoucherInfo']);
+    // 领取体验券/福利券（出票）
+    Route::post('/ticket/print-voucher', [\app\api\controller\v1\TicketController::class, 'printVoucherTicket']);
     // 扫码获取票据详情
     Route::post('/ticket/scan-detail', [\app\api\controller\v1\TicketController::class, 'scanDetail']);
     // 拆票
