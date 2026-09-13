@@ -26,7 +26,7 @@ class MachineServices
      * 创建机台服务
      * @param Machine $machine 机台
      * @param string $lang 语言
-     * @return Jackpot|Slot|SongSlot|SongJackpot
+     * @return Jackpot|Slot|SongSlot|SongJackpot|SongOfflineSlot|SongOfflineJackpot
      * @throws Exception
      */
     public static function createServices(Machine $machine, string $lang = 'zh_CN')
@@ -37,7 +37,10 @@ class MachineServices
                     case Machine::CONTROL_TYPE_MEI:
                         return new Slot($machine, $lang);
                     case Machine::CONTROL_TYPE_SONG:
-                        return new SongSlot($machine, $lang);
+                        // ✅ 区分线上/线下机台
+                        return ($machine->machine_source === Machine::MACHINE_SOURCE_OFFLINE)
+                            ? new SongOfflineSlot($machine, $lang)  // 线下版（收账小卡协议）
+                            : new SongSlot($machine, $lang);        // 线上版
                     default:
                         throw new Exception('Invalid product type');
                 }
@@ -46,7 +49,10 @@ class MachineServices
                     case Machine::CONTROL_TYPE_MEI:
                         return new Jackpot($machine, $lang);
                     case Machine::CONTROL_TYPE_SONG:
-                        return new SongJackpot($machine, $lang);
+                        // ✅ 区分线上/线下机台
+                        return ($machine->machine_source === Machine::MACHINE_SOURCE_OFFLINE)
+                            ? new SongOfflineJackpot($machine, $lang)  // 线下版（46协议）
+                            : new SongJackpot($machine, $lang);        // 线上版
                     default:
                         throw new Exception('Invalid product type');
                 }
