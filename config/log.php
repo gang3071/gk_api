@@ -470,6 +470,22 @@ return [
             ]
         ],
     ],
+    'song_offline_jackpot_machine' => [
+        'handlers' => [
+            [
+                'class' => Monolog\Handler\RotatingFileHandler::class,
+                'constructor' => [
+                    runtime_path() . '/logs/song_offline_jackpot_machine.log',
+                    3, //$maxFiles
+                    Monolog\Logger::DEBUG,
+                ],
+                'formatter' => [
+                    'class' => Monolog\Formatter\LineFormatter::class,
+                    'constructor' => [null, 'Y-m-d H:i:s', true],
+                ],
+            ]
+        ],
+    ],
     'game_lottery' => [
         'handlers' => [
             [
