@@ -627,4 +627,5 @@ return [
     'dish_order_status_transition_error' => 'Operation not allowed in current order status',
     'order_id' => 'Order ID',
     'dish_cancel_not_allowed' => 'Order is being prepared, cannot be cancelled',
+    'points_not_enough' => 'Insufficient points',
 ];

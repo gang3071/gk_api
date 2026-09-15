@@ -622,6 +622,7 @@ return [
     'dish_order_status_transition_error' => '訂單目前狀態不允許此操作',
     'order_id' => '訂單ID',
     'dish_cancel_not_allowed' => '訂單已進入製作，無法取消',
+    'points_not_enough' => '積分不足',
     'store_not_found' => '未找到門店',
 
     // 劵匣

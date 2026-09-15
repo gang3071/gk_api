@@ -368,6 +368,8 @@ Route::group('/api', function () {
         Route::post('/dish/category-list', [\app\api\controller\v1\DishController::class, 'categoryList']);
         // 菜品列表
         Route::post('/dish/list', [\app\api\controller\v1\DishController::class, 'dishList']);
+        // 玩家積分餘額
+        Route::post('/dish/points-balance', [\app\api\controller\v1\DishController::class, 'pointsBalance']);
         // 客人下單
         Route::post('/dish/order', [\app\api\controller\v1\DishController::class, 'dishOrder']);
         // 我的訂單列表
