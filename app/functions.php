@@ -3360,34 +3360,40 @@ function machineWash(
                     }
                 }
 
-                // 3. STOP_ONE
-                $result = $client->sendCommand($machine->id, $services::STOP_ONE, 0, $lang, $player->id, 0, [
-                    'wash_id' => $washId,
-                    'command_name' => 'STOP_ONE',
-                ]);
+                // ✅ 线下小淞机台不需要发送 STOP_ONE/TWO/THREE 指令
+                $isOfflineSong = ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
+                    && $machine->control_type == Machine::CONTROL_TYPE_SONG);
 
-                if (!$result['success']) {
-                    throw new Exception('停止转轮1失败，请稍后再试');
-                }
+                if (!$isOfflineSong) {
+                    // 3. STOP_ONE
+                    $result = $client->sendCommand($machine->id, $services::STOP_ONE, 0, $lang, $player->id, 0, [
+                        'wash_id' => $washId,
+                        'command_name' => 'STOP_ONE',
+                    ]);
 
-                // 4. STOP_TWO
-                $result = $client->sendCommand($machine->id, $services::STOP_TWO, 0, $lang, $player->id, 0, [
-                    'wash_id' => $washId,
-                    'command_name' => 'STOP_TWO',
-                ]);
+                    if (!$result['success']) {
+                        throw new Exception('停止转轮1失败，请稍后再试');
+                    }
 
-                if (!$result['success']) {
-                    throw new Exception('停止转轮2失败，请稍后再试');
-                }
+                    // 4. STOP_TWO
+                    $result = $client->sendCommand($machine->id, $services::STOP_TWO, 0, $lang, $player->id, 0, [
+                        'wash_id' => $washId,
+                        'command_name' => 'STOP_TWO',
+                    ]);
 
-                // 5. STOP_THREE
-                $result = $client->sendCommand($machine->id, $services::STOP_THREE, 0, $lang, $player->id, 0, [
-                    'wash_id' => $washId,
-                    'command_name' => 'STOP_THREE',
-                ]);
+                    if (!$result['success']) {
+                        throw new Exception('停止转轮2失败，请稍后再试');
+                    }
 
-                if (!$result['success']) {
-                    throw new Exception('停止转轮3失败，请稍后再试');
+                    // 5. STOP_THREE
+                    $result = $client->sendCommand($machine->id, $services::STOP_THREE, 0, $lang, $player->id, 0, [
+                        'wash_id' => $washId,
+                        'command_name' => 'STOP_THREE',
+                    ]);
+
+                    if (!$result['success']) {
+                        throw new Exception('停止转轮3失败，请稍后再试');
+                    }
                 }
 
                 // 6. MACHINE_POINT
