@@ -30,8 +30,8 @@ use support\Log;
  * @property int $play_start_time 开始游戏时间
  * @property int $gaming_user_id 游戏中玩家
  * @property int $gaming 是否游戏中
- * @property int $point 当前分数（兼容字段，实际使用 machine_score）
- * @property int $score 当前得分（兼容字段，实际使用 card_score）
+ * @property int $point 当前分数（兼容字段，实际使用 card_score，开分卡分数，洗分时退还此分数）
+ * @property int $score 当前得分（兼容字段，实际使用 machine_score，机台分数，游戏中使用）
  * @property int $bet 机台压分
  * @property int $last_play_time 最后游戏时间
  * @property int $win 机台总得分
