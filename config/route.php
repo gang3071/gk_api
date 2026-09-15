@@ -371,6 +371,18 @@ Route::group('/chuzhi',function(){
     Route::post('/ticket/version', [\app\api\controller\v1\TicketController::class, 'getVersion']);
     // 储值机投钞（内部调用 rechargeAndWithdraw）
     Route::post('/storage-recharge-and-withdraw', [\app\api\controller\v1\TicketController::class, 'storageRechargeAndWithdraw']);
+
+    // ========== 反水领取 ==========
+    // 储值机领取反水（复用 claimReverseWater）
+    Route::post('/claimReverseWater', [\app\api\controller\v1\PlayerController::class, 'claimReverseWater']);
+
+    // ========== 洗分相关 ==========
+    // 获取洗分配置（复用 getWashPointSetting）
+    Route::post('/get-wash-point-setting', [\app\api\controller\v1\PlayerController::class, 'getWashPointSetting']);
+
+    // ========== 核销出票 ==========
+    // 核销出票（复用 redeemTicket）
+    Route::post('/ticket/redeem', [\app\api\controller\v1\TicketController::class, 'redeemTicket']);
 })->middleware([
     ChuzhiVersionMiddleware::class,
 ]);

@@ -43,6 +43,10 @@ class ChuzhiVersionMiddleware implements MiddlewareInterface
                 return jsonFailResponse(trans('device_not_found', [], 'message'));
             }
 
+            if ($device->status == 0) {
+                return jsonFailResponse(trans('device_disabled', [], 'message'));
+            }
+
             // 验证是否为储值机
             if ((int)$device->device_type !== AdminDevice::TYPE_VENDING_MACHINE) {
                 return jsonFailResponse(trans('device_not_storage_machine', [], 'message'));
