@@ -3336,8 +3336,12 @@ function machineWash(
 
                 $client = new MachineClient();
 
+                // ✅ 线下小淞机台不需要发送 MOVE_POINT_OFF/OUT_OFF/STOP_ONE/TWO/THREE 指令
+                $isOfflineSong = ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
+                    && $machine->control_type == Machine::CONTROL_TYPE_SONG);
+
                 // 1. MOVE_POINT_OFF（如果需要）
-                if ($services->move_point == 1 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
+                if (!$isOfflineSong && $services->move_point == 1 && $machine->control_type == Machine::CONTROL_TYPE_MEI) {
                     $result = $client->sendCommand($machine->id, $services::MOVE_POINT_OFF, 0, $lang, $player->id, 0, [
                         'wash_id' => $washId,
                         'command_name' => 'MOVE_POINT_OFF',
@@ -3349,7 +3353,7 @@ function machineWash(
                 }
 
                 // 2. OUT_OFF（如果需要）
-                if ($services->auto == 1) {
+                if (!$isOfflineSong && $services->auto == 1) {
                     $result = $client->sendCommand($machine->id, $services::OUT_OFF, 0, $lang, $player->id, 0, [
                         'wash_id' => $washId,
                         'command_name' => 'OUT_OFF',
@@ -3359,10 +3363,6 @@ function machineWash(
                         throw new Exception('关闭自动失败，请稍后再试');
                     }
                 }
-
-                // ✅ 线下小淞机台不需要发送 STOP_ONE/TWO/THREE 指令
-                $isOfflineSong = ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
-                    && $machine->control_type == Machine::CONTROL_TYPE_SONG);
 
                 if (!$isOfflineSong) {
                     // 3. STOP_ONE
