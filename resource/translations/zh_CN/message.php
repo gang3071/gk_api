@@ -643,4 +643,5 @@ return [
     'dish_order_status_transition_error' => '订单当前状态不允许此操作',
     'order_id' => '订单ID',
     'dish_cancel_not_allowed' => '订单已进入制作，无法取消',
+    'points_not_enough' => '积分不足',
 ];

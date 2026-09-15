@@ -79,6 +79,24 @@ class DishController
         ]);
     }
 
+    #[RateLimiter(limit: 10)]
+    /**
+     * 玩家積分餘額
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function pointsBalance(Request $request): Response
+    {
+        $player = checkPlayer();
+
+        $points = PlayerPointsService::getPlayerPoints($player->id);
+
+        return jsonSuccessResponse('success', [
+            'points' => $points
+        ]);
+    }
+
     #[RateLimiter(limit: 5)]
     /**
      * 客人下單
@@ -198,23 +216,25 @@ class DishController
             }
             DishOrderItem::insert($orderItems);
 
-            // 扣除积分（useTransaction=false，使用外层事务）
-            $deductSuccess = PlayerPointsService::deductPoints(
-                $player->id,
-                $pointsNeeded,
-                2, // 类型：兑换消耗
-                '点餐消费：' . $order->order_no,
-                [
-                    'order_id' => $order->id,
-                    'order_no' => $order->order_no,
-                    'source_type' => 'dish_order',
-                ],
-                null,  // adminInfo
-                false  // ✅ 不使用事务，复用外层事务
-            );
+            // 扣除积分（useTransaction=false，使用外层事务）；0積分訂單（贈送餐點）跳過扣款
+            if ($pointsNeeded > 0) {
+                $deductSuccess = PlayerPointsService::deductPoints(
+                    $player->id,
+                    $pointsNeeded,
+                    2, // 类型：兑换消耗
+                    '点餐消费：' . $order->order_no,
+                    [
+                        'order_id' => $order->id,
+                        'order_no' => $order->order_no,
+                        'source_type' => 'dish_order',
+                    ],
+                    null,  // adminInfo
+                    false  // ✅ 不使用事务，复用外层事务
+                );
 
-            if (!$deductSuccess) {
-                throw new Exception('扣除积分失败');
+                if (!$deductSuccess) {
+                    throw new Exception('扣除积分失败');
+                }
             }
 
             Db::commit();
