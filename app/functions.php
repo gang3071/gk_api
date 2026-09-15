@@ -1251,7 +1251,7 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
     }
 
     // ✅ 小淞线下Slot特殊逻辑：验证钱包总金额是100的倍数
-    // 原因：gk_work需要将机台分数转换成次数，要求标准分数是100的倍数
+    // 原因：gk_work需要将机台分数转换成次数
     // giftScore是赠送的钱包金额（不是机台分数）
     if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
         && $machine->control_type == Machine::CONTROL_TYPE_SONG
