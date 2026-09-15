@@ -1250,22 +1250,8 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
         throw new Exception(trans('machine_odds_error', [], 'message'));
     }
     $open_score = $money * $machine->odds_y / $machine->odds_x;
-    $open_score = floor($open_score) + $giftScore;
 
-    // ✅ 小淞线下Slot特殊处理：机台分数必须是100的倍数
-    if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
-        && $machine->control_type == Machine::CONTROL_TYPE_SONG_OFFLINE
-        && $machine->type == GameType::TYPE_SLOT) {
-
-        $openUnit = 100;  // 小淞线下Slot固定100分为单位
-
-        if ($open_score % $openUnit != 0) {
-            // 向上取整到100的倍数
-            $open_score = ceil($open_score / $openUnit) * $openUnit;
-        }
-    }
-
-    return $open_score;
+    return floor($open_score) + $giftScore;
 }
 
 /**
