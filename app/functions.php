@@ -1236,6 +1236,30 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
     if (!is_numeric($money) || $money <= 0) {
         throw new InvalidArgumentException('Invalid money value');
     }
+
+    // ✅ 小淞线下Slot特殊逻辑：不经过odds转换，直接使用玩家充值金额
+    // 原因：收账小卡协议中，上分指令只传递充值金额（100分为单位的次数）
+    // 机台内部自己根据设定的odds显示对应分数
+    // 例如：玩家充值100元（机台设定odds 4:1）
+    //      → 发送1次指令（100分）
+    //      → 机台内部转换显示25分
+    if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
+        && $machine->control_type == Machine::CONTROL_TYPE_SONG_OFFLINE
+        && $machine->type == GameType::TYPE_SLOT) {
+
+        $openUnit = 100;  // 固定100分为单位
+        $open_score = $money + $giftScore;  // 直接使用充值金额，不经过odds转换
+
+        // 确保是100的倍数
+        if ($open_score % $openUnit != 0) {
+            // 向上取整到100的倍数
+            $open_score = ceil($open_score / $openUnit) * $openUnit;
+        }
+
+        return $open_score;
+    }
+
+    // 其他机器：正常通过odds转换
     if (!is_numeric($machine->odds_x) || $machine->odds_x <= 0) {
         throw new InvalidArgumentException('Invalid odds_x value');
     }
