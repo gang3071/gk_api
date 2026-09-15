@@ -946,7 +946,13 @@ function machineOpenAny(
                     $services->player_score = 0;
                     $services->player_pressure = 0;
                 }
-                $services->sendCmd($services::OPEN_ANY_POINT, $openScore, 'player', $player->id);
+                if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
+                    && $machine->control_type == Machine::CONTROL_TYPE_SONG
+                    && $machine->type == GameType::TYPE_SLOT) {
+                    $services->sendCmd($services::OPEN_ANY_POINT,  bcadd($money, $giftScore, 2), 'player', $player->id);
+                } else {
+                    $services->sendCmd($services::OPEN_ANY_POINT, $openScore, 'player', $player->id);
+                }
                 break;
         }
 
