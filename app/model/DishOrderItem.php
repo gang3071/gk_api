@@ -2,6 +2,7 @@
 
 namespace app\model;
 
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -24,6 +25,16 @@ class DishOrderItem extends Model
     protected $table = 'dish_order_item';
 
     protected $guarded = [];
+
+    /**
+     * 時間轉換
+     * @param DateTimeInterface $date
+     * @return string
+     */
+    protected function serializeDate(DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d H:i:s');
+    }
 
     /**
      * 所屬訂單

@@ -2,6 +2,7 @@
 
 namespace app\model;
 
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -30,6 +31,16 @@ class DishOrder extends Model
     const STATUS_COOKING = 2;    // 製作中
     const STATUS_COMPLETED = 3;  // 已完成
     const STATUS_CANCELLED = 4;  // 已取消
+
+    /**
+     * 時間轉換
+     * @param DateTimeInterface $date
+     * @return string
+     */
+    protected function serializeDate(DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d H:i:s');
+    }
 
     /**
      * 玩家
