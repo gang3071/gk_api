@@ -1237,6 +1237,20 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
         throw new InvalidArgumentException('Invalid money value');
     }
 
+    // 其他机器：通过odds转换
+    if (!is_numeric($machine->odds_x) || $machine->odds_x <= 0) {
+        throw new InvalidArgumentException('Invalid odds_x value');
+    }
+    if (!is_numeric($machine->odds_y) || $machine->odds_y <= 0) {
+        throw new InvalidArgumentException('Invalid odds_y value');
+    }
+    if ($machine->odds_x == 0) {
+        throw new Exception(trans('machine_odds_error', [], 'message'));
+    }
+    $yx = $machine->odds_y / $machine->odds_x;
+    if ($machine->odds_y > $machine->odds_x && floor($yx) != $yx) {
+        throw new Exception(trans('machine_odds_error', [], 'message'));
+    }
     // ✅ 小淞线下Slot特殊逻辑：不经过odds转换
     // 原因：机台内部自己处理分数转换，上分金额 = 扣款金额
     // 例如：玩家充值100元 → 扣款100元 → 传递100到gk_work → gk_work转换为1次指令
@@ -1252,22 +1266,6 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
             throw new Exception('上分金额必须是100的倍数，当前：' . $open_score);
         }
 
-        return $open_score;
-    }
-
-    // 其他机器：通过odds转换
-    if (!is_numeric($machine->odds_x) || $machine->odds_x <= 0) {
-        throw new InvalidArgumentException('Invalid odds_x value');
-    }
-    if (!is_numeric($machine->odds_y) || $machine->odds_y <= 0) {
-        throw new InvalidArgumentException('Invalid odds_y value');
-    }
-    if ($machine->odds_x == 0) {
-        throw new Exception(trans('machine_odds_error', [], 'message'));
-    }
-    $yx = $machine->odds_y / $machine->odds_x;
-    if ($machine->odds_y > $machine->odds_x && floor($yx) != $yx) {
-        throw new Exception(trans('machine_odds_error', [], 'message'));
     }
     $open_score = $money * $machine->odds_y / $machine->odds_x;
 
