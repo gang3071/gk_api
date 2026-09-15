@@ -175,7 +175,7 @@ class SongOfflineSlot extends AbstractMachineService
     {
         // 线下版特定指令失败时设置机台锁
         $lockCommands = [
-            self::OPEN_POINT,
+            self::OPEN_ANY_POINT,
             self::WASH_POINT,
         ];
 
