@@ -1236,6 +1236,25 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
     if (!is_numeric($money) || $money <= 0) {
         throw new InvalidArgumentException('Invalid money value');
     }
+
+    // ✅ 小淞线下Slot特殊逻辑：不经过odds转换
+    // 原因：机台内部自己处理分数转换，上分金额 = 扣款金额
+    // 例如：玩家充值100元 → 扣款100元 → 传递100到gk_work → gk_work转换为1次指令
+    if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
+        && $machine->control_type == Machine::CONTROL_TYPE_SONG
+        && $machine->type == GameType::TYPE_SLOT) {
+
+        $open_score = $money + $giftScore;
+        $openUnit = 100;  // 固定100分为单位
+
+        // 验证是否100的倍数（报错而非向上取整，避免扣款和上分金额不一致）
+        if ($open_score % $openUnit != 0) {
+            throw new Exception('上分金额必须是100的倍数，当前：' . $open_score);
+        }
+
+        return $open_score;
+    }
+
     // 其他机器：通过odds转换
     if (!is_numeric($machine->odds_x) || $machine->odds_x <= 0) {
         throw new InvalidArgumentException('Invalid odds_x value');
@@ -1249,23 +1268,6 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
     $yx = $machine->odds_y / $machine->odds_x;
     if ($machine->odds_y > $machine->odds_x && floor($yx) != $yx) {
         throw new Exception(trans('machine_odds_error', [], 'message'));
-    }
-    // ✅ 小淞线下Slot特殊逻辑：不经过odds转换
-    // 原因：机台内部自己处理分数转换，上分金额 = 扣款金额
-    // 例如：玩家充值100元 → 扣款100元 → 传递100到gk_work → gk_work转换为1次指令
-    if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
-        && $machine->control_type == Machine::CONTROL_TYPE_SONG_OFFLINE
-        && $machine->type == GameType::TYPE_SLOT) {
-
-        $open_score = $money + $giftScore;
-        $openUnit = 100;  // 固定100分为单位
-
-        // 验证是否100的倍数（报错而非向上取整，避免扣款和上分金额不一致）
-        if ($open_score % $openUnit != 0) {
-            throw new Exception('上分金额必须是100的倍数，当前：' . $open_score);
-        }
-
-        return $open_score;
     }
     $open_score = $money * $machine->odds_y / $machine->odds_x;
 
