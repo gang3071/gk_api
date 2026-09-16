@@ -228,7 +228,11 @@ class DishController
                         'order_no' => $order->order_no,
                         'source_type' => 'dish_order',
                     ],
-                    null,  // adminInfo
+                    [
+                        'admin_id' => $player->id,
+                        'admin_name' => $player->name ?: '玩家' . $player->id,
+                        'admin_ip' => $request->getRealIp(),
+                    ],
                     false  // ✅ 不使用事务，复用外层事务
                 );
 
@@ -393,6 +397,11 @@ class DishController
                         'order_id' => $order->id,
                         'order_no' => $order->order_no,
                         'source_type' => 'dish_order_cancel',
+                    ],
+                    [
+                        'admin_id' => $player->id,
+                        'admin_name' => $player->name ?: '玩家' . $player->id,
+                        'admin_ip' => $request->getRealIp(),
                     ]
                 );
 

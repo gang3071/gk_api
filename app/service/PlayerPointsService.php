@@ -322,8 +322,8 @@ class PlayerPointsService
                 // 合并额外数据
                 $recordData = array_merge($recordData, $extraData);
 
-                // 如果是后台调整，必须记录操作人员信息
-                if ($type === PlayerPointsRecord::TYPE_ADMIN_ADJUST && $adminInfo) {
+                // 后台調整或玩家操作時記錄操作人員資訊
+                if (!empty($adminInfo)) {
                     $recordData['admin_id'] = $adminInfo['admin_id'] ?? null;
                     $recordData['admin_name'] = $adminInfo['admin_name'] ?? null;
                     $recordData['admin_ip'] = $adminInfo['admin_ip'] ?? null;
@@ -766,8 +766,8 @@ LUA;
             // 合并额外数据
             $recordData = array_merge($recordData, $extraData);
 
-            // 如果是后台调整，必须记录操作人员信息
-            if ($type === PlayerPointsRecord::TYPE_ADMIN_ADJUST && $adminInfo) {
+            // 后台調整或玩家操作時記錄操作人員資訊
+            if (!empty($adminInfo)) {
                 $recordData['admin_id'] = $adminInfo['admin_id'] ?? null;
                 $recordData['admin_name'] = $adminInfo['admin_name'] ?? null;
                 $recordData['admin_ip'] = $adminInfo['admin_ip'] ?? null;
