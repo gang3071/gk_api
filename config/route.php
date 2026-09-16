@@ -57,6 +57,10 @@ Route::group('/api', function () {
         Route::get('/stores/{storeId}/machines', [\app\api\controller\web\MachineController::class, 'storeMachines']);
         // 摸獎券資訊
         Route::post('/tickets/current-activity', [\app\api\controller\web\LotteryTicketController::class, 'currentActivity']);
+        // 摸獎券 - 中獎記錄
+        Route::post('/tickets/winning-records', [\app\api\controller\web\LotteryTicketController::class, 'winningRecords']);
+        // 摸獎券 - 打碼進度
+        Route::post('/tickets/bet-progress', [\app\api\controller\web\LotteryTicketController::class, 'betProgress']);
         // 系統公告
         Route::get('/announcements', [\app\api\controller\web\IndexController::class, 'announcements']);
         // 跑马灯

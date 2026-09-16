@@ -341,6 +341,168 @@ class LotteryTicketController
         ]);
     }
 
+    #[RateLimiter(limit: 10)]
+    /**
+     * 中奖记录
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function winningRecords(Request $request): Response
+    {
+        $player = checkPlayer();
+
+        $activityId = $request->input('activity_id');
+        $scope      = $request->input('scope', 'mine'); // mine | all
+        $page       = (int) $request->input('page', 1);
+        $size       = min((int) $request->input('size', 20), 100);
+
+        $query = LotteryTicketRecord::query()
+            ->when($scope === 'mine', fn($q) => $q->where('player_id', $player->id))
+            ->when(!empty($activityId), fn($q) => $q->where('activity_id', $activityId))
+            ->when($scope === 'all', fn($q) => $q->with(['player:id,name,store_admin_id', 'player.storeAdmin:id,nickname']));
+
+        $total   = $query->count();
+        $records = $query->orderBy('prize_amount', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->forPage($page, $size)
+            ->get();
+
+        $list = [];
+        /** @var LotteryTicketRecord $record */
+        foreach ($records as $record) {
+            $item = [
+                'id'             => $record->id,
+                'activity_id'    => $record->activity_id,
+                'activity_name'  => $record->activity_name,
+                'ticket_no'      => $record->ticket_no,
+                'prize_type'     => $record->prize_type,
+                'prize_name'     => $record->prize_name,
+                'prize_amount'   => self::formatAmount((float) $record->prize_amount),
+                'status'         => $record->status,
+                'granted_at'     => $record->granted_at,
+                'distributed_at' => $record->distributed_at,
+                'created_at'     => $record->created_at,
+            ];
+
+            if ($scope === 'all') {
+                $playerName        = $record->player?->name ?? '';
+                $item['player_id']   = $record->player_id;
+                $item['player_name'] = self::maskPlayerName($playerName);
+                $item['store_name']  = $record->player?->storeAdmin?->nickname ?? '';
+            }
+
+            $list[] = $item;
+        }
+
+        return apiSuccessResponse('success', [
+            'records' => $list,
+            'total'   => $total,
+            'page'    => $page,
+            'size'    => $size,
+            'scope'   => $scope,
+        ]);
+    }
+
+    #[RateLimiter(limit: 10)]
+    /**
+     * 打码进度
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function betProgress(Request $request): Response
+    {
+        $player     = checkPlayer();
+        $activityId = $request->input('activity_id');
+
+        if (empty($activityId)) {
+            return apiFailResponse('activity_id 不能为空');
+        }
+
+        $activity = LotteryTicketActivity::query()
+            ->where('id', $activityId)
+            ->where('department_id', $player->department_id)
+            ->first();
+
+        if (!$activity) {
+            return apiFailResponse('活动不存在或无权访问');
+        }
+
+        $query = LotteryTicketBetProgress::query()
+            ->where('activity_id', $activityId)
+            ->where('player_id', $player->id);
+
+        if ($player->vip_level_id !== null) {
+            $query->where('vip_level_id', $player->vip_level_id);
+        } else {
+            $query->whereNull('vip_level_id');
+        }
+
+        /** @var LotteryTicketBetProgress $betProgress */
+        $betProgress = $query->first();
+
+        if (!$betProgress) {
+            $vipConfig = LotteryTicketVipConfig::query()
+                ->where('activity_id', $activityId)
+                ->where('vip_level_id', $player->vip_level_id ?: 0)
+                ->where('status', 1)
+                ->first();
+
+            $betAmountRequired  = $vipConfig->bet_amount_required ?? 0;
+            $ticketCountPerCycle = $vipConfig->ticket_count ?? 0;
+
+            return apiSuccessResponse('success', [
+                'activity_id'          => (int) $activityId,
+                'player_id'            => $player->id,
+                'vip_level_id'         => $player->vip_level_id,
+                'bet_amount_required'  => self::formatAmount((float) $betAmountRequired),
+                'current_bet_amount'   => 0,
+                'progress_percent'     => 0.0,
+                'remaining_bet_amount' => self::formatAmount((float) $betAmountRequired),
+                'cycles_completed'     => 0,
+                'total_tickets_issued' => 0,
+                'ticket_count_per_cycle' => $ticketCountPerCycle,
+                'total_bet_amount'     => 0,
+                'updated_at'           => null,
+            ]);
+        }
+
+        $currentCycleBet    = fmod((float) $betProgress->current_bet_amount, (float) $betProgress->bet_amount_required);
+        $currentCyclePercent = $betProgress->bet_amount_required > 0
+            ? ($currentCycleBet / $betProgress->bet_amount_required) * 100
+            : 0;
+        $currentCycleRemaining = max(0, $betProgress->bet_amount_required - $currentCycleBet);
+
+        return apiSuccessResponse('success', [
+            'activity_id'            => $betProgress->activity_id,
+            'player_id'              => $betProgress->player_id,
+            'vip_level_id'           => $betProgress->vip_level_id,
+            'bet_amount_required'    => self::formatAmount((float) $betProgress->bet_amount_required),
+            'current_bet_amount'     => self::formatAmount((float) $currentCycleBet),
+            'progress_percent'       => $currentCyclePercent,
+            'remaining_bet_amount'   => self::formatAmount((float) $currentCycleRemaining),
+            'cycles_completed'       => $betProgress->cycles_completed,
+            'total_tickets_issued'   => $betProgress->total_tickets_issued,
+            'ticket_count_per_cycle' => $betProgress->ticket_count_per_cycle,
+            'total_bet_amount'       => self::formatAmount((float) $betProgress->current_bet_amount),
+            'updated_at'             => $betProgress->updated_at,
+        ]);
+    }
+
+    /**
+     * 玩家名称脱敏
+     */
+    private function maskPlayerName(string $name): string
+    {
+        if (empty($name)) {
+            return '';
+        }
+        return mb_strlen($name) <= 2
+            ? mb_substr($name, 0, 1) . '*'
+            : mb_substr($name, 0, 1) . '***';
+    }
+
     /**
      * 格式化金额显示（整数不显示小数位）
      * @param float $amount
