@@ -288,6 +288,7 @@ class PlayerController
             'reverse_water_pool_claimable' => $this->formatAmount($reverseWaterPoolClaimable), // 反水池可领取额度
             'reverse_water_pool_remaining' => $this->formatAmount($reverseWaterPoolRemaining), // 剩余待领取金额（不足最低额部分）
             'reverse_water_pool_min_claim' => $minClaimAmount > 0 ? $this->formatAmount($minClaimAmount) : 0, // 当前等级最低领取金额，未设置返回0
+            'claimable_voucher_counts' => \app\service\VoucherService::getClaimableCounts($player), // 今日可领福利券/体验券数量
         ]);
     }
 
