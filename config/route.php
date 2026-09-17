@@ -90,6 +90,8 @@ Route::group('/api', function () {
         Route::post('/player-info', [\app\api\controller\v1\PlayerController::class, 'playerInfo']);
         // 重置密码
         Route::post('/change-password', [\app\api\controller\v1\PlayerController::class, 'changePassword']);
+        // 修改密码（已登录用户）
+        Route::post('/update-password', [\app\api\controller\v1\PlayerController::class, 'updatePassword']);
         // 首页数据
         Route::post('/get-index', [\app\api\controller\v1\PlayerController::class, 'getIndex']);
         // 首页广告(轮播图,跑马灯)
@@ -402,12 +404,18 @@ Route::group('/chuzhi',function(){
     // ========== 储值机专用接口 ==========
     // 玩家登录
     Route::post('/login', [\app\api\controller\v1\IndexController::class, 'login']);
+    // 玩家登出
+    Route::post('/logout', [\app\api\controller\v1\IndexController::class, 'logout']);
     // 获取用户信息
     Route::post('/player-info', [\app\api\controller\v1\PlayerController::class, 'playerInfo']);
     // 呼叫服务铃
     Route::post('/call-service', [\app\api\controller\v1\DeviceServiceController::class, 'callService']);
 
     // ========== 票据相关接口 ==========
+    // 获取体验券/福利券信息
+    Route::post('/ticket/voucher-info', [\app\api\controller\v1\TicketController::class, 'getVoucherInfo']);
+    // 领取体验券/福利券（出票）
+    Route::post('/ticket/print-voucher', [\app\api\controller\v1\TicketController::class, 'printVoucherTicket']);
     // 扫码获取票据详情
     Route::post('/ticket/scan-detail', [\app\api\controller\v1\TicketController::class, 'scanDetail']);
     // 拆票
@@ -422,6 +430,18 @@ Route::group('/chuzhi',function(){
     Route::post('/ticket/version', [\app\api\controller\v1\TicketController::class, 'getVersion']);
     // 储值机投钞（内部调用 rechargeAndWithdraw）
     Route::post('/storage-recharge-and-withdraw', [\app\api\controller\v1\TicketController::class, 'storageRechargeAndWithdraw']);
+
+    // ========== 反水领取 ==========
+    // 储值机领取反水（复用 claimReverseWater）
+    Route::post('/claimReverseWater', [\app\api\controller\v1\PlayerController::class, 'claimReverseWater']);
+
+    // ========== 洗分相关 ==========
+    // 获取洗分配置（复用 getWashPointSetting）
+    Route::post('/get-wash-point-setting', [\app\api\controller\v1\PlayerController::class, 'getWashPointSetting']);
+
+    // ========== 核销出票 ==========
+    // 核销出票（复用 redeemTicket）
+    Route::post('/ticket/redeem', [\app\api\controller\v1\TicketController::class, 'redeemTicket']);
 })->middleware([
     ChuzhiVersionMiddleware::class,
 ]);
