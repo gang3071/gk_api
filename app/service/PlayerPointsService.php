@@ -6,6 +6,7 @@ use app\model\Player;
 use app\model\PlayerPoints;
 use app\model\PlayerPointsRecord;
 use app\model\PlayGameRecord;
+use app\model\VipLevelPoint;
 use Carbon\Carbon;
 use Exception;
 use support\Log;
@@ -90,21 +91,23 @@ class PlayerPointsService
             }
 
             // 2. 获取平台代码（用于计算积分）
-            $platformCode = 'DEFAULT';
+            $platform = ['id' => 0, 'code' => 'DEFAULT'];
+
             if (!empty($recordIds)) {
                 // ✅ 优化：只查第一条记录的平台代码（避免JOIN大量记录）
-                $platformCode = PlayGameRecord::query()
+                $platform = PlayGameRecord::query()
+                    ->select(['game_platform.id', 'game_platform.code'])
                     ->whereIn('play_game_record.id', $recordIds)
                     ->join('game_platform', 'play_game_record.platform_id', '=', 'game_platform.id')
-                    ->limit(1)
-                    ->value('game_platform.code') ?? 'DEFAULT';
+                    ->first()
+                    ?->toArray();
             }
 
             // 3. 计算应得积分
             $pointsEarned = self::calculatePoints(
                 $betAmount,
                 $playerInfo['vip_level_id'],
-                $platformCode,
+                $platform['id'] ?? 0,
                 $playerInfo['department_id']
             );
 
@@ -189,7 +192,7 @@ class PlayerPointsService
             self::log()->info('[积分] 打码获得积分', [
                 'player_id' => $playerId,
                 'bet_amount' => $betAmount,
-                'platform_code' => $platformCode,
+                'platform_code' => $platform['code'] ?? 'DEFAULT',
                 'vip_level' => $playerInfo['vip_level_id'],  // ✅ 修复：使用缓存的玩家信息
                 'points_earned' => $pointsEarned,
                 'available_points' => $result['new_available'],
@@ -405,36 +408,36 @@ class PlayerPointsService
      *
      * @param float $betAmount 打码金额（元）
      * @param int $vipLevel VIP等级
-     * @param string $platformCode 平台代码
+     * @param string $platform 平台
      * @param int $departmentId 渠道ID
      * @return int 应得积分
      */
     public static function calculatePoints(
         float $betAmount,
         int $vipLevel,
-        string $platformCode,
+        string $platform,
         int $departmentId
     ): int {
-        $config = config('points_config');
+        $vipLevelPoint = VipLevelPoint::query()
+            ->where('vip_level_id', $vipLevel)
+            ->where('platform_id', $platform)
+            ->first();
 
-        // 1. ✅ 边界检查：负数和最小打码量
-        if ($betAmount <= 0 || $betAmount < $config['min_bet_amount']) {
+        if (empty($vipLevelPoint)) {
             return 0;
         }
 
-        // 2. 获取平台转换比率
-        $platformRate = $config['platform_rates'][$platformCode] ?? $config['base_rate'];
+        // 1. ✅ 边界检查：负数和最小打码量
+        if ($betAmount <= 0 || $betAmount < $vipLevelPoint->min_bet_amount) {
+            return 0;
+        }
 
-        // 3. VIP加成
-        $vipBonus = $config['vip_bonus_rates'][$vipLevel] ?? 0;
-
-        // 4. 活动倍数
+        // 2. 活动倍数
         $activityMultiple = self::getActivityMultiple();
 
-        // 5. 计算积分（向下取整，强制转换为整数）
-        $points = (int)floor(
-            $betAmount * $platformRate * (1 + $vipBonus) * $activityMultiple
-        );
+        // 3. 计算积分（向下取整，强制转换为整数）
+        $floor = (int)floor($betAmount / $vipLevelPoint->ratio_bet_amount);
+        $points = (int)floor($floor * $vipLevelPoint->ratio_point * $activityMultiple);
 
         return max(0, (int)$points);
     }
