@@ -9,9 +9,9 @@ use app\model\PlayGameRecord;
 use app\model\VipLevelPoint;
 use Carbon\Carbon;
 use Exception;
+use support\Db;
 use support\Log;
 use support\Redis;
-use support\Db;
 
 /**
  * 玩家积分服务
@@ -332,7 +332,7 @@ class PlayerPointsService
                     $recordData['admin_ip'] = $adminInfo['admin_ip'] ?? null;
                 }
 
-                PlayerPointsRecord::create($recordData);
+                PlayerPointsRecord::query()->create($recordData);
             } catch (\Illuminate\Database\QueryException $e) {
                 // 捕获唯一约束冲突（batch_id 重复）
                 if ($e->getCode() == 23000 || strpos($e->getMessage(), 'Duplicate entry') !== false) {
