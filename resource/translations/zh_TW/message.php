@@ -668,4 +668,5 @@ return [
     'voucher_rule_today' => '今日',
     'voucher_type_experience' => '體驗券',
     'voucher_type_welfare' => '福利券',
+    'unit_wan' => '萬',
 ];

@@ -2218,7 +2218,7 @@ class TicketController
     {
         if ($amount >= 10000) {
             $wan = $amount / 10000;
-            return (floor($wan) == $wan ? (int)$wan : $wan) . '万';
+            return (floor($wan) == $wan ? (int)$wan : $wan) . trans('unit_wan', [], 'message');
         }
 
         return number_format($amount);

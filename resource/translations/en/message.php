@@ -662,4 +662,5 @@ return [
     'voucher_type_experience' => 'Experience',
     'voucher_type_welfare' => 'Welfare',
     'points_not_enough' => 'Insufficient points',
+    'unit_wan' => 'W',
 ];
