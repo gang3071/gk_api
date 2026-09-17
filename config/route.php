@@ -37,6 +37,8 @@ Route::group('/api', function () {
         Route::post('/player-info', [\app\api\controller\v1\PlayerController::class, 'playerInfo']);
         // 重置密码
         Route::post('/change-password', [\app\api\controller\v1\PlayerController::class, 'changePassword']);
+        // 修改密码（已登录用户）
+        Route::post('/update-password', [\app\api\controller\v1\PlayerController::class, 'updatePassword']);
         // 首页数据
         Route::post('/get-index', [\app\api\controller\v1\PlayerController::class, 'getIndex']);
         // 首页广告(轮播图,跑马灯)
@@ -347,6 +349,8 @@ Route::group('/chuzhi',function(){
     // ========== 储值机专用接口 ==========
     // 玩家登录
     Route::post('/login', [\app\api\controller\v1\IndexController::class, 'login']);
+    // 玩家登出
+    Route::post('/logout', [\app\api\controller\v1\IndexController::class, 'logout']);
     // 获取用户信息
     Route::post('/player-info', [\app\api\controller\v1\PlayerController::class, 'playerInfo']);
     // 呼叫服务铃

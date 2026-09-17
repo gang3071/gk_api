@@ -365,7 +365,44 @@ class PlayerController
             'recommend_code' => $player->recommend_code,
         ]);
     }
-    
+
+    #[RateLimiter(limit: 5)]
+    /**
+     * 修改密码（已登录用户）
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException|Exception
+     */
+    public function updatePassword(Request $request): Response
+    {
+        $player = checkPlayer();
+        $data = $request->all();
+        $validator = v::key('old_password',
+                v::stringType()->notEmpty()->alnum()->length(6, 12)->setName(trans('old_password', [], 'message')))
+            ->key('password',
+                v::stringType()->notEmpty()->alnum()->length(6, 12)->setName(trans('new_password', [], 'message')))
+            ->key('re_password', v::stringType()->notEmpty()->alnum()->length(6,
+                12)->equals($data['password'] ?? null)->setName(trans('re_password', [], 'message')));
+
+        try {
+            $validator->assert($data);
+        } catch (AllOfException $e) {
+            return jsonFailResponse(getValidationMessages($e));
+        }
+
+        // 验证旧密码
+        if (empty($player->password) || !password_verify($data['old_password'], $player->password)) {
+            return jsonFailResponse(trans('password_error', [], 'message'));
+        }
+
+        $player->password = $data['password'];
+        if (!$player->save()) {
+            return jsonFailResponse(trans('password_change_error', [], 'message'));
+        }
+
+        return jsonSuccessResponse('success');
+    }
+
     #[RateLimiter(limit: 5)]
     /**
      * 首页数据
@@ -1158,7 +1195,7 @@ class PlayerController
                     'balance' => $currentBalance,
                     'threshold' => $issueThreshold,
                 ]);
-                return jsonFailResponse(trans('ticket_locked_insufficient_balance', ['limit' => $issueThreshold], 'message'));
+                return jsonFailResponse(trans('ticket_locked_insufficient_balance', ['{limit}' => $issueThreshold], 'message'));
             }
         }
 

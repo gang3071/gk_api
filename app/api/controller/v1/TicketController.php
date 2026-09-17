@@ -102,7 +102,7 @@ class TicketController
                     'balance' => $currentBalance,
                     'threshold' => $issueThreshold,
                 ]);
-                return jsonFailResponse(trans('ticket_locked_insufficient_balance', ['limit' => $issueThreshold], 'message'));
+                return jsonFailResponse(trans('ticket_locked_insufficient_balance', ['{limit}' => $issueThreshold], 'message'));
             }
         }
 
@@ -143,8 +143,8 @@ class TicketController
                 if ($requestedAmount < $washPointConfig) {
                     $this->releaseIdempotent($requestId);
                     return jsonFailResponse(trans('ticket_amount_less_than_base', [
-                        'amount' => number_format($requestedAmount, 2),
-                        'base' => number_format($washPointConfig, 2)
+                        '{amount}' => number_format($requestedAmount, 2),
+                        '{base}' => number_format($washPointConfig, 2)
                     ], 'message'));
                 }
 
@@ -153,8 +153,8 @@ class TicketController
                 if (abs($remainder) > 0.01) { // 允许0.01的浮点误差
                     $this->releaseIdempotent($requestId);
                     return jsonFailResponse(trans('ticket_amount_not_multiple', [
-                        'amount' => number_format($requestedAmount, 2),
-                        'base' => number_format($washPointConfig, 2)
+                        '{amount}' => number_format($requestedAmount, 2),
+                        '{base}' => number_format($washPointConfig, 2)
                     ], 'message'));
                 }
 
@@ -164,8 +164,8 @@ class TicketController
             if ($currentBalance < $requestedAmount) {
                 $this->releaseIdempotent($requestId);
                 return jsonFailResponse(trans('ticket_balance_insufficient', [
-                    'current' => number_format($currentBalance, 2),
-                    'required' => number_format($requestedAmount, 2)
+                    '{current}' => number_format($currentBalance, 2),
+                    '{required}' => number_format($requestedAmount, 2)
                 ], 'message'));
             }
         }
@@ -484,7 +484,7 @@ class TicketController
 
                                 if ($rewardStatus === 1) {
                                     $this->releaseIdempotent($requestId);
-                                    return jsonFailResponse(trans('ticket_machine_is_opening', ['code' => $machine->code], 'message'));
+                                    return jsonFailResponse(trans('ticket_machine_is_opening', ['{code}' => $machine->code], 'message'));
                                 }
                             } catch (Throwable $e) {
                                 Log::error('scanOpenScore: 获取机台开奖状态失败', [
@@ -533,7 +533,7 @@ class TicketController
 
                     if ((float)$totalBalance >= $openScoreLimit) {
                         $this->releaseIdempotent($requestId);
-                        return jsonFailResponse(trans('ticket_wallet_balance_too_high', ['limit' => $openScoreLimit], 'message'));
+                        return jsonFailResponse(trans('ticket_wallet_balance_too_high', ['{limit}' => $openScoreLimit], 'message'));
                     }
                 }
 
@@ -796,8 +796,9 @@ class TicketController
                 ->toArray();
         }
 
-        // ---- 构建 score_options 下拉数据 ----
-        $scoreOptions = [];
+        // ---- 构建体验券/福利券选项数据 ----
+        $experienceOptions = [];
+        $welfareOptions = [];
 
         if ($activityValid) {
             // 体验券选项（固定1个）
@@ -825,21 +826,63 @@ class TicketController
                 } elseif ($isDailyLimitReached) {
                     $condition = trans('voucher_condition_daily_claimed', [], 'message');
                 } elseif ($isTotalLimitReached) {
-                    $condition = trans('voucher_condition_total_used_up', ['used' => $claimedExperienceTotal, 'total' => $totalLimit], 'message');
+                    $condition = trans('voucher_condition_total_used_up', ['{used}' => $claimedExperienceTotal, '{total}' => $totalLimit], 'message');
                 } elseif (!$betCheckPassed) {
                     $condition = trans('voucher_condition_bet_insufficient', [], 'message');
                 } else {
                     $condition = trans('voucher_condition_available', [], 'message');
                 }
 
-                $scoreOptions[] = [
+                $experienceOptions[] = [
                     'ticket_type' => TicketRecord::TYPE_EXPERIENCE,
                     'score' => $score,
                     'rule_type' => '',
-                    'label' => trans('voucher_label_experience', ['score' => $score], 'message'),
+                    'label' => trans('voucher_label_experience', ['{score}' => $score], 'message'),
                     'condition' => $condition,
                     'can_print' => $canPrint,
                 ];
+            }
+
+            // 福利券 - 今日规则选项（置顶）
+            if (!empty($todayWelfareConfig['enabled']) && !empty($todayWelfareConfig['rules'])) {
+                foreach ($todayWelfareConfig['rules'] as $rule) {
+                    $isQualified = $todayBetAmount >= $rule['bet_amount'];
+
+                    // 检查该档位今日是否已领取（score匹配在printVoucherTicket已校验，此处仅按rule_type+score判断）
+                    $isClaimed = false;
+                    foreach ($claimedWelfareRecords as $record) {
+                        $extraData = $record['extra_data'] ?? null;
+                        if (is_string($extraData)) {
+                            $extraData = json_decode($extraData, true);
+                        }
+                        if (bccomp((string)($record['score'] ?? 0), (string)$rule['score'], 2) === 0
+                            && is_array($extraData)
+                            && ($extraData['rule_type'] ?? '') === 'today') {
+                            $isClaimed = true;
+                            break;
+                        }
+                    }
+
+                    $canPrint = $isQualified && !$isClaimed;
+                    $ruleName = trans('voucher_rule_today', [], 'message');
+
+                    if ($isClaimed) {
+                        $condition = trans('voucher_condition_daily_claimed', [], 'message');
+                    } elseif (!$isQualified) {
+                        $condition = trans('voucher_condition_bet_insufficient_amount', ['{rule}' => $ruleName, '{amount}' => $this->formatBetAmount($rule['bet_amount'])], 'message');
+                    } else {
+                        $condition = trans('voucher_condition_bet_reach', ['{rule}' => $ruleName, '{amount}' => $this->formatBetAmount($rule['bet_amount'])], 'message');
+                    }
+
+                    $welfareOptions[] = [
+                        'ticket_type' => TicketRecord::TYPE_WELFARE,
+                        'score' => $rule['score'],
+                        'rule_type' => 'today',
+                        'label' => trans('voucher_label_welfare', ['{score}' => $rule['score']], 'message'),
+                        'condition' => $condition,
+                        'can_print' => $canPrint,
+                    ];
+                }
             }
 
             // 福利券 - 昨日规则选项
@@ -856,14 +899,14 @@ class TicketController
                     $isQualified = $yesterdayBetAmount >= $rule['bet_amount'];
                     $isMaxTier = $rule['score'] === $maxQualifiedScore && $maxQualifiedScore > 0;
 
-                    // 检查该档位今日是否已领取
+                    // 检查该档位今日是否已领取（score为decimal类型，使用bccomp比较）
                     $isClaimed = false;
                     foreach ($claimedWelfareRecords as $record) {
                         $extraData = $record['extra_data'] ?? null;
                         if (is_string($extraData)) {
                             $extraData = json_decode($extraData, true);
                         }
-                        if (($record['score'] ?? 0) === $rule['score']
+                        if (bccomp((string)($record['score'] ?? 0), (string)$rule['score'], 2) === 0
                             && is_array($extraData)
                             && ($extraData['rule_type'] ?? '') === 'yesterday') {
                             $isClaimed = true;
@@ -877,60 +920,18 @@ class TicketController
                     if ($isClaimed) {
                         $condition = trans('voucher_condition_daily_claimed', [], 'message');
                     } elseif (!$isQualified) {
-                        $condition = trans('voucher_condition_bet_insufficient_amount', ['rule' => $ruleName, 'amount' => $this->formatBetAmount($rule['bet_amount'])], 'message');
+                        $condition = trans('voucher_condition_bet_insufficient_amount', ['{rule}' => $ruleName, '{amount}' => $this->formatBetAmount($rule['bet_amount'])], 'message');
                     } elseif (!$isMaxTier) {
                         $condition = trans('voucher_condition_higher_tier', [], 'message');
                     } else {
-                        $condition = trans('voucher_condition_bet_reach', ['rule' => $ruleName, 'amount' => $this->formatBetAmount($rule['bet_amount'])], 'message');
+                        $condition = trans('voucher_condition_bet_reach', ['{rule}' => $ruleName, '{amount}' => $this->formatBetAmount($rule['bet_amount'])], 'message');
                     }
 
-                    $scoreOptions[] = [
+                    $welfareOptions[] = [
                         'ticket_type' => TicketRecord::TYPE_WELFARE,
                         'score' => $rule['score'],
                         'rule_type' => 'yesterday',
-                        'label' => trans('voucher_label_welfare', ['score' => $rule['score']], 'message'),
-                        'condition' => $condition,
-                        'can_print' => $canPrint,
-                    ];
-                }
-            }
-
-            // 福利券 - 今日规则选项
-            if (!empty($todayWelfareConfig['enabled']) && !empty($todayWelfareConfig['rules'])) {
-                foreach ($todayWelfareConfig['rules'] as $rule) {
-                    $isQualified = $todayBetAmount >= $rule['bet_amount'];
-
-                    // 检查该档位今日是否已领取
-                    $isClaimed = false;
-                    foreach ($claimedWelfareRecords as $record) {
-                        $extraData = $record['extra_data'] ?? null;
-                        if (is_string($extraData)) {
-                            $extraData = json_decode($extraData, true);
-                        }
-                        if (($record['score'] ?? 0) === $rule['score']
-                            && is_array($extraData)
-                            && ($extraData['rule_type'] ?? '') === 'today') {
-                            $isClaimed = true;
-                            break;
-                        }
-                    }
-
-                    $canPrint = $isQualified && !$isClaimed;
-                    $ruleName = trans('voucher_rule_today', [], 'message');
-
-                    if ($isClaimed) {
-                        $condition = trans('voucher_condition_daily_claimed', [], 'message');
-                    } elseif (!$isQualified) {
-                        $condition = trans('voucher_condition_bet_insufficient_amount', ['rule' => $ruleName, 'amount' => $this->formatBetAmount($rule['bet_amount'])], 'message');
-                    } else {
-                        $condition = trans('voucher_condition_bet_reach', ['rule' => $ruleName, 'amount' => $this->formatBetAmount($rule['bet_amount'])], 'message');
-                    }
-
-                    $scoreOptions[] = [
-                        'ticket_type' => TicketRecord::TYPE_WELFARE,
-                        'score' => $rule['score'],
-                        'rule_type' => 'today',
-                        'label' => trans('voucher_label_welfare', ['score' => $rule['score']], 'message'),
+                        'label' => trans('voucher_label_welfare', ['{score}' => $rule['score']], 'message'),
                         'condition' => $condition,
                         'can_print' => $canPrint,
                     ];
@@ -951,7 +952,8 @@ class TicketController
             'used_experience_count' => $usedExperienceCount,
             'claimed_welfare_records' => $claimedWelfareRecords,
             'experience_bet_check_enabled' => $experienceBetCheckEnabled,
-            'score_options' => $scoreOptions,
+            'experience_options' => $experienceOptions,
+            'welfare_options' => $welfareOptions,
         ]);
     }
 
@@ -1028,7 +1030,7 @@ class TicketController
                 ->count();
 
             if ($totalCount >= $totalLimit) {
-                return jsonFailResponse(trans('voucher_experience_total_limit', ['limit' => $totalLimit], 'message'));
+                return jsonFailResponse(trans('voucher_experience_total_limit', ['{limit}' => $totalLimit], 'message'));
             }
 
             // 体验券打码判定逻辑
@@ -1111,7 +1113,7 @@ class TicketController
 
                 // 检查是否只能领取最高档位
                 if ($score < $maxQualifiedScore) {
-                    return jsonFailResponse(trans('voucher_welfare_higher_tier', ['score' => $maxQualifiedScore], 'message'));
+                    return jsonFailResponse(trans('voucher_welfare_higher_tier', ['{score}' => $maxQualifiedScore], 'message'));
                 }
 
                 // 检查今日是否已领取过昨日规则的任何档位
@@ -1154,7 +1156,7 @@ class TicketController
                 $ruleName = $welfareRuleType === 'today'
                     ? trans('voucher_rule_today', [], 'message')
                     : trans('voucher_rule_yesterday', [], 'message');
-                return jsonFailResponse(trans('voucher_welfare_tier_claimed', ['rule' => $ruleName], 'message'));
+                return jsonFailResponse(trans('voucher_welfare_tier_claimed', ['{rule}' => $ruleName], 'message'));
             }
         }
 
@@ -1205,10 +1207,10 @@ class TicketController
                 'rule_type' => $welfareRuleType,
             ]);
 
-            return jsonSuccessResponse(trans('voucher_claim_success', ['type' => $typeName], 'message'), [
+            return jsonSuccessResponse(trans('voucher_claim_success', ['{type}' => $typeName], 'message'), [
                 'id' => $ticket->id,
                 'order_id' => $orderId,
-                'qr_code_no' => $qrCodeNo,
+                'qr_code_no' => $orderId,
                 'score' => $score,
                 'ticket_type' => $ticketType,
                 'ticket_type_name' => $typeName,
@@ -1222,7 +1224,7 @@ class TicketController
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            return jsonFailResponse(trans('voucher_claim_failed', ['message' => $e->getMessage()], 'message'));
+            return jsonFailResponse(trans('voucher_claim_failed', ['{message}' => $e->getMessage()], 'message'));
         }
     }
 
