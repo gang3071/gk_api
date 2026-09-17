@@ -44,6 +44,16 @@ class PlayerPointsService
     const REDIS_CONFIG_KEY = 'gk_api:points_config:default';
 
     /**
+     * VIP 等級積分比例快取 Key（格式：vip_level_id:platform_id）
+     */
+    const REDIS_VIP_LEVEL_POINT_KEY = 'gk_api:vip_level_point:%d:%d';
+
+    /**
+     * VIP 等級積分比例快取鎖 Key（防快取擊穿）
+     */
+    const REDIS_VIP_LEVEL_POINT_LOCK_KEY = 'gk_api:vip_level_point_lock:%d:%d';
+
+    /**
      * 日志通道
      */
     private static $log;
@@ -418,28 +428,134 @@ class PlayerPointsService
         string $platform,
         int $departmentId
     ): int {
-        $vipLevelPoint = VipLevelPoint::query()
-            ->where('vip_level_id', $vipLevel)
-            ->where('platform_id', $platform)
-            ->first();
+        // 從快取讀取 VIP 等級積分比例，避免高頻打碼時重複查詢資料庫
+        $vipConfig = self::getVipLevelPointConfig($vipLevel, $platform);
 
-        if (empty($vipLevelPoint)) {
+        if (empty($vipConfig)) {
             return 0;
         }
 
-        // 1. ✅ 边界检查：负数和最小打码量
-        if ($betAmount <= 0 || $betAmount < $vipLevelPoint->min_bet_amount) {
+        // 1. ✅ 邊界檢查：負數和最小打碼量
+        if ($betAmount <= 0 || $betAmount < (float)$vipConfig['min_bet_amount']) {
             return 0;
         }
 
-        // 2. 活动倍数
+        // 2. 活動倍數
         $activityMultiple = self::getActivityMultiple();
 
-        // 3. 计算积分（向下取整，强制转换为整数）
-        $floor = (int)floor($betAmount / $vipLevelPoint->ratio_bet_amount);
-        $points = (int)floor($floor * $vipLevelPoint->ratio_point * $activityMultiple);
+        // 3. 計算積分（向下取整，強制轉換為整數）
+        $floor = (int)floor($betAmount / (float)$vipConfig['ratio_bet_amount']);
+        $points = (int)floor($floor * (float)$vipConfig['ratio_point'] * $activityMultiple);
 
         return max(0, (int)$points);
+    }
+
+    /**
+     * 獲取 VIP 等級積分比例
+     *
+     * ✅ 效能最佳化：高頻操作用 Redis 快取，降低資料庫壓力
+     * ✅ 防快取穿透：不存在的等級/平台快取空值（5分鐘）
+     * ✅ 防快取擊穿：使用 SETNX 互斥鎖
+     *
+     * @param int $vipLevel VIP等級
+     * @param int $platform 平台ID
+     * @return array|null ['ratio_point' => float, 'ratio_bet_amount' => float, 'min_bet_amount' => float] 或 null
+     */
+    private static function getVipLevelPointConfig(int $vipLevel, int $platform): ?array
+    {
+        $redis = Redis::connection()->client();
+        $key = sprintf(self::REDIS_VIP_LEVEL_POINT_KEY, $vipLevel, $platform);
+
+        // 嘗試從 Redis 讀取
+        $data = $redis->hGetAll($key);
+
+        if (!empty($data)) {
+            // ✅ 檢查是否為空值快取（防穿透）
+            if (isset($data['not_found']) && $data['not_found'] == '1') {
+                return null;
+            }
+
+            if (isset($data['ratio_point'])) {
+                return [
+                    'ratio_point' => (float)$data['ratio_point'],
+                    'ratio_bet_amount' => (float)$data['ratio_bet_amount'],
+                    'min_bet_amount' => (float)$data['min_bet_amount'],
+                ];
+            }
+        }
+
+        // ✅ 防快取擊穿：使用互斥鎖
+        $lockKey = sprintf(self::REDIS_VIP_LEVEL_POINT_LOCK_KEY, $vipLevel, $platform);
+        $locked = $redis->set($lockKey, 1, ['NX', 'EX' => 10]);  // 10秒鎖
+
+        if ($locked) {
+            try {
+                // 獲得鎖，查詢資料庫
+                $vipLevelPoint = VipLevelPoint::query()
+                    ->where('vip_level_id', $vipLevel)
+                    ->where('platform_id', $platform)
+                    ->first();
+
+                if (!$vipLevelPoint) {
+                    // ✅ 快取空值（5分鐘），防止穿透
+                    $redis->hMSet($key, ['not_found' => '1']);
+                    $redis->expire($key, 300);
+                    return null;
+                }
+
+                // 寫入 Redis
+                $redis->hMSet($key, [
+                    'ratio_point' => $vipLevelPoint->ratio_point,
+                    'ratio_bet_amount' => $vipLevelPoint->ratio_bet_amount,
+                    'min_bet_amount' => $vipLevelPoint->min_bet_amount,
+                ]);
+                $redis->expire($key, 300);
+
+                return [
+                    'ratio_point' => (float)$vipLevelPoint->ratio_point,
+                    'ratio_bet_amount' => (float)$vipLevelPoint->ratio_bet_amount,
+                    'min_bet_amount' => (float)$vipLevelPoint->min_bet_amount,
+                ];
+
+            } finally {
+                // 釋放鎖
+                $redis->del($lockKey);
+            }
+        } else {
+            // 未獲得鎖，等待50ms後重試讀取快取
+            usleep(50000);
+            $data = $redis->hGetAll($key);
+
+            if (!empty($data)) {
+                if (isset($data['not_found']) && $data['not_found'] == '1') {
+                    return null;
+                }
+
+                if (isset($data['ratio_point'])) {
+                    return [
+                        'ratio_point' => (float)$data['ratio_point'],
+                        'ratio_bet_amount' => (float)$data['ratio_bet_amount'],
+                        'min_bet_amount' => (float)$data['min_bet_amount'],
+                    ];
+                }
+            }
+
+            // 兜底：直接查詢資料庫（鎖等待超時）
+            $vipLevelPoint = VipLevelPoint::query()
+                ->where('vip_level_id', $vipLevel)
+                ->where('platform_id', $platform)
+                ->first();
+
+            if (!$vipLevelPoint) {
+                return null;
+            }
+
+            return [
+                'ratio_point' => (float)$vipLevelPoint->ratio_point,
+                'ratio_bet_amount' => (float)$vipLevelPoint->ratio_bet_amount,
+                'min_bet_amount' => (float)$vipLevelPoint->min_bet_amount,
+            ];
+        }
     }
 
     /**
