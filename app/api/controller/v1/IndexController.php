@@ -203,6 +203,9 @@ class IndexController
 
         $token = JwtToken::generateToken($tokenPayload);
 
+        // 高VIP登录频道推送
+        $this->notifyHighVipLogin($player);
+
         return jsonSuccessResponse('success', [
             'token' => $token,
             'player_activity_phase' => (new ActivityServices(null, $player))->playerUnreceivedActivity(),
@@ -1437,5 +1440,27 @@ class IndexController
     {
         checkPlayer();
         return jsonSuccessResponse(trans('success', [], 'message'));
+    }
+
+    /**
+     * 高VIP玩家登录时推送通知到渠道管理频道
+     *
+     * @param Player $player
+     */
+    private function notifyHighVipLogin(Player $player): void
+    {
+        $player->load('vipLevel');
+        if (!$player->vipLevel || $player->vipLevel->sort < 8) {
+            return;
+        }
+
+        sendSocketMessage('private-admin_group-channel-' . $player->department_id, [
+            'msg_type' => 'player_high_vip_login',
+            'player_id' => $player->id,
+            'player_name' => $player->name,
+            'player_phone' => $player->phone,
+            'vip_level_name' => $player->vipLevel->name,
+            'vip_level_sort' => $player->vipLevel->sort,
+        ]);
     }
 }
