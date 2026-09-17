@@ -5,6 +5,7 @@ use app\model\PhoneSmsLog;
 
 return [
     'validation_error' => '字段驗證錯誤',
+    'signature_params_missing' => '簽名參數缺失',
     'machine_maintaining' => '機台維護中',
     'game_type_not_fount' => '遊戲類別不存在',
     'machine_not_fount' => '未找到機台',
@@ -38,6 +39,8 @@ return [
     'keeping_success' => '保留成功',
     'keeping_cancel_success' => '取消保留成功',
     'machine_not_found' => '未找到機台',
+    'machine_occupied' => '機台已被占用',
+    'quota_exceeded' => '已達到機台數量上限',
     'machine_open_wash_too_fast' => '操作洗分需間隔5秒，若發現使用非法程式操作將凍結帳號',
     'machine_open_uncertain' => '上分操作狀態未知，請聯絡客服核實',
     'game_amount_insufficient' => '您的遊戲錢包馀額不足',
@@ -52,6 +55,7 @@ return [
     'phone' => '手機號碼',
     'phone_code' => '驗證碼',
     'country_code' => '國家編碼',
+    'account' => '帳號',
     'password' => '密碼',
     'old_password' => '舊密碼',
     'new_password' => '新密碼',
@@ -128,6 +132,12 @@ return [
     'player_withdraw_closed' => '玩家轉出功能關閉',
     'payment_function_closed' => '支付功能已關閉',
     'phone_not_register' => '手機號碼未註冊',
+    'machine_no_gaming' => '沒有佔用中的機台',
+    'machine_logout_all' => '已從所有機台登出',
+    'machine_logout' => '已從機台登出',
+    'transfer_amount_invalid' => '轉分金額需為大於 0 的整數',
+    'credit_insufficient' => '機台分數不足',
+    'transfer_limit_exceeded' => '超過單次轉分上限 {limit} 點',
 
     'open_point_required' => '請輸入開分值',
     'open_point_numeric' => '開分值錯誤',
@@ -613,6 +623,18 @@ return [
     'dish_order_status_transition_error' => '訂單目前狀態不允許此操作',
     'order_id' => '訂單ID',
     'dish_cancel_not_allowed' => '訂單已進入製作，無法取消',
+    'points_not_enough' => '積分不足',
+    'store_not_found' => '未找到門店',
+
+    // 劵匣
+    'ticket_kind_draw' => '摸獎劵',
+    'ticket_kind_draw_desc' => '透過機台遊玩累積打碼量自動獲得，每 1,000,000 點打碼量獲得 1 張摸獎劵，活動結束後自動開獎，獎金直接入帳。',
+    'ticket_kind_blindbox' => '盲盒劵',
+    'ticket_kind_blindbox_desc' => '盲盒劵尚未開放，敬請期待。',
+    'ticket_kind_exchange' => '兌換劵',
+    'ticket_kind_exchange_desc' => '兌換劵尚未開放，敬請期待。',
+    'ticket_kind_wheel' => '轉盤劵',
+    'ticket_kind_wheel_desc' => '轉盤劵尚未開放，敬請期待。',
 
     // 體驗券/福利券
     'voucher_invalid_ticket_type' => '無效的票據類型',
@@ -646,4 +668,5 @@ return [
     'voucher_rule_today' => '今日',
     'voucher_type_experience' => '體驗券',
     'voucher_type_welfare' => '福利券',
+    'unit_wan' => '萬',
 ];

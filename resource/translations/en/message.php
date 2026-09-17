@@ -5,6 +5,7 @@ use app\model\PhoneSmsLog;
 
 return [
     'validation_error' => 'Field validation error',
+    'signature_params_missing' => 'Signature parameters missing',
     'machine_maintaining' => 'Machine under maintenance',
     'game_type_not_fount' => 'Game category does not exist',
     'machine_not_fount' => 'Machine not found',
@@ -38,6 +39,8 @@ return [
     'keeping_success' => 'Keeping success',
     'keeping_cancel_success' => 'Cancel reservation successfully',
     'machine_not_found' => 'Machine not found',
+    'machine_occupied' => 'Machine is occupied',
+    'quota_exceeded' => 'Machine quota exceeded',
     'machine_open_wash_too_fast' => 'The operation needs to be separated by 5 seconds. If illegal program operation is found, the account will be frozen',
     'machine_open_uncertain' => 'Deposit operation status is uncertain, please contact customer service',
     'game_amount_insufficient' => 'Your game wallet balance is insufficient',
@@ -52,6 +55,7 @@ return [
     'phone' => 'Mobile phone number',
     'phone_code' => 'Verification code',
     'country_code' => 'Country code',
+    'account' => 'Account',
     'password' => 'password',
     'old_password' => 'Old password',
     'new_password' => 'New password',
@@ -128,6 +132,12 @@ return [
     'player_withdraw_closed' => 'Player withdrawal function is closed',
     'payment_function_closed' => 'Payment function is closed',
     'phone_not_register' => 'Mobile phone number is not registered',
+    'machine_no_gaming' => 'No machines in use',
+    'machine_logout_all' => 'Logout from all machines',
+    'machine_logout' => 'Logout from machine',
+    'transfer_amount_invalid' => 'Transfer amount must be a positive integer',
+    'credit_insufficient' => 'Insufficient machine credit',
+    'transfer_limit_exceeded' => 'Transfer amount exceeds the limit of {limit} points',
 
     'open_point_required' => 'Please enter the open point value',
     'open_point_numeric' => 'Open point value error',
@@ -597,7 +607,18 @@ return [
     'amount_calculation_zero_or_negative' => 'Amount calculation error: result is zero or negative',
     'amount_calculation_too_large' => 'Amount calculation error: exceeds single operation limit (1 million yuan), please check machine odds configuration',
     'machine_odds_config_error' => 'Machine odds configuration error',
+    'store_not_found' => 'Store not found',
     'ticket_playing_machine' => 'Please stop the current machine game first',
+
+    // Ticket Box
+    'ticket_kind_draw' => 'Raffle Ticket',
+    'ticket_kind_draw_desc' => 'Earned automatically by accumulating wager from machine gameplay. Every 1,000,000 points of wager earns 1 raffle ticket. The draw runs automatically after the activity ends and prizes are credited directly to your wallet.',
+    'ticket_kind_blindbox' => 'Blindbox Ticket',
+    'ticket_kind_blindbox_desc' => 'Blindbox tickets are coming soon.',
+    'ticket_kind_exchange' => 'Exchange Ticket',
+    'ticket_kind_exchange_desc' => 'Exchange tickets are coming soon.',
+    'ticket_kind_wheel' => 'Wheel Ticket',
+    'ticket_kind_wheel_desc' => 'Wheel tickets are coming soon.',
     'dishes' => 'Dish list',
     'dish_order_empty' => 'Order dishes cannot be empty',
     'dish_not_found' => 'Dish not found',
@@ -640,4 +661,6 @@ return [
     'voucher_rule_today' => 'Today',
     'voucher_type_experience' => 'Experience',
     'voucher_type_welfare' => 'Welfare',
+    'points_not_enough' => 'Insufficient points',
+    'unit_wan' => 'W',
 ];

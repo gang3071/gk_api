@@ -5,6 +5,7 @@ use app\model\PhoneSmsLog;
 
 return [
     'validation_error' => 'フィールド検証エラー',
+    'signature_params_missing' => '署名パラメータが不足しています',
     'machine_maintaining' => 'メンテナンス中のマシン',
     'game_type_not_fount' => 'ゲームカテゴリが存在しません',
     'machine_not_fount' => 'マシンが見つかりません',
@@ -38,6 +39,8 @@ return [
     'keeper_success' => '成功を維持',
     'keeper_cancel_success' => '予約を正常にキャンセルしました',
     'machine_not_found' => 'マシンが見つかりません',
+    'machine_occupied' => 'マシンは使用中です',
+    'quota_exceeded' => 'マシン数が上限に達しました',
     'machine_open_wash_too_fast' => '操作は5秒間隔で行う必要があります。不正なプログラム操作が見つかった場合、アカウントは凍結されます',
     'machine_open_uncertain' => '入金操作のステータスが不明です。カスタマーサービスにご確認ください',
     'game_amount_insufficient' => 'ゲームウォレットの残高が不足しています',
@@ -52,6 +55,7 @@ return [
     'phone' => '携帯電話番号',
     'phone_code' => '確認コード',
     'country_code' => '国コード',
+    'account' => 'アカウント',
     'password' => '「パスワード」',
     'old_password' => '古いパスワード',
     'new_password' => '新しいパスワード',
@@ -128,6 +132,12 @@ return [
     'player_withdraw_closed' => 'プレイヤーの退会機能は閉じられています',
     'payment_function_closed' => '支払い機能が閉じられています',
     'phone_not_register' => '携帯電話番号が登録されていません',
+    'machine_no_gaming' => '使用中の機械はありません',
+    'machine_logout_all' => 'すべてのマシンからログアウトする',
+    'machine_logout' => 'マシンからログアウトする',
+    'transfer_amount_invalid' => '転分金額は 0 より大きい整数である必要があります',
+    'credit_insufficient' => '機械の分数が不足しています',
+    'transfer_limit_exceeded' => '1回の転分上限 {limit} ポイントを超えています',
 
     'open_point_required' => 'オープンポイント値を入力してください',
     'open_point_numeric' => 'オープンポイント値エラー',
@@ -595,6 +605,17 @@ return [
     'amount_calculation_too_large' => '金額計算異常：単回限度（100万円）を超えました、マシンオッズ設定を確認してください',
     'machine_odds_config_error' => 'マシンオッズ設定エラー',
     'ticket_playing_machine' => '現在のマシンゲームを停止してください',
+    'store_not_found' => '店舗が見つかりません',
+
+    // チケットボックス
+    'ticket_kind_draw' => '摸賞券（くじ）',
+    'ticket_kind_draw_desc' => 'マシンプレイで累積された打碼量に応じて自動で獲得できます。1,000,000 ポイントごとに 1 枚の摸賞券を獲得し、キャンペーン終了後に自動抽選が行われ、賞金は直接ウォレットに入金されます。',
+    'ticket_kind_blindbox' => 'ブラインドボックス券',
+    'ticket_kind_blindbox_desc' => 'ブラインドボックス券は近日公開予定です。',
+    'ticket_kind_exchange' => '交換券',
+    'ticket_kind_exchange_desc' => '交換券は近日公開予定です。',
+    'ticket_kind_wheel' => '回転盤券',
+    'ticket_kind_wheel_desc' => '回転盤券は近日公開予定です。',
     'dishes' => '料理リスト',
     'dish_order_empty' => '注文料理が空です',
     'dish_not_found' => '料理が見つかりません',
@@ -604,6 +625,7 @@ return [
     'dish_order_status_transition_error' => '現在の注文ステータスではこの操作はできません',
     'order_id' => '注文ID',
     'dish_cancel_not_allowed' => '注文が調理中でキャンセルできません',
+    'points_not_enough' => 'ポイント不足です',
 
     // 体験券/福利券
     'voucher_invalid_ticket_type' => '無効な券種類です',
@@ -637,4 +659,5 @@ return [
     'voucher_rule_today' => '今日',
     'voucher_type_experience' => '体験券',
     'voucher_type_welfare' => '福利券',
+    'unit_wan' => '万',
 ];

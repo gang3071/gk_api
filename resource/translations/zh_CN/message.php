@@ -5,6 +5,7 @@ use app\model\PhoneSmsLog;
 
 return [
     'validation_error' => '字段验证错误',
+    'signature_params_missing' => '签名参数缺失',
     'machine_maintaining' => '机台维护中',
     'game_type_not_fount' => '游戏类别不存在',
     'machine_not_fount' => '未找到机台',
@@ -38,6 +39,8 @@ return [
     'keeping_success' => '保留成功',
     'keeping_cancel_success' => '取消保留成功',
     'machine_not_found' => '未找到机台',
+    'machine_occupied' => '机台已被占用',
+    'quota_exceeded' => '已达到机台数量上限',
     'machine_open_wash_too_fast' => '操作上下分需间隔5秒，若发现使用非法程序操作将冻结帐号',
     'machine_open_uncertain' => '上分操作状态未知，请联系客服核实',
     'game_amount_insufficient' => '您的游戏钱包馀额不足',
@@ -52,6 +55,7 @@ return [
     'phone' => '手机号',
     'phone_code' => '验证码',
     'country_code' => '国家编码',
+    'account' => '账号',
     'password' => '密码',
     'old_password' => '旧密码',
     'new_password' => '新密码',
@@ -128,6 +132,12 @@ return [
     'player_withdraw_closed' => '玩家转出功能关闭',
     'payment_function_closed' => '支付功能已关闭',
     'phone_not_register' => '手机号未注册',
+    'machine_no_gaming' => '没有占用中的机台',
+    'machine_logout_all' => '已从所有机台登出',
+    'machine_logout' => '已从机台登出',
+    'transfer_amount_invalid' => '转分金额需为大于 0 的整数',
+    'credit_insufficient' => '机台分数不足',
+    'transfer_limit_exceeded' => '超过单次转分上限 {limit} 点',
 
     'open_point_required' => '请输入开分值',
     'open_point_numeric' => '开分值错误',
@@ -613,7 +623,18 @@ return [
     'amount_calculation_zero_or_negative' => '计算金额异常：结果为0或负数',
     'amount_calculation_too_large' => '计算金额异常：超过单次限制（100万元），请检查机台赔率配置',
     'machine_odds_config_error' => '机台赔率配置错误',
+    'store_not_found' => '未找到门店',
     'ticket_playing_machine' => '请先停止当前游玩机台',
+
+    // 劵匣
+    'ticket_kind_draw' => '摸奖券',
+    'ticket_kind_draw_desc' => '通过机台游玩累积打码量自动获得，每 1,000,000 点打码量获得 1 张摸奖券，活动结束后自动开奖，奖金直接入账。',
+    'ticket_kind_blindbox' => '盲盒券',
+    'ticket_kind_blindbox_desc' => '盲盒券尚未开放，敬请期待。',
+    'ticket_kind_exchange' => '兑换券',
+    'ticket_kind_exchange_desc' => '兑换券尚未开放，敬请期待。',
+    'ticket_kind_wheel' => '转盘券',
+    'ticket_kind_wheel_desc' => '转盘券尚未开放，敬请期待。',
     'dishes' => '菜品列表',
     'dish_order_empty' => '订单菜品不能为空',
     'dish_not_found' => '菜品不存在',
@@ -623,6 +644,7 @@ return [
     'dish_order_status_transition_error' => '订单当前状态不允许此操作',
     'order_id' => '订单ID',
     'dish_cancel_not_allowed' => '订单已进入制作，无法取消',
+    'points_not_enough' => '积分不足',
 
     // 体验券/福利券
     'voucher_invalid_ticket_type' => '无效的票据类型',
@@ -656,4 +678,5 @@ return [
     'voucher_rule_today' => '今日',
     'voucher_type_experience' => '体验券',
     'voucher_type_welfare' => '福利券',
+    'unit_wan' => '万',
 ];
