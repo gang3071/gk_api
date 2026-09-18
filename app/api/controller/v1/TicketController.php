@@ -816,7 +816,7 @@ class TicketController
                 // 打码判定：首次领取免检 或 开关关闭免检
                 $betCheckPassed = true;
                 if ($experienceBetCheckEnabled && $claimedExperienceTotal > 0) {
-                    $betCheckPassed = $yesterdayBetAmount >= 10000;
+                    $betCheckPassed = $yesterdayBetAmount >= 20000;
                 }
 
                 $canPrint = $isNewUser && !$isDailyLimitReached && !$isTotalLimitReached && $betCheckPassed;
@@ -1042,7 +1042,7 @@ class TicketController
                     $yesterdayStatDate = $isAfter8am ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d', strtotime('-2 days'));
                     $yesterdayBetAmount = $this->getPlayerBetAmount($player->id, $yesterdayStart, $yesterdayEnd, $yesterdayStatDate);
 
-                    if ($yesterdayBetAmount < 10000) {
+                    if ($yesterdayBetAmount < 20000) {
                         Log::info('体验券打码判定失败', [
                             'player_id' => $player->id,
                             'yesterday_bet_amount' => $yesterdayBetAmount,

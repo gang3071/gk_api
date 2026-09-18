@@ -637,7 +637,7 @@ return [
     'voucher_experience_not_new_user' => 'Only new members can claim experience coupons',
     'voucher_experience_daily_limit' => 'Daily experience coupon claim limit reached',
     'voucher_experience_total_limit' => 'Total experience coupon claim limit reached ({limit} total)',
-    'voucher_experience_bet_insufficient' => 'Yesterday\'s bet amount is less than 10,000, cannot claim experience coupon',
+    'voucher_experience_bet_insufficient' => 'Yesterday\'s bet amount is less than 20,000, cannot claim experience coupon',
     'voucher_welfare_disabled' => 'Welfare coupon is not enabled',
     'voucher_welfare_rule_type_required' => 'Please specify rule type: today or yesterday',
     'voucher_welfare_today_bet_insufficient' => 'Today\'s bet amount does not meet this tier requirement',
