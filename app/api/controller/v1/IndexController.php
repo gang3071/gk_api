@@ -4,6 +4,7 @@ namespace app\api\controller\v1;
 
 use app\exception\PlayerCheckException;
 use app\model\AdminDevice;
+use app\model\AdminUser;
 use app\model\Announcement;
 use app\model\Channel;
 use app\model\GameExtend;
@@ -202,6 +203,9 @@ class IndexController
         ];
 
         $token = JwtToken::generateToken($tokenPayload);
+
+        // 高VIP登录频道推送
+        $this->notifyHighVipLogin($player);
 
         return jsonSuccessResponse('success', [
             'token' => $token,
@@ -1437,5 +1441,61 @@ class IndexController
     {
         checkPlayer();
         return jsonSuccessResponse(trans('success', [], 'message'));
+    }
+
+    /**
+     * 高VIP玩家登录时推送通知到渠道管理频道 + 服务铃
+     *
+     * @param Player $player
+     * @throws PushException
+     */
+    private function notifyHighVipLogin(Player $player): void
+    {
+        $player->load('vipLevel');
+        if (!$player->vipLevel || $player->vipLevel->sort < 8) {
+            return;
+        }
+
+        // 渠道频道推送
+        sendSocketMessage('player-channel-' . $player->department_id, [
+            'msg_type' => 'player_high_vip_login',
+            'player_id' => $player->id,
+            'player_name' => $this->maskPlayerName($player->name),
+            'vip_level_sort' => $player->vipLevel->sort,
+        ]);
+
+        $storeAdmin = AdminUser::find($player->store_admin_id);
+        if (!$storeAdmin) {
+            return;
+        }
+
+        $channelName = "private-store-{$storeAdmin->department_id}-{$storeAdmin->id}";
+        sendSocketMessage($channelName, [
+            'type' => 'service_call',
+            'msg_type' => 'player_high_vip_login',
+            'player_id' => $player->id,
+            'player_name' => $this->maskPlayerName($player->name),
+            'vip_level_sort' => $player->vipLevel->sort,
+        ], 'service_bell');
+    }
+
+
+    /**
+     * 玩家名称脱敏处理
+     */
+    private function maskPlayerName(string $name): string
+    {
+        if (empty($name)) {
+            return '';
+        }
+
+        $nameLength = mb_strlen($name);
+        if ($nameLength <= 2) {
+            // 1-2个字：显示第1个字 + *，如 "张*"
+            return mb_substr($name, 0, 1) . '*';
+        } else {
+            // 3个字及以上：显示第1个字 + ***，如 "王***"
+            return mb_substr($name, 0, 1) . '***';
+        }
     }
 }
