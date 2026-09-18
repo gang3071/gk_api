@@ -669,7 +669,7 @@ return [
     'voucher_condition_not_new_user' => '非新会员',
     'voucher_condition_daily_claimed' => '今日已领取',
     'voucher_condition_total_used_up' => '总次数已用完({used}/{total})',
-    'voucher_condition_bet_insufficient' => '昨日打码量不足10,000',
+    'voucher_condition_bet_insufficient' => '昨日打码量不足20,000',
     'voucher_condition_available' => '可领取',
     'voucher_condition_bet_insufficient_amount' => '{rule}打码量不足{amount}',
     'voucher_condition_higher_tier' => '请领取更高档位',

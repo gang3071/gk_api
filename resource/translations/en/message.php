@@ -652,7 +652,7 @@ return [
     'voucher_condition_not_new_user' => 'Not a new member',
     'voucher_condition_daily_claimed' => 'Already claimed today',
     'voucher_condition_total_used_up' => 'Total limit reached ({used}/{total})',
-    'voucher_condition_bet_insufficient' => 'Yesterday bet < 10,000',
+    'voucher_condition_bet_insufficient' => 'Yesterday bet < 20,000',
     'voucher_condition_available' => 'Available',
     'voucher_condition_bet_insufficient_amount' => '{rule} bet < {amount}',
     'voucher_condition_higher_tier' => 'Claim higher tier first',
