@@ -650,7 +650,7 @@ return [
     'voucher_condition_not_new_user' => '新会員ではありません',
     'voucher_condition_daily_claimed' => '本日取得済み',
     'voucher_condition_total_used_up' => '回数上限到達({used}/{total})',
-    'voucher_condition_bet_insufficient' => '昨日ベット < 10,000',
+    'voucher_condition_bet_insufficient' => '昨日ベット < 20,000',
     'voucher_condition_available' => '取得可能',
     'voucher_condition_bet_insufficient_amount' => '{rule}ベット < {amount}',
     'voucher_condition_higher_tier' => 'より高いティアを取得してください',
