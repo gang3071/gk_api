@@ -654,7 +654,7 @@ return [
     'voucher_experience_not_new_user' => '只有新会员才能领取体验券',
     'voucher_experience_daily_limit' => '今日体验券领取次数已用完',
     'voucher_experience_total_limit' => '体验券领取总次数已用完（共{limit}次）',
-    'voucher_experience_bet_insufficient' => '昨日打码量不足10,000，无法领取体验券',
+    'voucher_experience_bet_insufficient' => '昨日打码量不足20,000，无法领取体验券',
     'voucher_welfare_disabled' => '福利券功能未启用',
     'voucher_welfare_rule_type_required' => '请指定规则类型：today 或 yesterday',
     'voucher_welfare_today_bet_insufficient' => '今日打码量不满足该档位福利券领取条件',

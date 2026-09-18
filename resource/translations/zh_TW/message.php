@@ -644,7 +644,7 @@ return [
     'voucher_experience_not_new_user' => '只有新會員才能領取體驗券',
     'voucher_experience_daily_limit' => '今日體驗券領取次數已用完',
     'voucher_experience_total_limit' => '體驗券領取總次數已用完（共{limit}次）',
-    'voucher_experience_bet_insufficient' => '昨日打碼量不足10,000，無法領取體驗券',
+    'voucher_experience_bet_insufficient' => '昨日打碼量不足20,000，無法領取體驗券',
     'voucher_welfare_disabled' => '福利券功能未啟用',
     'voucher_welfare_rule_type_required' => '請指定規則類型：today 或 yesterday',
     'voucher_welfare_today_bet_insufficient' => '今日打碼量不滿足該檔位福利券領取條件',
