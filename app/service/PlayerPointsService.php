@@ -86,7 +86,7 @@ class PlayerPointsService
      */
     public static function addPointsFromBetting(
         int $playerId,
-        float $betAmount,
+        array $platformAmounts,
         array $recordIds = [],
         string $batchId = '',
         ?Carbon $createdAt = null
@@ -103,27 +103,31 @@ class PlayerPointsService
                 throw new Exception("Player not found: {$playerId}");
             }
 
-            // 2. 获取平台代码
-            $platform = ['id' => 0, 'code' => 'DEFAULT'];
+            // 2. 按平台分别计算积分，再汇总
+            $totalPointsEarned = 0;
+            $totalBetAmount = 0;
+            $platformDetails = [];
 
-            if (!empty($recordIds)) {
-                $platform = PlayGameRecord::query()
-                    ->select(['game_platform.id', 'game_platform.code'])
-                    ->whereIn('play_game_record.id', $recordIds)
-                    ->join('game_platform', 'play_game_record.platform_id', '=', 'game_platform.id')
-                    ->first()
-                    ?->toArray();
+            foreach ($platformAmounts as $platformId => $betAmount) {
+                $betAmount = floatval($betAmount);
+                if ($betAmount <= 0) {
+                    continue;
+                }
+
+                $platformId = intval($platformId);
+                $points = self::calculatePoints(
+                    $betAmount,
+                    $playerInfo['vip_level_id'],
+                    $platformId,
+                    $playerInfo['department_id']
+                );
+
+                $totalBetAmount += $betAmount;
+                $totalPointsEarned += $points;
+                $platformDetails[] = "platform:{$platformId} bet:{$betAmount} points:{$points}";
             }
 
-            // 3. 计算应得积分（内部已记录积分为0的具体原因）
-            $pointsEarned = self::calculatePoints(
-                $betAmount,
-                $playerInfo['vip_level_id'],
-                $platform['id'] ?? 0,
-                $playerInfo['department_id']
-            );
-
-            if ($pointsEarned <= 0) {
+            if ($totalPointsEarned <= 0) {
                 return [
                     'points_earned' => 0,
                     'total_points' => 0,
@@ -157,11 +161,11 @@ class PlayerPointsService
             if ($dailyLimit > 0) {
                 $todayPoints = (int)$redis->get($dailyKey) ?: 0;
 
-                if ($todayPoints + $pointsEarned > $dailyLimit) {
+                if ($todayPoints + $totalPointsEarned > $dailyLimit) {
                     self::log()->warning('[积分] 今日积分已达上限', [
                         'player_id' => $playerId,
                         'today_points' => $todayPoints,
-                        'new_points' => $pointsEarned,
+                        'new_points' => $totalPointsEarned,
                         'daily_limit' => $dailyLimit,
                     ]);
 
@@ -174,7 +178,7 @@ class PlayerPointsService
             }
 
             // 6. Redis Lua 原子累加积分
-            $result = self::incrementPointsByLua($playerId, $pointsEarned);
+            $result = self::incrementPointsByLua($playerId, $totalPointsEarned);
 
             // 7. 标记 batch_id 已处理
             if (!empty($batchId)) {
@@ -187,7 +191,7 @@ class PlayerPointsService
             // 9. 累加今日积分计数（放在最后，失败不影响玩家利益）
             try {
                 if ($dailyLimit > 0) {
-                    $redis->incrBy($dailyKey, $pointsEarned);
+                    $redis->incrBy($dailyKey, $totalPointsEarned);
                     $redis->expire($dailyKey, 86400 * 2);
                 }
             } catch (Exception $e) {
@@ -200,10 +204,10 @@ class PlayerPointsService
             // 10. 记录成功日志
             self::log()->info('[积分] 累加成功', [
                 'player_id' => $playerId,
-                'bet_amount' => $betAmount,
+                'total_bet_amount' => $totalBetAmount,
                 'vip_level_id' => $playerInfo['vip_level_id'],
-                'platform' => ($platform['code'] ?? 'DEFAULT') . '(id:' . ($platform['id'] ?? 0) . ')',
-                'points_earned' => $pointsEarned,
+                'platform_details' => $platformDetails,
+                'points_earned' => $totalPointsEarned,
                 'old_total' => $result['old_total'],
                 'new_total' => $result['new_total'],
                 'available_points' => $result['new_available'],
@@ -211,7 +215,7 @@ class PlayerPointsService
             ]);
 
             return [
-                'points_earned' => $pointsEarned,
+                'points_earned' => $totalPointsEarned,
                 'total_points' => $result['new_total'],
                 'available_points' => $result['new_available'],
             ];
@@ -219,7 +223,7 @@ class PlayerPointsService
         } catch (Exception $e) {
             self::log()->error('[积分] 处理异常', [
                 'player_id' => $playerId,
-                'bet_amount' => $betAmount,
+                'platform_amounts' => $platformAmounts,
                 'batch_id' => $batchId,
                 'error' => $e->getMessage(),
             ]);

@@ -59,23 +59,30 @@ class PlayerPoints implements Consumer
     public function consume($data)
     {
         $playerId = intval($data['player_id'] ?? 0);
-        $betAmount = floatval($data['bet_amount'] ?? 0);
         $batchId = $data['batch_id'] ?? '';
+        $platformAmounts = $data['platform_amounts'] ?? [];
+
+        // 兼容旧格式：bet_amount → platform_amounts
+        if (empty($platformAmounts) && !empty($data['bet_amount'])) {
+            $platformAmounts = [0 => floatval($data['bet_amount'])];
+        }
+
+        $totalBetAmount = array_sum($platformAmounts);
 
         $this->log->info('[积分队列] 收到消息', [
             'player_id' => $playerId,
-            'bet_amount' => $betAmount,
+            'total_bet_amount' => $totalBetAmount,
+            'platform_amounts' => $platformAmounts,
             'batch_id' => $batchId,
             'source' => $data['source'] ?? 'betting',
-            'created_at' => $data['created_at'] ?? null,
         ]);
 
         try {
             // 验证必要字段
-            if ($playerId <= 0 || $betAmount <= 0) {
+            if ($playerId <= 0 || $totalBetAmount <= 0) {
                 $this->log->error('[积分队列] 字段无效，丢弃消息', [
                     'player_id' => $playerId,
-                    'bet_amount' => $betAmount,
+                    'platform_amounts' => $platformAmounts,
                     'raw_data' => $data,
                 ]);
                 return;
@@ -98,7 +105,7 @@ class PlayerPoints implements Consumer
             // 调用积分服务累加
             $result = PlayerPointsService::addPointsFromBetting(
                 $playerId,
-                $betAmount,
+                $platformAmounts,
                 $data['record_ids'] ?? [],
                 $batchId,
                 $createdAt
@@ -110,7 +117,7 @@ class PlayerPoints implements Consumer
             if ($result['points_earned'] > 0) {
                 $this->log->info('[积分队列] 消费完成：积分已累加', [
                     'player_id' => $playerId,
-                    'bet_amount' => $betAmount,
+                    'total_bet_amount' => $totalBetAmount,
                     'points_earned' => $result['points_earned'],
                     'total_points' => $result['total_points'],
                     'available_points' => $result['available_points'],
@@ -119,7 +126,7 @@ class PlayerPoints implements Consumer
             } else {
                 $this->log->info('[积分队列] 消费完成：积分未累加', [
                     'player_id' => $playerId,
-                    'bet_amount' => $betAmount,
+                    'total_bet_amount' => $totalBetAmount,
                     'batch_id' => $batchId,
                 ]);
             }
@@ -127,7 +134,7 @@ class PlayerPoints implements Consumer
         } catch (Exception $e) {
             $this->log->error('[积分队列] 消费异常，将重试', [
                 'player_id' => $playerId,
-                'bet_amount' => $betAmount,
+                'total_bet_amount' => $totalBetAmount,
                 'batch_id' => $batchId,
                 'error' => $e->getMessage(),
                 'line' => $e->getLine(),
