@@ -447,7 +447,7 @@ class PlayerPointsService
         int $vipLevel,
         string $platform,
         int $departmentId
-    ): int {
+    ): float {
         // 從快取讀取 VIP 等級積分比例，避免高頻打碼時重複查詢資料庫
         $vipConfig = self::getVipLevelPointConfig($vipLevel, $platform);
 
