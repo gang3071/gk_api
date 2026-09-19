@@ -127,7 +127,17 @@ class PlayerPointsService
                 $platformDetails[] = "platform:{$platformId} bet:{$betAmount} points:{$points}";
             }
 
+            self::log()->debug('[积分] 汇总完成', [
+                'player_id' => $playerId,
+                'total_bet_amount' => $totalBetAmount,
+                'total_points_earned' => $totalPointsEarned,
+                'platform_details' => $platformDetails,
+            ]);
+
             if ($totalPointsEarned <= 0) {
+                self::log()->debug('[积分] 总积分为0，跳过', [
+                    'player_id' => $playerId,
+                ]);
                 return [
                     'points_earned' => 0,
                     'total_points' => 0,
@@ -177,7 +187,15 @@ class PlayerPointsService
             }
 
             // 6. Redis Lua 原子累加积分
+            self::log()->debug('[积分] 准备调用Lua累加', [
+                'player_id' => $playerId,
+                'points' => $totalPointsEarned,
+            ]);
             $result = self::incrementPointsByLua($playerId, $totalPointsEarned);
+            self::log()->debug('[积分] Lua累加返回', [
+                'player_id' => $playerId,
+                'result' => $result,
+            ]);
 
             // 7. 标记 batch_id 已处理
             if (!empty($batchId)) {
@@ -638,11 +656,21 @@ LUA;
 
         $result = $redis->eval($lua, [$key, $points, $now, $ttl], 1);
 
+        if ($result === false || $result === null) {
+            self::log()->error('[积分] Lua脚本执行失败', [
+                'player_id' => $playerId,
+                'points' => $points,
+                'key' => $key,
+                'result' => $result,
+            ]);
+            throw new Exception("Lua eval failed for player {$playerId}");
+        }
+
         return [
-            'old_available' => round($result[0], 4),
-            'new_available' => round($result[1], 4),
-            'old_total' => round($result[2], 4),
-            'new_total' => round($result[3], 4),
+            'old_available' => round(floatval($result[0]), 4),
+            'new_available' => round(floatval($result[1]), 4),
+            'old_total' => round(floatval($result[2]), 4),
+            'new_total' => round(floatval($result[3]), 4),
         ];
     }
 
