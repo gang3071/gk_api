@@ -12,6 +12,7 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerMoneyEditLog;
 use app\model\PlayerReverseWaterDetail;
 use app\model\PlayGameRecord;
+use app\model\SystemSetting;
 use app\model\VipLevel;
 use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
@@ -115,6 +116,27 @@ class PlayerController
             })
             ->count();
 
+        // 机台闲置自动保留时间（渠道级优先，回退全局）
+        $pendingMinutes = SystemSetting::query()
+            ->where('feature', 'pending_minutes')
+            ->where('department_id', $player->department_id)
+            ->where('status', 1)
+            ->value('num');
+
+        if ($pendingMinutes === null) {
+            $pendingMinutes = SystemSetting::query()
+                ->where('feature', 'pending_minutes')
+                ->where('department_id', 0)
+                ->where('status', 1)
+                ->value('num');
+        }
+
+        // 赠点保留时间（全局配置）
+        $giftKeepingMinutes = SystemSetting::query()
+            ->where('feature', 'gift_keeping_minutes')
+            ->where('status', 1)
+            ->value('num');
+
         return apiSuccessResponse('success', [
             'player' => [
                 'id' => $player->id,
@@ -134,7 +156,11 @@ class PlayerController
                 'currentBetAmount' => $currentBetAmount,
                 'upgradeBetAmount' => $vipLevel->upgrade_bet_amount
             ],
-            'machine' => $machine
+            'machine' => $machine,
+            'settings' => [
+                'pending_minutes'      => (int) ($pendingMinutes ?? 0),
+                'gift_keeping_minutes' => (int) ($giftKeepingMinutes ?? 0),
+            ],
         ]);
     }
 
