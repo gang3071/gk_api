@@ -69,12 +69,11 @@ class PlayerPoints implements Consumer
 
         $totalBetAmount = array_sum($platformAmounts);
 
-        $this->log->info('[积分队列] 收到消息', [
+        $this->log->debug('[积分队列] 收到消息', [
             'player_id' => $playerId,
             'total_bet_amount' => $totalBetAmount,
             'platform_amounts' => $platformAmounts,
             'batch_id' => $batchId,
-            'source' => $data['source'] ?? 'betting',
         ]);
 
         try {
@@ -115,19 +114,14 @@ class PlayerPoints implements Consumer
             $this->pushNotification($playerId, $result);
 
             if ($result['points_earned'] > 0) {
-                $this->log->info('[积分队列] 消费完成：积分已累加', [
+                $this->log->debug('[积分队列] 消费完成', [
                     'player_id' => $playerId,
-                    'total_bet_amount' => $totalBetAmount,
                     'points_earned' => $result['points_earned'],
                     'total_points' => $result['total_points'],
-                    'available_points' => $result['available_points'],
-                    'batch_id' => $batchId,
                 ]);
             } else {
-                $this->log->info('[积分队列] 消费完成：积分未累加', [
+                $this->log->debug('[积分队列] 消费完成（积分为0）', [
                     'player_id' => $playerId,
-                    'total_bet_amount' => $totalBetAmount,
-                    'batch_id' => $batchId,
                 ]);
             }
 

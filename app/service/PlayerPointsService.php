@@ -138,7 +138,7 @@ class PlayerPointsService
             // 4. 检查 batch_id 幂等性
             if (!empty($batchId)) {
                 if (self::isDuplicateBatch($batchId)) {
-                    self::log()->warning('[积分] batch_id重复，跳过累加', [
+                    self::log()->debug('[积分] batch_id重复，跳过', [
                         'player_id' => $playerId,
                         'batch_id' => $batchId,
                     ]);
@@ -162,10 +162,9 @@ class PlayerPointsService
                 $todayPoints = (int)$redis->get($dailyKey) ?: 0;
 
                 if ($todayPoints + $totalPointsEarned > $dailyLimit) {
-                    self::log()->warning('[积分] 今日积分已达上限', [
+                    self::log()->info('[积分] 今日积分已达上限', [
                         'player_id' => $playerId,
                         'today_points' => $todayPoints,
-                        'new_points' => $totalPointsEarned,
                         'daily_limit' => $dailyLimit,
                     ]);
 
@@ -202,15 +201,12 @@ class PlayerPointsService
             }
 
             // 10. 记录成功日志
-            self::log()->info('[积分] 累加成功', [
+            self::log()->debug('[积分] 累加成功', [
                 'player_id' => $playerId,
                 'total_bet_amount' => $totalBetAmount,
-                'vip_level_id' => $playerInfo['vip_level_id'],
                 'platform_details' => $platformDetails,
                 'points_earned' => $totalPointsEarned,
-                'old_total' => $result['old_total'],
                 'new_total' => $result['new_total'],
-                'available_points' => $result['new_available'],
                 'batch_id' => $batchId,
             ]);
 
@@ -437,10 +433,9 @@ class PlayerPointsService
         $vipConfig = self::getVipLevelPointConfig($vipLevel, $platform);
 
         if (empty($vipConfig)) {
-            self::log()->warning('[积分] 无VIP积分配置', [
+            self::log()->debug('[积分] 无VIP积分配置，跳过', [
                 'vip_level_id' => $vipLevel,
                 'platform_id' => $platform,
-                'department_id' => $departmentId,
             ]);
             return 0;
         }
@@ -1938,7 +1933,7 @@ LUA;
 
             } catch (Exception $e) {
                 self::log()->error('[积分同步] 同步玩家失败', [
-                    'key' => $key,
+                    'player_id' => $playerId,
                     'error' => $e->getMessage(),
                 ]);
             }
