@@ -241,7 +241,7 @@ class PlayerPointsService
      */
     public static function addPoints(
         int $playerId,
-        int $points,
+        float $points,
         int $type = 5, // 默认活动奖励
         string $source = 'activity',
         string $remark = '',
@@ -252,8 +252,8 @@ class PlayerPointsService
             throw new Exception('增加的积分必须大于0');
         }
 
-        // 确保是整数
-        $points = (int)$points;
+        // 保留4位小数
+        $points = round($points, 4);
 
         Db::beginTransaction();
 
@@ -293,13 +293,14 @@ class PlayerPointsService
 
             // 5. 更新 MySQL（使用乐观锁，先更新数据库保证持久化）
             $currentVersion = $playerPoints->version;
+            $pointsStr = number_format($points, 4, '.', '');
 
             // ✅ 使用 DB::raw() 进行数据库层面的原子计算（保证一致性）
             $affected = PlayerPoints::where('id', $playerPoints->id)
                 ->where('version', $currentVersion)
                 ->update([
-                    'total_points' => Db::raw('total_points + ' . (int)$points),
-                    'available_points' => Db::raw('available_points + ' . (int)$points),
+                    'total_points' => Db::raw('total_points + ' . $pointsStr),
+                    'available_points' => Db::raw('available_points + ' . $pointsStr),
                     'version' => $currentVersion + 1,
                     'updated_at' => date('Y-m-d H:i:s'),
                 ]);
@@ -421,7 +422,7 @@ class PlayerPointsService
      * @param int $vipLevel VIP等级
      * @param string $platform 平台
      * @param int $departmentId 渠道ID
-     * @return int 应得积分
+     * @return float 应得积分
      */
     public static function calculatePoints(
         float $betAmount,
@@ -452,8 +453,8 @@ class PlayerPointsService
         // 2. 活動倍數
         $activityMultiple = self::getActivityMultiple();
 
-        // 3. 計算積分（向下取整，強制轉換為整數）
-        $points = (int)floor($betAmount * (float)$vipConfig['ratio_point'] * $activityMultiple);
+        // 3. 計算積分（/100，保留4位小數）
+        $points = round($betAmount * (float)$vipConfig['ratio_point'] * $activityMultiple / 100, 4);
 
         self::log()->debug('[积分] 计算明细', [
             'bet_amount' => $betAmount,
@@ -584,20 +585,20 @@ class PlayerPointsService
     // ========================================
 
     /**
-     * Lua 脚本原子累加积分（使用HINCRBY确保整数精度）
+     * Lua 脚本原子累加积分（使用HINCRBYFLOAT支持小数）
      *
      * @param int $playerId 玩家ID
-     * @param int $points 积分数量
-     * @return array ['old_available' => int, 'new_available' => int, 'old_total' => int, 'new_total' => int]
+     * @param float $points 积分数量
+     * @return array ['old_available' => float, 'new_available' => float, 'old_total' => float, 'new_total' => float]
      */
-    private static function incrementPointsByLua(int $playerId, int $points): array
+    private static function incrementPointsByLua(int $playerId, float $points): array
     {
         $redis = Redis::connection()->client();
         $key = self::REDIS_KEY_PREFIX . $playerId;
         $now = time();
 
-        // 确保传入的是整数，防止浮点数污染
-        $points = (int)$points;
+        // 保留4位小数，防止浮点精度问题
+        $points = round($points, 4);
 
         $lua = <<<'LUA'
 local key = KEYS[1]
@@ -605,11 +606,9 @@ local points = tonumber(ARGV[1])
 local now = ARGV[2]
 local ttl = tonumber(ARGV[3])
 
--- 使用 HINCRBY 进行整数累加（Redis内部使用64位整数，无精度问题）
 local old_available = redis.call('HGET', key, 'available_points')
 local old_total = redis.call('HGET', key, 'total_points')
 
--- 如果字段不存在，HGET返回false（nil），需要初始化为0
 if old_available == false then
     old_available = 0
     redis.call('HSET', key, 'available_points', 0)
@@ -624,16 +623,14 @@ else
     old_total = tonumber(old_total) or 0
 end
 
--- 使用 HINCRBY 原子累加（确保整数运算）
-local new_available = redis.call('HINCRBY', key, 'available_points', points)
-local new_total = redis.call('HINCRBY', key, 'total_points', points)
+-- 使用 HINCRBYFLOAT 原子累加（支持小数）
+local new_available = redis.call('HINCRBYFLOAT', key, 'available_points', points)
+local new_total = redis.call('HINCRBYFLOAT', key, 'total_points', points)
 
--- 更新时间戳
 redis.call('HSET', key, 'last_update', now)
 redis.call('EXPIRE', key, ttl)
 
--- 返回整数值（HINCRBY返回的已经是整数）
-return {old_available, new_available, old_total, new_total}
+return {tostring(old_available), tostring(new_available), tostring(old_total), tostring(new_total)}
 LUA;
 
         $config = config('points_config');
@@ -642,10 +639,10 @@ LUA;
         $result = $redis->eval($lua, [$key, $points, $now, $ttl], 1);
 
         return [
-            'old_available' => (int)$result[0],
-            'new_available' => (int)$result[1],
-            'old_total' => (int)$result[2],
-            'new_total' => (int)$result[3],
+            'old_available' => round($result[0], 4),
+            'new_available' => round($result[1], 4),
+            'old_total' => round($result[2], 4),
+            'new_total' => round($result[3], 4),
         ];
     }
 
@@ -669,9 +666,9 @@ LUA;
 
         if (!empty($data) && isset($data['available_points'])) {
             return [
-                'available_points' => intval($data['available_points'] ?? 0),
-                'frozen_points' => intval($data['frozen_points'] ?? 0),
-                'total_points' => intval($data['total_points'] ?? 0),
+                'available_points' => round(floatval($data['available_points'] ?? 0), 4),
+                'frozen_points' => round(floatval($data['frozen_points'] ?? 0), 4),
+                'total_points' => round(floatval($data['total_points'] ?? 0), 4),
             ];
         }
 
@@ -812,7 +809,7 @@ LUA;
      */
     public static function deductPoints(
         int $playerId,
-        int $points,
+        float $points,
         int $type,
         string $remark = '',
         array $extraData = [],
@@ -857,8 +854,8 @@ LUA;
                 ->where('version', $currentVersion)
                 ->where('available_points', '>=', $points)  // ✅ 确保积分足够（数据库层面检查）
                 ->update([
-                    'available_points' => Db::raw('available_points - ' . (int)$points),
-                    'used_points' => Db::raw('used_points + ' . (int)$points),
+                    'available_points' => Db::raw('available_points - ' . number_format($points, 4, '.', '')),
+                    'used_points' => Db::raw('used_points + ' . number_format($points, 4, '.', '')),
                     'version' => $currentVersion + 1,
                     'updated_at' => date('Y-m-d H:i:s'),
                 ]);
@@ -934,15 +931,14 @@ LUA;
     }
 
     /**
-     * 从Redis扣除积分（使用HINCRBY确保整数精度）
+     * 从Redis扣除积分
      */
-    private static function deductPointsFromRedis(int $playerId, int $points): void
+    private static function deductPointsFromRedis(int $playerId, float $points): void
     {
         $redis = Redis::connection()->client();
         $key = self::REDIS_KEY_PREFIX . $playerId;
 
-        // 确保传入的是整数
-        $points = (int)$points;
+        $points = round($points, 4);
 
         $lua = <<<'LUA'
 local key = KEYS[1]
@@ -950,7 +946,6 @@ local points = tonumber(ARGV[1])
 local ttl = tonumber(ARGV[2])
 local now = ARGV[3]
 
--- 读取当前可用积分（如果不存在则为0）
 local current = redis.call('HGET', key, 'available_points')
 if current == false then
     current = 0
@@ -958,20 +953,15 @@ else
     current = tonumber(current) or 0
 end
 
--- 计算扣除后的值（不能为负数）
 local new_value = math.max(0, current - points)
 
--- 使用 HSET 设置新值（因为可能需要向下限制为0）
-redis.call('HSET', key, 'available_points', new_value)
+redis.call('HSET', key, 'available_points', string.format("%.4f", new_value))
+redis.call('HINCRBYFLOAT', key, 'used_points', points)
 
--- 使用 HINCRBY 累加已使用积分（整数累加）
-redis.call('HINCRBY', key, 'used_points', points)
-
--- ✅ 更新时间戳并刷新 TTL
 redis.call('HSET', key, 'last_update', now)
 redis.call('EXPIRE', key, ttl)
 
-return new_value
+return tostring(new_value)
 LUA;
 
         $config = config('points_config');
@@ -991,7 +981,7 @@ LUA;
      */
     public static function freezePoints(
         int $playerId,
-        int $points,
+        float $points,
         string $remark = '',
         array $extraData = [],
         bool $useTransaction = true
@@ -1028,8 +1018,8 @@ LUA;
                 ->where('version', $currentVersion)
                 ->where('available_points', '>=', $points)  // ✅ 确保积分足够（数据库层面检查）
                 ->update([
-                    'available_points' => Db::raw('available_points - ' . (int)$points),
-                    'frozen_points' => Db::raw('frozen_points + ' . (int)$points),
+                    'available_points' => Db::raw('available_points - ' . number_format($points, 4, '.', '')),
+                    'frozen_points' => Db::raw('frozen_points + ' . number_format($points, 4, '.', '')),
                     'version' => $currentVersion + 1,
                     'updated_at' => date('Y-m-d H:i:s'),
                 ]);
@@ -1105,7 +1095,7 @@ LUA;
      */
     public static function unfreezePoints(
         int $playerId,
-        int $points,
+        float $points,
         bool $deduct = true,
         string $remark = '',
         array $extraData = [],
@@ -1141,17 +1131,17 @@ LUA;
 
             // ✅ 使用 DB::raw() 进行数据库层面的原子计算
             $updateData = [
-                'frozen_points' => Db::raw('frozen_points - ' . (int)$points),
+                'frozen_points' => Db::raw('frozen_points - ' . number_format($points, 4, '.', '')),
                 'version' => $currentVersion + 1,
                 'updated_at' => date('Y-m-d H:i:s'),
             ];
 
             if ($deduct) {
                 // 兑换成功：冻结 → 已使用
-                $updateData['used_points'] = Db::raw('used_points + ' . (int)$points);
+                $updateData['used_points'] = Db::raw('used_points + ' . number_format($points, 4, '.', ''));
             } else {
                 // 兑换失败：冻结 → 可用
-                $updateData['available_points'] = Db::raw('available_points + ' . (int)$points);
+                $updateData['available_points'] = Db::raw('available_points + ' . number_format($points, 4, '.', ''));
             }
 
             $affected = PlayerPoints::where('id', $playerPoints->id)
@@ -1236,11 +1226,11 @@ LUA;
     /**
      * Redis 冻结积分
      */
-    private static function freezePointsInRedis(int $playerId, int $points): void
+    private static function freezePointsInRedis(int $playerId, float $points): void
     {
         $redis = Redis::connection()->client();
         $key = self::REDIS_KEY_PREFIX . $playerId;
-        $points = (int)$points;
+        $points = round($points, 4);
 
         $lua = <<<'LUA'
 local key = KEYS[1]
@@ -1254,10 +1244,9 @@ local frozen = redis.call('HGET', key, 'frozen_points')
 available = (available == false) and 0 or (tonumber(available) or 0)
 frozen = (frozen == false) and 0 or (tonumber(frozen) or 0)
 
-redis.call('HSET', key, 'available_points', math.max(0, available - points))
-redis.call('HSET', key, 'frozen_points', frozen + points)
+redis.call('HSET', key, 'available_points', string.format("%.4f", math.max(0, available - points)))
+redis.call('HINCRBYFLOAT', key, 'frozen_points', points)
 
--- ✅ 更新时间戳并刷新 TTL
 redis.call('HSET', key, 'last_update', now)
 redis.call('EXPIRE', key, ttl)
 
@@ -1272,11 +1261,11 @@ LUA;
     /**
      * Redis 解冻积分
      */
-    private static function unfreezePointsInRedis(int $playerId, int $points, bool $deduct): void
+    private static function unfreezePointsInRedis(int $playerId, float $points, bool $deduct): void
     {
         $redis = Redis::connection()->client();
         $key = self::REDIS_KEY_PREFIX . $playerId;
-        $points = (int)$points;
+        $points = round($points, 4);
 
         $lua = <<<'LUA'
 local key = KEYS[1]
@@ -1293,17 +1282,14 @@ available = (available == false) and 0 or (tonumber(available) or 0)
 frozen = (frozen == false) and 0 or (tonumber(frozen) or 0)
 used = (used == false) and 0 or (tonumber(used) or 0)
 
-redis.call('HSET', key, 'frozen_points', math.max(0, frozen - points))
+redis.call('HSET', key, 'frozen_points', string.format("%.4f", math.max(0, frozen - points)))
 
 if deduct == 1 then
-    -- 兑换成功：冻结 → 已使用
-    redis.call('HSET', key, 'used_points', used + points)
+    redis.call('HINCRBYFLOAT', key, 'used_points', points)
 else
-    -- 兑换失败：冻结 → 可用
-    redis.call('HSET', key, 'available_points', available + points)
+    redis.call('HINCRBYFLOAT', key, 'available_points', points)
 end
 
--- ✅ 更新时间戳并刷新 TTL
 redis.call('HSET', key, 'last_update', now)
 redis.call('EXPIRE', key, ttl)
 
@@ -1923,10 +1909,10 @@ LUA;
                 $playerPoints = PlayerPoints::getOrCreate($playerId, $player->department_id ?? 0);
 
                 // 同步数据
-                $playerPoints->total_points = intval($data['total_points'] ?? 0);
-                $playerPoints->available_points = intval($data['available_points'] ?? 0);
-                $playerPoints->frozen_points = intval($data['frozen_points'] ?? 0);
-                $playerPoints->used_points = intval($data['used_points'] ?? 0);
+                $playerPoints->total_points = round(floatval($data['total_points'] ?? 0), 4);
+                $playerPoints->available_points = round(floatval($data['available_points'] ?? 0), 4);
+                $playerPoints->frozen_points = round(floatval($data['frozen_points'] ?? 0), 4);
+                $playerPoints->used_points = round(floatval($data['used_points'] ?? 0), 4);
                 $playerPoints->save();
 
                 $count++;
