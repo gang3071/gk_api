@@ -694,9 +694,9 @@ LUA;
 
         if (!empty($data) && isset($data['available_points'])) {
             return [
-                'available_points' => round(floatval($data['available_points'] ?? 0), 4),
-                'frozen_points' => round(floatval($data['frozen_points'] ?? 0), 4),
-                'total_points' => round(floatval($data['total_points'] ?? 0), 4),
+                'available_points' => (int)$data['available_points'],
+                'frozen_points' => (int)$data['frozen_points'],
+                'total_points' => (int)$data['total_points'],
             ];
         }
 
@@ -714,9 +714,9 @@ LUA;
             $redis->expire($key, config('points_config.redis_ttl', 86400 * 365));
 
             return [
-                'available_points' => $playerPoints->available_points,
-                'frozen_points' => $playerPoints->frozen_points,
-                'total_points' => $playerPoints->total_points,
+                'available_points' => (int)$playerPoints->available_points,
+                'frozen_points' => (int)$playerPoints->frozen_points,
+                'total_points' => (int)$playerPoints->total_points,
             ];
         }
 
