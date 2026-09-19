@@ -58,85 +58,79 @@ class PlayerPoints implements Consumer
      */
     public function consume($data)
     {
-        // 记录收到的消息（用于调试）
-        $this->log->info('[积分队列] 收到打码量消息', [
-            'player_id' => $data['player_id'] ?? null,
-            'bet_amount' => $data['bet_amount'] ?? null,
-            'source' => $data['source'] ?? null,
-            'batch_id' => $data['batch_id'] ?? null,
-            'created_at' => $data['created_at'] ?? null,
+        $playerId = intval($data['player_id'] ?? 0);
+        $batchId = $data['batch_id'] ?? '';
+        $platformAmounts = $data['platform_amounts'] ?? [];
+
+        // 兼容旧格式：bet_amount → platform_amounts
+        if (empty($platformAmounts) && !empty($data['bet_amount'])) {
+            $platformAmounts = [0 => floatval($data['bet_amount'])];
+        }
+
+        $totalBetAmount = array_sum($platformAmounts);
+
+        $this->log->debug('[积分队列] 收到消息', [
+            'player_id' => $playerId,
+            'total_bet_amount' => $totalBetAmount,
+            'platform_amounts' => $platformAmounts,
+            'batch_id' => $batchId,
         ]);
 
         try {
             // 验证必要字段
-            if (empty($data['player_id']) || empty($data['bet_amount'])) {
-                $this->log->error('[积分队列] 消息字段缺失', [
-                    'data' => $data,
+            if ($playerId <= 0 || $totalBetAmount <= 0) {
+                $this->log->error('[积分队列] 字段无效，丢弃消息', [
+                    'player_id' => $playerId,
+                    'platform_amounts' => $platformAmounts,
+                    'raw_data' => $data,
                 ]);
-                return; // 数据不完整，直接丢弃
+                return;
             }
-
-            $playerId = intval($data['player_id']);
-            $betAmount = floatval($data['bet_amount']);
-            $batchId = $data['batch_id'] ?? '';
-            $source = $data['source'] ?? 'betting';
 
             // 转换为本地时区（Asia/Shanghai）
             $createdAt = !empty($data['created_at'])
                 ? Carbon::parse($data['created_at'])->setTimezone('Asia/Shanghai')
                 : Carbon::now('Asia/Shanghai');
 
-            $this->log->debug('[积分队列] 解析时间', [
-                'raw_created_at' => $data['created_at'] ?? 'null',
-                'timezone' => $createdAt->timezone->getName(),
-                'parsed_datetime' => $createdAt->format('Y-m-d H:i:s'),
-            ]);
-
             // 防止重复消费
             if ($this->isDuplicate($batchId)) {
-                $this->log->info('[积分队列] 检测到重复批次，已跳过', [
+                $this->log->info('[积分队列] 重复批次，跳过', [
                     'player_id' => $playerId,
                     'batch_id' => $batchId,
                 ]);
                 return;
             }
 
-            $this->log->debug('[积分队列] 开始累加积分', [
-                'player_id' => $playerId,
-                'bet_amount' => $betAmount,
-                'source' => $source,
-            ]);
-
             // 调用积分服务累加
             $result = PlayerPointsService::addPointsFromBetting(
                 $playerId,
-                $betAmount,
+                $platformAmounts,
                 $data['record_ids'] ?? [],
                 $batchId,
                 $createdAt
             );
 
-            $this->log->info('[积分队列] 积分累加成功', [
-                'player_id' => $playerId,
-                'bet_amount' => $betAmount,
-                'points_earned' => $result['points_earned'],
-                'total_points' => $result['total_points'],
-                'available_points' => $result['available_points'],
-                'batch_id' => $batchId,
-            ]);
-
-            // ⚠️ 不再立即清理去重标记
-            // 原因：去重标记需要保留，防止消息重复投递时重复累加
-            // TTL 会自动过期，无需手动清理
-
             // 推送通知（可选）
             $this->pushNotification($playerId, $result);
 
+            if ($result['points_earned'] > 0) {
+                $this->log->debug('[积分队列] 消费完成', [
+                    'player_id' => $playerId,
+                    'points_earned' => $result['points_earned'],
+                    'total_points' => $result['total_points'],
+                ]);
+            } else {
+                $this->log->debug('[积分队列] 消费完成（积分为0）', [
+                    'player_id' => $playerId,
+                ]);
+            }
+
         } catch (Exception $e) {
-            $this->log->error('[积分队列] 消费失败', [
-                'data' => $data,
+            $this->log->error('[积分队列] 消费异常，将重试', [
+                'player_id' => $playerId,
+                'total_bet_amount' => $totalBetAmount,
+                'batch_id' => $batchId,
                 'error' => $e->getMessage(),
-                'file' => $e->getFile(),
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);

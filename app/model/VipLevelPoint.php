@@ -12,8 +12,6 @@ use Illuminate\Database\Eloquent\Model;
  * @property int platform_id 遊戲平台ID
  * @property int status 0=停用 1=啟用
  * @property float ratio_point 比例-積分
- * @property float ratio_bet_amount 比例-打碼量
- * @property float min_bet_amount 有效最小打碼量
  * @property string created_at
  * @property string updated_at
  *
