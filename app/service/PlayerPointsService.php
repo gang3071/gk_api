@@ -94,17 +94,19 @@ class PlayerPointsService
         $createdAt = $createdAt ?? Carbon::now();
 
         try {
-            // 1. ✅ 获取玩家信息（使用缓存，降低数据库压力）
+            // 1. 获取玩家信息
             $playerInfo = self::getPlayerInfoCached($playerId);
             if (!$playerInfo) {
+                self::log()->error('[积分] 玩家不存在', [
+                    'player_id' => $playerId,
+                ]);
                 throw new Exception("Player not found: {$playerId}");
             }
 
-            // 2. 获取平台代码（用于计算积分）
+            // 2. 获取平台代码
             $platform = ['id' => 0, 'code' => 'DEFAULT'];
 
             if (!empty($recordIds)) {
-                // ✅ 优化：只查第一条记录的平台代码（避免JOIN大量记录）
                 $platform = PlayGameRecord::query()
                     ->select(['game_platform.id', 'game_platform.code'])
                     ->whereIn('play_game_record.id', $recordIds)
@@ -113,7 +115,7 @@ class PlayerPointsService
                     ?->toArray();
             }
 
-            // 3. 计算应得积分
+            // 3. 计算应得积分（内部已记录积分为0的具体原因）
             $pointsEarned = self::calculatePoints(
                 $betAmount,
                 $playerInfo['vip_level_id'],
@@ -129,7 +131,7 @@ class PlayerPointsService
                 ];
             }
 
-            // 4. 检查 batch_id 幂等性（防止重复累加）
+            // 4. 检查 batch_id 幂等性
             if (!empty($batchId)) {
                 if (self::isDuplicateBatch($batchId)) {
                     self::log()->warning('[积分] batch_id重复，跳过累加', [
@@ -137,7 +139,6 @@ class PlayerPointsService
                         'batch_id' => $batchId,
                     ]);
 
-                    // 返回当前积分（不累加）
                     $currentPoints = self::getPlayerPoints($playerId);
                     return [
                         'points_earned' => 0,
@@ -147,17 +148,17 @@ class PlayerPointsService
                 }
             }
 
-            // 5. ✅ 先检查每日上限（不累加，只检查）
+            // 5. 检查每日上限
             $config = config('points_config');
             $dailyLimit = $config['daily_limit'] ?? 0;
-            $redis = Redis::connection()->client();  // ✅ 复用连接
+            $redis = Redis::connection()->client();
             $dailyKey = 'gk_api:player_points_daily:' . date('Ymd') . ':' . $playerId;
 
             if ($dailyLimit > 0) {
                 $todayPoints = (int)$redis->get($dailyKey) ?: 0;
 
                 if ($todayPoints + $pointsEarned > $dailyLimit) {
-                    self::log()->warning('[积分] 今日积分超限（预检查）', [
+                    self::log()->warning('[积分] 今日积分已达上限', [
                         'player_id' => $playerId,
                         'today_points' => $todayPoints,
                         'new_points' => $pointsEarned,
@@ -172,39 +173,39 @@ class PlayerPointsService
                 }
             }
 
-            // 6. ✅ Redis Lua 原子累加积分（优先保证玩家得到积分）
+            // 6. Redis Lua 原子累加积分
             $result = self::incrementPointsByLua($playerId, $pointsEarned);
 
-            // 7. 标记 batch_id 已处理（防止重复累加）
+            // 7. 标记 batch_id 已处理
             if (!empty($batchId)) {
                 self::markBatchAsProcessed($batchId);
             }
 
-            // 8. 标记玩家需要同步到 MySQL（异步批量更新，控制数据库压力）
+            // 8. 标记玩家需要同步到 MySQL
             self::markPlayerAsDirty($playerId);
 
-            // 9. ✅ 累加今日积分计数（放在最后，失败不影响玩家利益）
+            // 9. 累加今日积分计数（放在最后，失败不影响玩家利益）
             try {
                 if ($dailyLimit > 0) {
-                    // ✅ 复用之前的 $redis 和 $dailyKey
                     $redis->incrBy($dailyKey, $pointsEarned);
                     $redis->expire($dailyKey, 86400 * 2);
                 }
             } catch (Exception $e) {
-                // 今日计数失败不影响业务（最多导致统计不准）
                 self::log()->warning('[积分] 今日计数更新失败（不影响积分累加）', [
                     'player_id' => $playerId,
                     'error' => $e->getMessage(),
                 ]);
             }
 
-            // 10. 记录日志
-            self::log()->info('[积分] 打码获得积分', [
+            // 10. 记录成功日志
+            self::log()->info('[积分] 累加成功', [
                 'player_id' => $playerId,
                 'bet_amount' => $betAmount,
-                'platform_code' => $platform['code'] ?? 'DEFAULT',
-                'vip_level' => $playerInfo['vip_level_id'],  // ✅ 修复：使用缓存的玩家信息
+                'vip_level_id' => $playerInfo['vip_level_id'],
+                'platform' => ($platform['code'] ?? 'DEFAULT') . '(id:' . ($platform['id'] ?? 0) . ')',
                 'points_earned' => $pointsEarned,
+                'old_total' => $result['old_total'],
+                'new_total' => $result['new_total'],
                 'available_points' => $result['new_available'],
                 'batch_id' => $batchId,
             ]);
@@ -216,11 +217,11 @@ class PlayerPointsService
             ];
 
         } catch (Exception $e) {
-            self::log()->error('[积分] 增加积分失败', [
+            self::log()->error('[积分] 处理异常', [
                 'player_id' => $playerId,
                 'bet_amount' => $betAmount,
+                'batch_id' => $batchId,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
             throw $e;
         }
@@ -432,11 +433,20 @@ class PlayerPointsService
         $vipConfig = self::getVipLevelPointConfig($vipLevel, $platform);
 
         if (empty($vipConfig)) {
+            self::log()->warning('[积分] 无VIP积分配置', [
+                'vip_level_id' => $vipLevel,
+                'platform_id' => $platform,
+                'department_id' => $departmentId,
+            ]);
             return 0;
         }
 
-        // 1. ✅ 邊界檢查：負數和最小打碼量
-        if ($betAmount <= 0 || $betAmount < (float)$vipConfig['min_bet_amount']) {
+        // 1. 邊界檢查：負數
+        if ($betAmount <= 0) {
+            self::log()->warning('[积分] 打码金额无效', [
+                'bet_amount' => $betAmount,
+                'vip_level_id' => $vipLevel,
+            ]);
             return 0;
         }
 
@@ -444,10 +454,16 @@ class PlayerPointsService
         $activityMultiple = self::getActivityMultiple();
 
         // 3. 計算積分（向下取整，強制轉換為整數）
-        $floor = (int)floor($betAmount / (float)$vipConfig['ratio_bet_amount']);
-        $points = (int)floor($floor * (float)$vipConfig['ratio_point'] * $activityMultiple);
+        $points = (int)floor($betAmount * (float)$vipConfig['ratio_point'] * $activityMultiple);
 
-        return max(0, (int)$points);
+        self::log()->debug('[积分] 计算明细', [
+            'bet_amount' => $betAmount,
+            'ratio_point' => $vipConfig['ratio_point'],
+            'activity_multiple' => $activityMultiple,
+            'points' => $points,
+        ]);
+
+        return max(0, $points);
     }
 
     /**
@@ -459,7 +475,7 @@ class PlayerPointsService
      *
      * @param int $vipLevel VIP等級
      * @param int $platform 平台ID
-     * @return array|null ['ratio_point' => float, 'ratio_bet_amount' => float, 'min_bet_amount' => float] 或 null
+     * @return array|null ['ratio_point' => float] 或 null
      */
     private static function getVipLevelPointConfig(int $vipLevel, int $platform): ?array
     {
@@ -478,8 +494,6 @@ class PlayerPointsService
             if (isset($data['ratio_point'])) {
                 return [
                     'ratio_point' => (float)$data['ratio_point'],
-                    'ratio_bet_amount' => (float)$data['ratio_bet_amount'],
-                    'min_bet_amount' => (float)$data['min_bet_amount'],
                 ];
             }
         }
@@ -500,21 +514,21 @@ class PlayerPointsService
                     // ✅ 快取空值（5分鐘），防止穿透
                     $redis->hMSet($key, ['not_found' => '1']);
                     $redis->expire($key, 300);
+                    self::log()->warning('[积分] 数据库无VIP积分配置，已缓存空值5分钟', [
+                        'vip_level_id' => $vipLevel,
+                        'platform_id' => $platform,
+                    ]);
                     return null;
                 }
 
                 // 寫入 Redis 快取1小時
                 $redis->hMSet($key, [
                     'ratio_point' => $vipLevelPoint->ratio_point,
-                    'ratio_bet_amount' => $vipLevelPoint->ratio_bet_amount,
-                    'min_bet_amount' => $vipLevelPoint->min_bet_amount,
                 ]);
                 $redis->expire($key, 3600);
 
                 return [
                     'ratio_point' => (float)$vipLevelPoint->ratio_point,
-                    'ratio_bet_amount' => (float)$vipLevelPoint->ratio_bet_amount,
-                    'min_bet_amount' => (float)$vipLevelPoint->min_bet_amount,
                 ];
 
             } finally {
@@ -529,13 +543,15 @@ class PlayerPointsService
                 ->first();
 
             if (!$vipLevelPoint) {
+                self::log()->warning('[积分] 数据库无VIP积分配置（兜底查询）', [
+                    'vip_level_id' => $vipLevel,
+                    'platform_id' => $platform,
+                ]);
                 return null;
             }
 
             return [
                 'ratio_point' => (float)$vipLevelPoint->ratio_point,
-                'ratio_bet_amount' => (float)$vipLevelPoint->ratio_bet_amount,
-                'min_bet_amount' => (float)$vipLevelPoint->min_bet_amount,
             ];
         }
     }
@@ -1818,10 +1834,7 @@ LUA;
             $batch = [];
 
             do {
-                $result = $redis->scan($cursor, [
-                    'MATCH' => $keyPattern,
-                    'COUNT' => $batchSize,
-                ]);
+                $result = $redis->scan($cursor, $keyPattern, $batchSize);
 
                 if ($result === false) {
                     break;
