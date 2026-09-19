@@ -453,7 +453,7 @@ class PlayerPointsService
         $activityMultiple = self::getActivityMultiple();
 
         // 3. 計算積分（向下取整，強制轉換為整數）
-        $points = (int)floor($betAmount * (float)$vipConfig['ratio_point'] * $activityMultiple / 100);
+        $points = (int)floor($betAmount * (float)$vipConfig['ratio_point'] * $activityMultiple);
 
         self::log()->debug('[积分] 计算明细', [
             'bet_amount' => $betAmount,
