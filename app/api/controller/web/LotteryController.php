@@ -149,6 +149,8 @@ class LotteryController
                 'player_id',
                 'player_name',
                 'lottery_name',
+                'lottery_id',
+                'game_type',
                 'amount',
                 'machine_code',
                 'machine_name',
@@ -170,7 +172,9 @@ class LotteryController
             $list[] = [
                 'id' => $item->id,
                 'player_name' => $playerNameWithStore,
+                'lottery_id' => $item->lottery_id,
                 'lottery_name' => $item->lottery_name,
+                'game_type' => $item->game_type,
                 'amount' => $item->amount,
                 'created_at' => date('Y-m-d H:i:s', strtotime($item->created_at)),
                 'uuid' => $item->uuid,
