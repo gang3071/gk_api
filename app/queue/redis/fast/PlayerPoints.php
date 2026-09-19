@@ -158,16 +158,10 @@ class PlayerPoints implements Consumer
 
         try {
             $redis = \support\Redis::connection()->client();
-            $isFirst = $redis->set($cacheKey, time(), 'EX', 3600, 'NX');
-
-            // set() 返回 true=首次设置（非重复），false/null=key已存在（重复）
-            // set() 返回 false 也可能是连接异常，记录日志区分
-            if ($isFirst === false || $isFirst === null) {
-                $this->log->debug('[积分队列] 去重key已存在', [
-                    'batch_id' => $batchId,
-                    'key' => $cacheKey,
-                ]);
-            }
+            // predis: set() 直接返回 bool
+            // phpredis: 数组语法可能返回非 bool，用 === true 严格判断
+            $result = $redis->set($cacheKey, time(), ['NX', 'EX' => 3600]);
+            $isFirst = ($result === true);
 
             return !$isFirst;
 

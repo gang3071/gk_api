@@ -500,7 +500,7 @@ class PlayerPointsService
 
         // ✅ 防快取擊穿：使用互斥鎖
         $lockKey = sprintf(self::REDIS_VIP_LEVEL_POINT_LOCK_KEY, $vipLevel, $platform);
-        $locked = $redis->set($lockKey, 1, ['NX', 'EX' => 10]);  // 10秒鎖
+        $locked = ($redis->set($lockKey, 1, ['NX', 'EX' => 10]) === true);  // 10秒鎖
 
         if ($locked) {
             try {
@@ -734,7 +734,7 @@ LUA;
 
         // ✅ 防缓存击穿：使用互斥锁
         $lockKey = 'gk_api:player_info_lock:' . $playerId;
-        $locked = $redis->set($lockKey, 1, ['NX', 'EX' => 10]);  // 10秒锁
+        $locked = ($redis->set($lockKey, 1, ['NX', 'EX' => 10]) === true);  // 10秒锁
 
         if ($locked) {
             try {
