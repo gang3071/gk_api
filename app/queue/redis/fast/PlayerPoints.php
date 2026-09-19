@@ -150,20 +150,35 @@ class PlayerPoints implements Consumer
      */
     private function isDuplicate(string $batchId): bool
     {
-        // 没有 batch_id，不去重（风险自担）
         if (empty($batchId)) {
             return false;
         }
 
         $cacheKey = 'gk_api:points_processed_batch_' . $batchId;
-        $redis = \support\Redis::connection()->client();
 
-        // ✅ 使用 SET NX EX 原子操作：只有首次能设置成功
-        // 返回值：true=首次处理（未重复），false=重复
-        $isFirst = $redis->set($cacheKey, time(), ['NX', 'EX' => 3600]);
+        try {
+            $redis = \support\Redis::connection()->client();
+            $isFirst = $redis->set($cacheKey, time(), 'EX', 3600, 'NX');
 
-        // 返回是否重复：首次返回false（不重复），重复返回true
-        return !$isFirst;
+            // set() 返回 true=首次设置（非重复），false/null=key已存在（重复）
+            // set() 返回 false 也可能是连接异常，记录日志区分
+            if ($isFirst === false || $isFirst === null) {
+                $this->log->debug('[积分队列] 去重key已存在', [
+                    'batch_id' => $batchId,
+                    'key' => $cacheKey,
+                ]);
+            }
+
+            return !$isFirst;
+
+        } catch (\Throwable $e) {
+            // Redis 异常时放行，避免误判导致消息丢失
+            $this->log->error('[积分队列] 去重检查异常，放行消息', [
+                'batch_id' => $batchId,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
     }
 
     // ⚠️ 已移除 cleanupDuplicateFlag() 方法

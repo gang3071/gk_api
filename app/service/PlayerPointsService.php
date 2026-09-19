@@ -1414,11 +1414,18 @@ LUA;
             return false;
         }
 
-        $redis = Redis::connection()->client();
-        $key = 'gk_api:points_batch:' . $batchId;
+        try {
+            $redis = Redis::connection()->client();
+            $key = 'gk_api:points_batch:' . $batchId;
 
-        // EXISTS 返回存在的 key 数量
-        return $redis->exists($key) > 0;
+            return $redis->exists($key) > 0;
+        } catch (\Throwable $e) {
+            self::log()->error('[积分] 去重检查异常，放行', [
+                'batch_id' => $batchId,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
     }
 
     /**
