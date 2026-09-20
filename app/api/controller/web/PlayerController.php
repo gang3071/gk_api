@@ -7,6 +7,8 @@ use app\model\Channel;
 use app\model\GamePlatform;
 use app\model\GameType;
 use app\model\LotteryTicket;
+use app\model\LotteryTicketActivity;
+use app\model\LotteryTicketVipConfig;
 use app\model\Machine;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerMoneyEditLog;
@@ -193,12 +195,52 @@ class PlayerController
 
         $channel = Channel::query()->where('department_id', $player->department_id)->first();
 
-        // 摸獎劵：持有未使用的摸獎券數量
-        $drawCount = LotteryTicket::query()
-            ->where('player_id', $player->id)
+        // 摸獎劵：當期活動中持有的未使用摸獎券數量（優先級：開獎中 > 待開獎 > 進行中 > 即將開始）
+        $currentActivity = LotteryTicketActivity::query()
             ->where('department_id', $player->department_id)
-            ->where('status', LotteryTicket::STATUS_UNUSED)
-            ->count();
+            ->whereIn('status', [
+                LotteryTicketActivity::STATUS_DRAWING,
+                LotteryTicketActivity::STATUS_PENDING_DRAW,
+                LotteryTicketActivity::STATUS_ONGOING,
+                LotteryTicketActivity::STATUS_NOT_STARTED,
+            ])
+            ->orderByRaw('FIELD(status, ?, ?, ?, ?)',
+                [
+                    LotteryTicketActivity::STATUS_DRAWING,
+                    LotteryTicketActivity::STATUS_PENDING_DRAW,
+                    LotteryTicketActivity::STATUS_ONGOING,
+                    LotteryTicketActivity::STATUS_NOT_STARTED,
+                ]
+            )
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $drawCount = $currentActivity
+            ? LotteryTicket::query()
+                ->where('player_id', $player->id)
+                ->where('activity_id', $currentActivity->id)
+                ->where('status', LotteryTicket::STATUS_UNUSED)
+                ->count()
+            : 0;
+
+        $vipConfig = $currentActivity
+            ? LotteryTicketVipConfig::query()
+                ->where('activity_id', $currentActivity->id)
+                ->where('vip_level_id', $player->vip_level_id ?? 0)
+                ->where('status', 1)
+                ->first()
+            : null;
+
+        if ($vipConfig) {
+            $betAmount = number_format((float)$vipConfig->bet_amount_required, 0, '.', ',');
+            $ticketCount = (int)$vipConfig->ticket_count;
+            $drawDesc = trans('ticket_kind_draw_desc_dynamic', [
+                'bet_amount' => $betAmount,
+                'ticket_count' => $ticketCount,
+            ], 'message');
+        } else {
+            $drawDesc = trans('ticket_kind_draw_desc', [], 'message');
+        }
 
         $list = [
             [
@@ -206,7 +248,7 @@ class PlayerController
                 'label' => trans('ticket_kind_draw', [], 'message'),
                 'count' => $drawCount,
                 'open' => ((int)($channel->lottery_ticket_enabled ?? 0) === 1),
-                'desc' => trans('ticket_kind_draw_desc', [], 'message'),
+                'desc' => $drawDesc,
             ],
             [
                 'kind' => 'blindbox',

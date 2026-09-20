@@ -630,6 +630,7 @@ return [
     // 劵匣
     'ticket_kind_draw' => '摸獎劵',
     'ticket_kind_draw_desc' => '透過機台遊玩累積打碼量自動獲得，每 1,000,000 點打碼量獲得 1 張摸獎劵，活動結束後自動開獎，獎金直接入帳。',
+    'ticket_kind_draw_desc_dynamic' => '透過機台遊玩累積打碼量自動獲得，每 %bet_amount% 點打碼量獲得 %ticket_count% 張摸獎劵，活動結束後自動開獎，獎金直接入帳。',
     'ticket_kind_blindbox' => '盲盒劵',
     'ticket_kind_blindbox_desc' => '盲盒劵尚未開放，敬請期待。',
     'ticket_kind_exchange' => '兌換劵',
