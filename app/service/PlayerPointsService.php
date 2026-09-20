@@ -317,7 +317,6 @@ class PlayerPointsService
             $affected = PlayerPoints::where('id', $playerPoints->id)
                 ->where('version', $currentVersion)
                 ->update([
-                    'total_points' => Db::raw('total_points + ' . $pointsStr),
                     'available_points' => Db::raw('available_points + ' . $pointsStr),
                     'version' => $currentVersion + 1,
                     'updated_at' => date('Y-m-d H:i:s'),
