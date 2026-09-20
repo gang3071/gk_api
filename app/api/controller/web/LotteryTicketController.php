@@ -142,14 +142,25 @@ class LotteryTicketController
         $amountRequired = $betProgress->bet_amount_required ?? 0;
         $amountCurrent = $betProgress->current_bet_amount ?? 0;
 
-        if (empty($betProgress)) {
-            $vipConfig = LotteryTicketVipConfig::query()
-                ->where('activity_id', $activity->id)
-                ->where('vip_level_id', $player->vip_level_id ?? 0)
-                ->where('status', 1)
-                ->first();
+        $vipConfig = LotteryTicketVipConfig::query()
+            ->where('activity_id', $activity->id)
+            ->where('vip_level_id', $player->vip_level_id ?? 0)
+            ->where('status', 1)
+            ->first();
 
+        if (empty($betProgress)) {
             $amountRequired = $vipConfig->bet_amount_required ?? 0;
+        }
+
+        if ($vipConfig) {
+            $betAmountFormatted = number_format((float)$vipConfig->bet_amount_required, 0, '.', ',');
+            $ticketCount = (int)$vipConfig->ticket_count;
+            $drawDesc = trans('ticket_kind_draw_desc_dynamic', [
+                '{bet_amount}' => $betAmountFormatted,
+                '{ticket_count}' => $ticketCount,
+            ], 'message');
+        } else {
+            $drawDesc = trans('ticket_kind_draw_desc', [], 'message');
         }
 
         // ---------------------------------------- 总获奖金额 ----------------------------------------
@@ -192,7 +203,8 @@ class LotteryTicketController
             ],
             'amountRequired' => self::formatAmount($amountRequired),
             'amountCurrent' => self::formatAmount($amountCurrent),
-            'amountPrize' => self::formatAmount($amountPrize)
+            'amountPrize' => self::formatAmount($amountPrize),
+            'desc' => $drawDesc
         ]);
     }
 
