@@ -169,7 +169,7 @@ class PlayerPointsService
             $dailyKey = 'gk_api:player_points_daily:' . date('Ymd') . ':' . $playerId;
 
             if ($dailyLimit > 0) {
-                $todayPoints = (int)$redis->get($dailyKey) ?: 0;
+                $todayPoints = floatval($redis->get($dailyKey) ?: 0);
 
                 if ($todayPoints + $totalPointsEarned > $dailyLimit) {
                     self::log()->info('[积分] 今日积分已达上限', [
@@ -208,7 +208,7 @@ class PlayerPointsService
             // 9. 累加今日积分计数（放在最后，失败不影响玩家利益）
             try {
                 if ($dailyLimit > 0) {
-                    $redis->incrBy($dailyKey, $totalPointsEarned);
+                    $redis->incrByFloat($dailyKey, $totalPointsEarned);
                     $redis->expire($dailyKey, 86400 * 2);
                 }
             } catch (Exception $e) {
@@ -317,7 +317,6 @@ class PlayerPointsService
             $affected = PlayerPoints::where('id', $playerPoints->id)
                 ->where('version', $currentVersion)
                 ->update([
-                    'total_points' => Db::raw('total_points + ' . $pointsStr),
                     'available_points' => Db::raw('available_points + ' . $pointsStr),
                     'version' => $currentVersion + 1,
                     'updated_at' => date('Y-m-d H:i:s'),
@@ -630,6 +629,8 @@ local old_total = redis.call('HGET', key, 'total_points')
 if old_available == false then
     old_available = 0
     redis.call('HSET', key, 'available_points', 0)
+    redis.call('HSET', key, 'frozen_points', 0)
+    redis.call('HSET', key, 'used_points', 0)
 else
     old_available = tonumber(old_available) or 0
 end
@@ -694,9 +695,9 @@ LUA;
 
         if (!empty($data) && isset($data['available_points'])) {
             return [
-                'available_points' => (int)$data['available_points'],
-                'frozen_points' => (int)$data['frozen_points'],
-                'total_points' => (int)$data['total_points'],
+                'available_points' => round(floatval($data['available_points'] ?? 0), 4),
+                'frozen_points' => round(floatval($data['frozen_points'] ?? 0), 4),
+                'total_points' => round(floatval($data['total_points'] ?? 0), 4),
             ];
         }
 
@@ -714,17 +715,17 @@ LUA;
             $redis->expire($key, config('points_config.redis_ttl', 86400 * 365));
 
             return [
-                'available_points' => (int)$playerPoints->available_points,
-                'frozen_points' => (int)$playerPoints->frozen_points,
-                'total_points' => (int)$playerPoints->total_points,
+                'available_points' => round(floatval($playerPoints->available_points), 4),
+                'frozen_points' => round(floatval($playerPoints->frozen_points), 4),
+                'total_points' => round(floatval($playerPoints->total_points), 4),
             ];
         }
 
         // 都没有，返回0
         return [
-            'available_points' => 0,
-            'frozen_points' => 0,
-            'total_points' => 0,
+            'available_points' => 0.0,
+            'frozen_points' => 0.0,
+            'total_points' => 0.0,
         ];
     }
 
@@ -1767,7 +1768,7 @@ LUA;
                         continue;
                     }
 
-                    // 从 Redis 获取实时积分（作为当前准确值）
+                    // 从 Redis 获取实时积分
                     $redisPoints = self::getPlayerPoints($playerPoints->player_id);
 
                     // ✅ 使用乐观锁同步 Redis 数据到 MySQL
@@ -1943,11 +1944,11 @@ LUA;
                 // 获取或创建 MySQL 记录
                 $playerPoints = PlayerPoints::getOrCreate($playerId, $player->department_id ?? 0);
 
-                // 同步数据
+                // 同步数据（Redis Hash 中部分字段可能不存在，用 isset 防御）
                 $playerPoints->total_points = round(floatval($data['total_points'] ?? 0), 4);
                 $playerPoints->available_points = round(floatval($data['available_points'] ?? 0), 4);
-                $playerPoints->frozen_points = round(floatval($data['frozen_points'] ?? 0), 4);
-                $playerPoints->used_points = round(floatval($data['used_points'] ?? 0), 4);
+                $playerPoints->frozen_points = round(floatval(isset($data['frozen_points']) ? $data['frozen_points'] : 0), 4);
+                $playerPoints->used_points = round(floatval(isset($data['used_points']) ? $data['used_points'] : 0), 4);
                 $playerPoints->save();
 
                 $count++;
