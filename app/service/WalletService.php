@@ -1453,7 +1453,10 @@ LUA;
             // 钱包已锁定，检查余额是否低于阈值，低于则自动解锁
             $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
             $balance = self::getBalance($playerId);
-            if ($balance < $openScoreLimit) {
+            $totalMachineScores = WalletUnlockService::calculateAllMachineScores($playerId);
+            // 4. 计算总余额
+            $totalBalance = bcadd((string)$balance, (string)$totalMachineScores, 2);
+            if ($totalBalance < $openScoreLimit) {
                 self::unlockWallet($playerId);
                 Log::info('WalletService: 余额低于限制，自动解锁钱包', [
                     'player_id' => $playerId,
