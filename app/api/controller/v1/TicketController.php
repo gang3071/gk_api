@@ -428,16 +428,8 @@ class TicketController
                 }
 
                 // 🔒 检查钱包是否被锁定（福利卷/体验卷锁定后不能开分）
-                if (WalletService::isWalletLocked($player->id)) {
-                    // 余额低于设定额度时自动解锁，允许正常扫码上分
-                    $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
-                    $currentBalance = WalletService::getBalance($player->id);
-                    if ($currentBalance < $openScoreLimit) {
-                        WalletService::unlockWallet($player->id);
-                    } else {
-                        $this->releaseIdempotent($requestId);
-                        return jsonFailResponse(trans('wallet_locked', [], 'message'));
-                    }
+                if (\app\service\WalletService::isWalletLocked($player->id)) {
+                    return jsonFailResponse(trans('wallet_locked', [], 'message'));
                 }
 
                 // 验证玩家绑定关系
@@ -815,7 +807,7 @@ class TicketController
                 // 打码判定：首次领取免检 或 开关关闭免检
                 $betCheckPassed = true;
                 if ($experienceBetCheckEnabled && $claimedExperienceTotal > 0) {
-                    $betCheckPassed = $yesterdayBetAmount >= 10000;
+                    $betCheckPassed = $yesterdayBetAmount >= 20000;
                 }
 
                 $canPrint = $isNewUser && !$isDailyLimitReached && !$isTotalLimitReached && $betCheckPassed;
@@ -1041,7 +1033,7 @@ class TicketController
                     $yesterdayStatDate = $isAfter8am ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d', strtotime('-2 days'));
                     $yesterdayBetAmount = $this->getPlayerBetAmount($player->id, $yesterdayStart, $yesterdayEnd, $yesterdayStatDate);
 
-                    if ($yesterdayBetAmount < 10000) {
+                    if ($yesterdayBetAmount < 20000) {
                         Log::info('体验券打码判定失败', [
                             'player_id' => $player->id,
                             'yesterday_bet_amount' => $yesterdayBetAmount,
