@@ -630,7 +630,7 @@ return [
     // 劵匣
     'ticket_kind_draw' => '摸奖券',
     'ticket_kind_draw_desc' => '通过机台游玩累积打码量自动获得，每 1,000,000 点打码量获得 1 张摸奖券，活动结束后自动开奖，奖金直接入账。',
-    'ticket_kind_draw_desc_dynamic' => '通过机台游玩累积打码量自动获得，每 %bet_amount% 点打码量获得 %ticket_count% 张摸奖券，活动结束后自动开奖，奖金直接入账。',
+    'ticket_kind_draw_desc_dynamic' => '通过机台游玩累积打码量自动获得，每 {bet_amount} 点打码量获得 {ticket_count} 张摸奖券，活动结束后自动开奖，奖金直接入账。',
     'ticket_kind_blindbox' => '盲盒券',
     'ticket_kind_blindbox_desc' => '盲盒券尚未开放，敬请期待。',
     'ticket_kind_exchange' => '兑换券',

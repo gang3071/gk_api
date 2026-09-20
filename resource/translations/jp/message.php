@@ -611,7 +611,7 @@ return [
     // チケットボックス
     'ticket_kind_draw' => '摸賞券（くじ）',
     'ticket_kind_draw_desc' => 'マシンプレイで累積された打碼量に応じて自動で獲得できます。1,000,000 ポイントごとに 1 枚の摸賞券を獲得し、キャンペーン終了後に自動抽選が行われ、賞金は直接ウォレットに入金されます。',
-    'ticket_kind_draw_desc_dynamic' => 'マシンプレイで累積された打碼量に応じて自動で獲得できます。%bet_amount% ポイントごとに %ticket_count% 枚の摸賞券を獲得し、キャンペーン終了後に自動抽選が行われ、賞金は直接ウォレットに入金されます。',
+    'ticket_kind_draw_desc_dynamic' => 'マシンプレイで累積された打碼量に応じて自動で獲得できます。{bet_amount} ポイントごとに {ticket_count} 枚の摸賞券を獲得し、キャンペーン終了後に自動抽選が行われ、賞金は直接ウォレットに入金されます。',
     'ticket_kind_blindbox' => 'ブラインドボックス券',
     'ticket_kind_blindbox_desc' => 'ブラインドボックス券は近日公開予定です。',
     'ticket_kind_exchange' => '交換券',

@@ -235,8 +235,8 @@ class PlayerController
             $betAmount = number_format((float)$vipConfig->bet_amount_required, 0, '.', ',');
             $ticketCount = (int)$vipConfig->ticket_count;
             $drawDesc = trans('ticket_kind_draw_desc_dynamic', [
-                'bet_amount' => $betAmount,
-                'ticket_count' => $ticketCount,
+                '{bet_amount}' => $betAmount,
+                '{ticket_count}' => $ticketCount,
             ], 'message');
         } else {
             $drawDesc = trans('ticket_kind_draw_desc', [], 'message');
