@@ -169,7 +169,7 @@ class PlayerPointsService
             $dailyKey = 'gk_api:player_points_daily:' . date('Ymd') . ':' . $playerId;
 
             if ($dailyLimit > 0) {
-                $todayPoints = (int)$redis->get($dailyKey) ?: 0;
+                $todayPoints = floatval($redis->get($dailyKey) ?: 0);
 
                 if ($todayPoints + $totalPointsEarned > $dailyLimit) {
                     self::log()->info('[积分] 今日积分已达上限', [
@@ -208,7 +208,7 @@ class PlayerPointsService
             // 9. 累加今日积分计数（放在最后，失败不影响玩家利益）
             try {
                 if ($dailyLimit > 0) {
-                    $redis->incrBy($dailyKey, $totalPointsEarned);
+                    $redis->incrByFloat($dailyKey, $totalPointsEarned);
                     $redis->expire($dailyKey, 86400 * 2);
                 }
             } catch (Exception $e) {
