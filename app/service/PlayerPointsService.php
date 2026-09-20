@@ -696,9 +696,9 @@ LUA;
 
         if (!empty($data) && isset($data['available_points'])) {
             return [
-                'available_points' => (int)$data['available_points'],
-                'frozen_points' => (int)$data['frozen_points'],
-                'total_points' => (int)$data['total_points'],
+                'available_points' => (int)($data['available_points'] ?? 0),
+                'frozen_points' => (int)($data['frozen_points'] ?? 0),
+                'total_points' => (int)($data['total_points'] ?? 0),
             ];
         }
 
