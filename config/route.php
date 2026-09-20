@@ -61,6 +61,10 @@ Route::group('/api', function () {
         Route::post('/tickets/winning-records', [\app\api\controller\web\LotteryTicketController::class, 'winningRecords']);
         // 摸獎券 - 打碼進度
         Route::post('/tickets/bet-progress', [\app\api\controller\web\LotteryTicketController::class, 'betProgress']);
+        // 獲取離線推送通知
+        Route::post('/offline-notifications', [\app\api\controller\web\IndexController::class, 'offlineNotifications']);
+        // 標記通知已讀
+        Route::post('/mark-notice-read', [\app\api\controller\web\IndexController::class, 'markNoticeRead']);
         // 系統公告
         Route::get('/announcements', [\app\api\controller\web\IndexController::class, 'announcements']);
         // 跑马灯

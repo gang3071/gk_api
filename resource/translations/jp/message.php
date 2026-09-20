@@ -547,6 +547,7 @@ return [
     'ticket_expired' => '福利券/体験券の有効期限が切れています',
     'ticket_wallet_balance_too_high' => '合計残高（ウォレット+マシン）を<{limit}にしてください',
     'wallet_locked' => 'ウォレットがロックされています',
+    'wallet_locked_cannot_open_score' => '福利券/体験券をご利用中です。ウォレットがロックされているため、ポイントチャージができません',
     'ticket_locked_insufficient_balance' => 'ウォレット残高を>{limit}にしてください',
     'welfare_activity_expired' => '福利券/体験券のイベントは終了しました',
     'ticket_amount_must_positive' => '出票金額は0より大きい必要があります',

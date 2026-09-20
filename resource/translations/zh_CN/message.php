@@ -566,6 +566,7 @@ return [
     'ticket_expired' => '福利卷/体验卷已过期',
     'ticket_wallet_balance_too_high' => '请确保总余额（钱包+机台）<{limit}分',
     'wallet_locked' => '钱包已锁定',
+    'wallet_locked_cannot_open_score' => '您正在使用福利券/体验券，钱包已锁定，无法进行上分操作',
     'ticket_locked_insufficient_balance' => '请确保钱包余额>{limit}分',
     'welfare_activity_expired' => '福利卷/体验卷活动已结束，无法使用',
     'ticket_amount_must_positive' => '出票金额必须大于0',

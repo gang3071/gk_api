@@ -550,6 +550,7 @@ return [
     'ticket_expired' => 'Welfare/Experience ticket has expired',
     'ticket_wallet_balance_too_high' => 'Please ensure total balance (wallet + machine) < {limit}',
     'wallet_locked' => 'Wallet is locked',
+    'wallet_locked_cannot_open_score' => 'You are using a welfare/trial voucher. Your wallet is locked and you cannot add points to machines',
     'ticket_locked_insufficient_balance' => 'Please ensure wallet balance > {limit}',
     'welfare_activity_expired' => 'Welfare/Experience ticket activity has ended',
     'ticket_amount_must_positive' => 'Ticket amount must be greater than 0',
