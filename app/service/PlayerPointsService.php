@@ -630,6 +630,8 @@ local old_total = redis.call('HGET', key, 'total_points')
 if old_available == false then
     old_available = 0
     redis.call('HSET', key, 'available_points', 0)
+    redis.call('HSET', key, 'frozen_points', 0)
+    redis.call('HSET', key, 'used_points', 0)
 else
     old_available = tonumber(old_available) or 0
 end
@@ -1943,11 +1945,11 @@ LUA;
                 // 获取或创建 MySQL 记录
                 $playerPoints = PlayerPoints::getOrCreate($playerId, $player->department_id ?? 0);
 
-                // 同步数据
+                // 同步数据（Redis Hash 中部分字段可能不存在，用 isset 防御）
                 $playerPoints->total_points = round(floatval($data['total_points'] ?? 0), 4);
                 $playerPoints->available_points = round(floatval($data['available_points'] ?? 0), 4);
-                $playerPoints->frozen_points = round(floatval($data['frozen_points'] ?? 0), 4);
-                $playerPoints->used_points = round(floatval($data['used_points'] ?? 0), 4);
+                $playerPoints->frozen_points = round(floatval(isset($data['frozen_points']) ? $data['frozen_points'] : 0), 4);
+                $playerPoints->used_points = round(floatval(isset($data['used_points']) ? $data['used_points'] : 0), 4);
                 $playerPoints->save();
 
                 $count++;
