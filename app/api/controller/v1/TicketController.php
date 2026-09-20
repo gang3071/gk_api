@@ -428,16 +428,8 @@ class TicketController
                 }
 
                 // 🔒 检查钱包是否被锁定（福利卷/体验卷锁定后不能开分）
-                if (WalletService::isWalletLocked($player->id)) {
-                    // 余额低于设定额度时自动解锁，允许正常扫码上分
-                    $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
-                    $currentBalance = WalletService::getBalance($player->id);
-                    if ($currentBalance < $openScoreLimit) {
-                        WalletService::unlockWallet($player->id);
-                    } else {
-                        $this->releaseIdempotent($requestId);
-                        return jsonFailResponse(trans('wallet_locked', [], 'message'));
-                    }
+                if (\app\service\WalletService::isWalletLocked($player->id)) {
+                    return jsonFailResponse(trans('wallet_locked', [], 'message'));
                 }
 
                 // 验证玩家绑定关系
