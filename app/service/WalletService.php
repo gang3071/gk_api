@@ -1461,6 +1461,7 @@ LUA;
                 Log::info('WalletService: 余额低于限制，自动解锁钱包', [
                     'player_id' => $playerId,
                     'balance' => $balance,
+                    'total_balance' => $totalBalance,
                     'limit' => $openScoreLimit,
                 ]);
                 return false;
