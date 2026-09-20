@@ -93,7 +93,11 @@ class DishController
         $points = PlayerPointsService::getPlayerPoints($player->id);
 
         return jsonSuccessResponse('success', [
-            'points' => $points
+            'points' => [
+                'available_points' => (int)$points['available_points'],
+                'frozen_points' => (int)$points['frozen_points'],
+                'total_points' => (int)$points['total_points'],
+            ]
         ]);
     }
 
