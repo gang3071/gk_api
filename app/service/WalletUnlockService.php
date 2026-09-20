@@ -217,7 +217,7 @@ class WalletUnlockService
      * @param int $playerId 玩家 ID
      * @return float 机台总分数
      */
-    private static function calculateAllMachineScores(int $playerId): float
+    public static function calculateAllMachineScores(int $playerId): float
     {
         try {
             // ✅ 优化：预加载 machineCategory 关联（避免 N+1 查询）
