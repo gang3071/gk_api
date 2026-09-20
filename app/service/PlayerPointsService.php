@@ -696,9 +696,9 @@ LUA;
 
         if (!empty($data) && isset($data['available_points'])) {
             return [
-                'available_points' => (int)($data['available_points'] ?? 0),
-                'frozen_points' => (int)($data['frozen_points'] ?? 0),
-                'total_points' => (int)($data['total_points'] ?? 0),
+                'available_points' => round(floatval($data['available_points'] ?? 0), 4),
+                'frozen_points' => round(floatval($data['frozen_points'] ?? 0), 4),
+                'total_points' => round(floatval($data['total_points'] ?? 0), 4),
             ];
         }
 
@@ -716,17 +716,17 @@ LUA;
             $redis->expire($key, config('points_config.redis_ttl', 86400 * 365));
 
             return [
-                'available_points' => (int)$playerPoints->available_points,
-                'frozen_points' => (int)$playerPoints->frozen_points,
-                'total_points' => (int)$playerPoints->total_points,
+                'available_points' => round(floatval($playerPoints->available_points), 4),
+                'frozen_points' => round(floatval($playerPoints->frozen_points), 4),
+                'total_points' => round(floatval($playerPoints->total_points), 4),
             ];
         }
 
         // 都没有，返回0
         return [
-            'available_points' => 0,
-            'frozen_points' => 0,
-            'total_points' => 0,
+            'available_points' => 0.0,
+            'frozen_points' => 0.0,
+            'total_points' => 0.0,
         ];
     }
 
@@ -1769,7 +1769,7 @@ LUA;
                         continue;
                     }
 
-                    // 从 Redis 获取实时积分（作为当前准确值）
+                    // 从 Redis 获取实时积分
                     $redisPoints = self::getPlayerPoints($playerPoints->player_id);
 
                     // ✅ 使用乐观锁同步 Redis 数据到 MySQL
