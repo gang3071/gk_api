@@ -428,6 +428,36 @@ class PlayerPointsService
         }
     }
 
+    /**
+     * 每日登录赠送积分（活动截止 2026-10-31）
+     * 幂等：同一玩家同一天仅发放一次，依赖 batch_id 唯一约束保障。
+     */
+    public static function addDailyLoginPoints(int $playerId): void
+    {
+        if (date('Y-m-d') > '2026-10-31') {
+            return;
+        }
+
+        $batchId = 'daily_login_' . date('Ymd') . '_' . $playerId;
+
+        try {
+            self::addPoints(
+                playerId: $playerId,
+                points: 10,
+                type: PlayerPointsRecord::TYPE_ACTIVITY,
+                source: PlayerPointsRecord::SOURCE_ACTIVITY,
+                remark: '每日登录奖励',
+                extraData: ['batch_id' => $batchId]
+            );
+        } catch (Exception $e) {
+            self::log()->warning('[积分] 每日登录积分发放失败', [
+                'player_id' => $playerId,
+                'batch_id'  => $batchId,
+                'error'     => $e->getMessage(),
+            ]);
+        }
+    }
+
     // ========================================
     // 积分计算
     // ========================================

@@ -25,6 +25,7 @@ use app\model\PlayGameRecord;
 use app\model\SystemSetting;
 use app\service\ActivityServices;
 use app\service\LineServices;
+use app\service\PlayerPointsService;
 use app\service\SmsServicesServices;
 use app\service\WalletService;
 use Illuminate\Support\Carbon;
@@ -116,6 +117,7 @@ class IndexController
         }
 
         addLoginRecord($player->id);
+        PlayerPointsService::addDailyLoginPoints($player->id);
 
         // 🔍 测试日志：生成登录token
         $deviceType = getDeviceType(); // 获取设备类型
@@ -189,6 +191,7 @@ class IndexController
         }
 
         addLoginRecord($player->id);
+        PlayerPointsService::addDailyLoginPoints($player->id);
 
         // 🔍 测试日志：生成登录token
         $deviceType = getDeviceType(); // 获取设备类型
@@ -252,6 +255,7 @@ class IndexController
             }
 
             addLoginRecord($player->id);
+            PlayerPointsService::addDailyLoginPoints($player->id);
             $deviceType = getDeviceType(); // 获取设备类型
             return jsonSuccessResponse('success', [
                 'token' => JwtToken::generateToken([
