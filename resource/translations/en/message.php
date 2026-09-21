@@ -613,7 +613,7 @@ return [
 
     // Ticket Box
     'ticket_kind_draw' => 'Raffle Ticket',
-    'ticket_kind_draw_desc' => 'Earned automatically by accumulating wager from machine gameplay. Every 1,000,000 points of wager earns 1 raffle ticket. The draw runs automatically after the activity ends and prizes are credited directly to your wallet.',
+    'ticket_kind_draw_desc' => 'After reaching the required wager amount, the system will automatically settle and issue raffle tickets within 10 minutes. After the draw, prizes will be credited directly to the player\'s account.',
     'ticket_kind_draw_desc_dynamic' => 'Earned automatically by accumulating wager from machine gameplay. Every {bet_amount} points of wager earns {ticket_count} raffle ticket(s). The draw runs automatically after the activity ends and prizes are credited directly to your wallet.',
     'ticket_kind_blindbox' => 'Blindbox Ticket',
     'ticket_kind_blindbox_desc' => 'Blindbox tickets are coming soon.',
