@@ -247,11 +247,13 @@ class DishController
 
             Db::commit();
 
-            // 下單成功後，寫入通知至門店後台（notice 表，供 noticeList 查詢）
+            // 下單成功後，寫入通知至門店後台（notice 表，供 noticeList 查詢）+ WebSocket 即時推送
             try {
                 $storeAdminId = intval($player->store_admin_id ?? 0);
                 if ($storeAdminId > 0) {
                     $storeAdmin = AdminUser::find($storeAdminId);
+
+                    // 寫入 notice 表
                     $notice = new Notice();
                     $notice->department_id = $departmentId;
                     $notice->player_id = $player->id;
@@ -263,9 +265,20 @@ class DishController
                     $notice->status = 0;                          // 未讀
                     $notice->is_private = 1;                      // 私人消息
                     $notice->save();
+
+                    // WebSocket 即時推送到店家後台（桌面彈窗 + 語音播報）
+                    if ($storeAdmin) {
+                        $channelName = "private-store-{$storeAdmin->department_id}-{$storeAdmin->id}";
+                        sendSocketMessage($channelName, [
+                            'type' => 'dish_order_new',
+                            'order_id' => $order->id,
+                            'order_no' => $order->order_no,
+                            'player_id' => $player->id,
+                        ], 'dish_order');
+                    }
                 }
             } catch (Exception $e) {
-                // Notice 儲存失敗不影響主流程，僅記錄日誌
+                // 通知失敗不影響主流程，僅記錄日誌
                 Log::warning('餐點下單通知儲存失敗', [
                     'order_id' => $order->id,
                     'error' => $e->getMessage(),
