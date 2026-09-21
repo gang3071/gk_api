@@ -10,7 +10,7 @@ class Lang implements MiddlewareInterface
 {
     public function process(Request $request, callable $handler): Response
     {
-        $lang = $request->header('Lang') ?? 'zh_CN';
+        $lang = $request->header('Lang') ?? 'zh_TW';
         locale(session('lang', Str::replace('-', '_', $lang)));
         return $handler($request);
     }
