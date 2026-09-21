@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int player_id 玩家ID
  * @property int department_id 渠道ID
  * @property int admin_user_id 門店ID
+ * @property int device_id 設備ID
  * @property float total_amount 訂單總金額(積分)
  * @property int status 狀態（0=待確認 1=已確認 2=製作中 3=已完成 4=已取消）
  * @property string remark 備註

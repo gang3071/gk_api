@@ -3,6 +3,7 @@
 namespace app\api\controller\v1;
 
 use app\exception\PlayerCheckException;
+use app\model\AdminDevice;
 use app\model\AdminUser;
 use app\model\Dish;
 use app\model\DishCategory;
@@ -203,6 +204,14 @@ class DishController
             ]);
         }
 
+        // 查詢設備（從 DeviceCpuID header）
+        $deviceCpuId = $request->header('DeviceCpuID', '');
+        $deviceId = 0;
+        if (!empty($deviceCpuId)) {
+            $device = AdminDevice::where('device_no', $deviceCpuId)->first();
+            $deviceId = $device->id ?? 0;
+        }
+
         Db::beginTransaction();
         try {
             $order = new DishOrder();
@@ -210,6 +219,7 @@ class DishController
             $order->player_id = $player->id;
             $order->department_id = $departmentId;
             $order->admin_user_id = $player->store_admin_id ?? 0;
+            $order->device_id = $deviceId;
             $order->total_amount = $totalAmount;
             $order->status = DishOrder::STATUS_PENDING;
             $order->remark = $data['remark'] ?? '';
@@ -274,6 +284,9 @@ class DishController
                             'order_id' => $order->id,
                             'order_no' => $order->order_no,
                             'player_id' => $player->id,
+                            'player_name' => $player->name ?: ('玩家' . $player->id),
+                            'device_name' => $device->device_name ?? '',
+                            'url' => '/ex-admin/addons-webman-controller-StoreDishOrderController/index',
                         ], 'dish_order');
                     }
                 }
