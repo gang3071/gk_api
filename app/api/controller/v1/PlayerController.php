@@ -33,6 +33,7 @@ use app\model\PlayerVipPeriod;
 use app\model\PlayerWalletTransfer;
 use app\model\PlayerWithdrawRecord;
 use app\model\PlayGameRecord;
+use app\model\PlayerGameLog;
 use app\model\Slider;
 use app\model\StoreSetting;
 use app\model\SystemSetting;
@@ -221,6 +222,22 @@ class PlayerController
             ->where('created_at', '>=', $yesterdayStart)
             ->where('created_at', '<', $yesterdayEnd)
             ->sum('bet');
+
+        // 实体机台打码量（从 player_game_log 表的 chip_amount 字段汇总）
+        $todayMachineBetAmount = PlayerGameLog::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $todayStart)
+            ->where('created_at', '<', $todayEnd)
+            ->sum('chip_amount');
+
+        $yesterdayMachineBetAmount = PlayerGameLog::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $yesterdayStart)
+            ->where('created_at', '<', $yesterdayEnd)
+            ->sum('chip_amount');
+
+        $todayGameBetAmount = (float) bcadd((string)$todayGameBetAmount, (string)$todayMachineBetAmount, 2);
+        $yesterdayGameBetAmount = (float) bcadd((string)$yesterdayGameBetAmount, (string)$yesterdayMachineBetAmount, 2);
 
         // 反水池待领取总额 & 可领取额度
         $reverseWaterPoolPending = $player->player_extend->pending_cashback_amount ?? 0;
@@ -3444,8 +3461,16 @@ class PlayerController
         
         //今日总打码量
         $playGameModel = PlayGameRecord::query()->where('created_at', '>=', $today)->where('player_id', $player->id);
-        $todayTotal = (clone $playGameModel)->sum('bet');
+        $todayGameTotal = (clone $playGameModel)->sum('bet');
         $todayDetail = (clone $playGameModel)->with(['gamePlatform:id,name'])->selectRaw('platform_id,sum(bet) as bet')->groupBy('platform_id')->get()->toArray();
+
+        // 实体机台打码量
+        $todayMachineTotal = (float) PlayerGameLog::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $today)
+            ->sum('chip_amount');
+
+        $todayTotal = (float) bcadd((string)$todayGameTotal, (string)$todayMachineTotal, 2);
         
         return jsonSuccessResponse('success', [
             'list' => $list,
