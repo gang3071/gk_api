@@ -250,6 +250,13 @@ class MachineController
                     'odds_y' => $item['machine']['odds_y'],
                 ];
             }
+            Log::error('获取游戏机台数据', [
+                'machine_category' => $machineCategory,
+                'machines' => $data,
+                'machine_marquee' => SystemSetting::where('feature', 'marquee')->where('department_id',
+                        \request()->department_id)->where('status', 1)->value('content') ?? '',
+                'recent_machines' => $recentMachines,
+            ]);
             return jsonSuccessResponse('success', [
                 'machine_category' => $machineCategory,
                 'machines' => $data,
