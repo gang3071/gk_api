@@ -863,9 +863,18 @@ class MachineController
             }
             
         } catch (Exception $e) {
+            // JWT 鉴权异常（被顶号 / token 过期）返回 401，不能伪装成业务 code 100
+            if ($e instanceof \Tinywan\Jwt\Exception\JwtTokenExpiredException) {
+                return jsonFailResponse($e->getMessage(), [], 401013);
+            }
+            if ($e instanceof \Tinywan\Jwt\Exception\JwtTokenException
+                || $e instanceof \Tinywan\Jwt\Exception\JwtCacheTokenException
+                || $e instanceof \Tinywan\Jwt\Exception\JwtRefreshTokenExpiredException) {
+                return jsonFailResponse($e->getMessage(), [], 401);
+            }
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
-        
+
         return jsonSuccessResponse('success', $result);
     }
     
