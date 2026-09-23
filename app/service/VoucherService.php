@@ -191,13 +191,22 @@ class VoucherService
             ->first();
 
         if ($statData) {
-            return floatval($statData->bet_amount);
+            $gameBetAmount = floatval($statData->bet_amount);
+        } else {
+            $gameBetAmount = (float) PlayGameRecord::query()
+                ->where('player_id', $playerId)
+                ->where('created_at', '>=', $startDate)
+                ->where('created_at', '<', $endDate)
+                ->sum('bet');
         }
 
-        return (float) PlayGameRecord::query()
+        // 实体机台打码量（从 player_game_log 表的 chip_amount 字段汇总）
+        $machineBetAmount = (float) \app\model\PlayerGameLog::query()
             ->where('player_id', $playerId)
             ->where('created_at', '>=', $startDate)
             ->where('created_at', '<', $endDate)
-            ->sum('bet');
+            ->sum('chip_amount');
+
+        return (float) bcadd((string)$gameBetAmount, (string)$machineBetAmount, 2);
     }
 }

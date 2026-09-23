@@ -12,6 +12,7 @@ use app\model\Currency;
 use app\model\GameType;
 use app\model\Machine;
 use app\model\Player;
+use app\model\PlayerGameLog;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerRechargeRecord;
 use app\model\PlayerWithdrawRecord;
@@ -1064,11 +1065,8 @@ class TicketController
 
             if ($ruleType === 'today') {
                 // 今日规则：检查今日打码量
-                $todayBetAmount = (float) \app\model\PlayGameRecord::query()
-                    ->where('player_id', $player->id)
-                    ->where('created_at', '>=', $todayStart)
-                    ->where('created_at', '<', $todayEnd)
-                    ->sum('bet');
+                $todayStatDate = $isAfter8am ? date('Y-m-d') : date('Y-m-d', strtotime('-1 day'));
+                $todayBetAmount = $this->getPlayerBetAmount($player->id, $todayStart, $todayEnd, $todayStatDate);
 
                 $todayWelfareRules = $voucherConfig['today_welfare']['rules'] ?? [];
                 $valid = false;
@@ -1083,11 +1081,8 @@ class TicketController
                 }
             } else {
                 // 昨日规则：检查昨日打码量
-                $yesterdayBetAmount = (float) \app\model\PlayGameRecord::query()
-                    ->where('player_id', $player->id)
-                    ->where('created_at', '>=', $yesterdayStart)
-                    ->where('created_at', '<', $yesterdayEnd)
-                    ->sum('bet');
+                $yesterdayStatDate = $isAfter8am ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d', strtotime('-2 days'));
+                $yesterdayBetAmount = $this->getPlayerBetAmount($player->id, $yesterdayStart, $yesterdayEnd, $yesterdayStatDate);
 
                 $yesterdayWelfareRules = $welfareConfig['rules'] ?? [];
 
@@ -2172,14 +2167,23 @@ class TicketController
             ->first();
 
         if ($statData) {
-            return floatval($statData->bet_amount);
+            $gameBetAmount = floatval($statData->bet_amount);
+        } else {
+            $gameBetAmount = (float) \app\model\PlayGameRecord::query()
+                ->where('player_id', $playerId)
+                ->where('created_at', '>=', $startDate)
+                ->where('created_at', '<', $endDate)
+                ->sum('bet');
         }
 
-        return (float) \app\model\PlayGameRecord::query()
+        // 实体机台打码量（从 player_game_log 表的 chip_amount 字段汇总）
+        $machineBetAmount = (float) \app\model\PlayerGameLog::query()
             ->where('player_id', $playerId)
             ->where('created_at', '>=', $startDate)
             ->where('created_at', '<', $endDate)
-            ->sum('bet');
+            ->sum('chip_amount');
+
+        return (float) bcadd((string)$gameBetAmount, (string)$machineBetAmount, 2);
     }
 
     /**
