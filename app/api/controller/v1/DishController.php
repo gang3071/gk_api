@@ -154,6 +154,26 @@ class DishController
             $subtotal = bcmul($dish->price, $quantity, 2);
             $totalAmount = bcadd($totalAmount, $subtotal, 2);
 
+            // 客人選擇的餐點選項（選項來源為該餐點的 Dish.remark，用分號區隔）
+            // 兼容格式：options 陣列、options 字串、舊版 remark 字串
+            $options = $item['options'] ?? ($item['remark'] ?? '');
+            if (is_array($options)) {
+                $selected = [];
+                foreach ($options as $option) {
+                    $option = trim((string)$option);
+                    if ($option !== '') {
+                        $selected[] = $option;
+                    }
+                }
+                $options = implode(';', $selected);
+            }
+            $options = trim((string)$options);
+
+            // dish_order_item.remark 長度上限 255，避免超長導致寫入失敗
+            if (mb_strlen($options) > 255) {
+                $options = mb_substr($options, 0, 255);
+            }
+
             $orderItems[] = [
                 'dish_id' => $dish->id,
                 'dish_title' => $dish->title,
@@ -161,7 +181,7 @@ class DishController
                 'quantity' => $quantity,
                 'price' => $dish->price,
                 'subtotal' => $subtotal,
-                'remark' => $item['remark'] ?? '',
+                'remark' => $options,
             ];
         }
 
