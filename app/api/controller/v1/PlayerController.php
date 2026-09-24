@@ -249,6 +249,17 @@ class PlayerController
             : 0;
         $reverseWaterPoolRemaining = $reverseWaterPoolPending - $reverseWaterPoolClaimable;
 
+        // VIP 每日登录奖励（按当前 VIP 等级配置，0 表示该等级无奖励）
+        $dailyLoginBonus = $this->formatAmount((float)($vipLevel->daily_login_bonus ?? 0));
+        $isDailyLoginBonusReceived = false;
+        if ($dailyLoginBonus > 0) {
+            $isDailyLoginBonusReceived = PlayerDeliveryRecord::query()
+                ->where('player_id', $player->id)
+                ->where('type', PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS)
+                ->whereDate('created_at', date('Y-m-d'))
+                ->exists();
+        }
+
         return jsonSuccessResponse('success', [
             'id' => $player->id,
             'phone' => $player->phone,
@@ -308,6 +319,8 @@ class PlayerController
             'reverse_water_pool_min_claim' => $minClaimAmount > 0 ? $this->formatAmount($minClaimAmount) : 0, // 当前等级最低领取金额，未设置返回0
             'claimable_voucher_counts' => \app\service\VoucherService::getClaimableCounts($player), // 今日可领福利券/体验券数量
             'available_points' => \app\model\PlayerPoints::getOrCreate($player->id, $player->department_id)->available_points, // 用户可用积分
+            'daily_login_bonus' => $dailyLoginBonus, // 当前 VIP 等级每日登录奖励金额（0=无奖励）
+            'is_daily_login_bonus_received' => $isDailyLoginBonusReceived, // 今日是否已领取
         ]);
     }
 
@@ -3741,6 +3754,113 @@ class PlayerController
     }
 
     /**
+     * 领取 VIP 每日登录奖励
+     *
+     * 按当前 VIP 等级的 daily_login_bonus 发放，同一玩家每日仅可领取一次。
+     *
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function claimDailyLoginBonus(Request $request): Response
+    {
+        $player = checkPlayer();
+
+        // 幂等性检查
+        $requestId = $request->input('request_id');
+        $idempotentResponse = $this->checkIdempotent($requestId, 'claim-daily-login-bonus', $player->id);
+        if ($idempotentResponse !== null) {
+            return $idempotentResponse;
+        }
+
+        // 提前占位（防止并发重复领取）
+        if (!$this->reserveIdempotent($requestId, 'claim-daily-login-bonus', $player->id)) {
+            $response = $this->checkIdempotent($requestId, 'claim-daily-login-bonus', $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // 当前 VIP 等级奖励金额
+        $player->load('vipLevel');
+        $bonusAmount = (float)($player->vipLevel->daily_login_bonus ?? 0);
+
+        if ($bonusAmount <= 0) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('daily_login_bonus_not_available', [], 'message'));
+        }
+
+        // 今日是否已领取
+        $hasReceived = PlayerDeliveryRecord::query()
+            ->where('player_id', $player->id)
+            ->where('type', PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS)
+            ->whereDate('created_at', date('Y-m-d'))
+            ->exists();
+
+        if ($hasReceived) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('daily_login_bonus_already_received', [], 'message'));
+        }
+
+        Db::beginTransaction();
+        try {
+            // ✅ 从 Redis 读取余额（唯一可信源）
+            $beforeAmount = \app\service\WalletService::getBalance($player->id);
+
+            // ✅ Lua 原子性加款
+            $incrementResult = \app\service\WalletService::atomicIncrement($player->id, $bonusAmount);
+            $afterAmount = $incrementResult['balance'];
+
+            // 寫入賬變記錄
+            $playerMoneyEditLog = new PlayerMoneyEditLog;
+            $playerMoneyEditLog->player_id = $player->id;
+            $playerMoneyEditLog->department_id = $player->department_id;
+            $playerMoneyEditLog->type = PlayerMoneyEditLog::TYPE_INCREASE;
+            $playerMoneyEditLog->action = PlayerMoneyEditLog::VIP_DAILY_LOGIN_BONUS;
+            $playerMoneyEditLog->tradeno = 'DLB' . date('YmdHis') . str_pad($player->id, 6, '0', STR_PAD_LEFT) . mt_rand(100, 999);
+            $playerMoneyEditLog->currency = $player->currency;
+            $playerMoneyEditLog->money = $bonusAmount;
+            $playerMoneyEditLog->inmoney = $bonusAmount;
+            $playerMoneyEditLog->remark = trans('vip_daily_login_bonus', [], 'message');
+            $playerMoneyEditLog->user_id = 0;
+            $playerMoneyEditLog->user_name = trans('system_automatic', [], 'message');
+            $playerMoneyEditLog->save();
+
+            // 寫入金流明細（到账变表）
+            $playerDeliveryRecord = new PlayerDeliveryRecord;
+            $playerDeliveryRecord->player_id = $player->id;
+            $playerDeliveryRecord->department_id = $player->department_id;
+            $playerDeliveryRecord->target = $playerMoneyEditLog->getTable();
+            $playerDeliveryRecord->target_id = $playerMoneyEditLog->id;
+            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS;
+            $playerDeliveryRecord->source = 'vip_daily_login_bonus';
+            $playerDeliveryRecord->amount = $bonusAmount;
+            $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeAmount;
+            $playerDeliveryRecord->amount_after = $afterAmount;
+            $playerDeliveryRecord->tradeno = $playerMoneyEditLog->tradeno;
+            $playerDeliveryRecord->remark = trans('vip_daily_login_bonus', [], 'message');
+            $playerDeliveryRecord->save();
+
+            Db::commit();
+
+            // 保存幂等性记录
+            $response = jsonSuccessResponse(trans('daily_login_bonus_claim_success', [], 'message'), [
+                'amount' => $bonusAmount,
+                'money' => $afterAmount,
+            ]);
+            $this->saveIdempotent($requestId, $response, 'claim-daily-login-bonus', $player->id);
+
+            return $response;
+        } catch (\Throwable $e) {
+            Db::rollBack();
+            $this->releaseIdempotent($requestId);
+            Log::error('claimDailyLoginBonus failed', [
+                'player_id' => $player->id,
+                'error' => $e->getMessage(),
+            ]);
+            return jsonFailResponse(trans('system_error', [], 'message'));
+        }
+    }
+
+    /**
      * 增加观看人数
      * @param Request $request
      * @return Response
@@ -4186,6 +4306,7 @@ class PlayerController
                 PlayerDeliveryRecord::TYPE_VIP_UPGRADE_BONUS,
                 PlayerDeliveryRecord::TYPE_BIRTHDAY_BONUS,
                 PlayerDeliveryRecord::TYPE_REVERSE_WATER_POOL,
+                PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS,
             ])
             ->orderBy('id', 'desc');
 
@@ -4200,6 +4321,7 @@ class PlayerController
                 PlayerDeliveryRecord::TYPE_VIP_UPGRADE_BONUS => trans('vip_upgrade_bonus', [], 'message'),
                 PlayerDeliveryRecord::TYPE_BIRTHDAY_BONUS => trans('vip_birthday_bonus', [], 'message'),
                 PlayerDeliveryRecord::TYPE_REVERSE_WATER_POOL => trans('reverse_water_pool', [], 'message'),
+                PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS => trans('vip_daily_login_bonus', [], 'message'),
                 default => trans('other', [], 'message'),
             };
 

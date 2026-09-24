@@ -248,6 +248,10 @@ class PlayerPointsService
     /**
      * 直接增加积分（用于活动奖励、后台补偿等）
      *
+     * total_points（累计获得）规则：
+     * - 活动/后台调整等入账：增加 total_points
+     * - 退还积分（TYPE_REFUND / SOURCE_REFUND）：只恢复 available_points，不增加 total_points
+     *
      * @param int $playerId 玩家ID
      * @param int $points 增加的积分数
      * @param int $type 类型（4=后台调整 5=活动奖励 6=订单退款）
@@ -272,6 +276,10 @@ class PlayerPointsService
 
         // 保留4位小数
         $points = round($points, 4);
+
+        // 退还积分：只回补可用余额，不计入累计获得
+        $isRefund = $type === PlayerPointsRecord::TYPE_REFUND
+            || $source === PlayerPointsRecord::SOURCE_REFUND;
 
         Db::beginTransaction();
 
@@ -313,14 +321,21 @@ class PlayerPointsService
             $currentVersion = $playerPoints->version;
             $pointsStr = number_format($points, 4, '.', '');
 
+            $updateData = [
+                'available_points' => Db::raw('available_points + ' . $pointsStr),
+                'version' => $currentVersion + 1,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ];
+
+            // 非退还入账同步累计 total_points；退还只恢复可用余额
+            if (!$isRefund) {
+                $updateData['total_points'] = Db::raw('total_points + ' . $pointsStr);
+            }
+
             // ✅ 使用 DB::raw() 进行数据库层面的原子计算（保证一致性）
             $affected = PlayerPoints::where('id', $playerPoints->id)
                 ->where('version', $currentVersion)
-                ->update([
-                    'available_points' => Db::raw('available_points + ' . $pointsStr),
-                    'version' => $currentVersion + 1,
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ]);
+                ->update($updateData);
 
             if ($affected === 0) {
                 throw new Exception("乐观锁冲突，增加积分失败");
@@ -405,6 +420,8 @@ class PlayerPointsService
                 'points' => $points,
                 'type' => $type,
                 'source' => $source,
+                'is_refund' => $isRefund,
+                'increase_total' => !$isRefund,
                 'remark' => $remark,
             ]);
 
