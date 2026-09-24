@@ -13,6 +13,7 @@ use app\model\Machine;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerMoneyEditLog;
 use app\model\PlayerReverseWaterDetail;
+use app\model\PlayerGameLog;
 use app\model\PlayGameRecord;
 use app\model\SystemSetting;
 use app\model\VipLevel;
@@ -64,25 +65,52 @@ class PlayerController
         }
 
         // ---------------------------------------- 打分相關 ----------------------------------------
-        // 获取电子游戏打码量（排除真人视讯/体育平台，用于VIP升级统计）
-        $todayStart = Carbon::today()->startOfDay()->toDateTimeString();
-        $todayEnd = Carbon::today()->endOfDay()->toDateTimeString();
-        $yesterdayStart = Carbon::yesterday()->startOfDay()->toDateTimeString();
-        $yesterdayEnd = Carbon::yesterday()->endOfDay()->toDateTimeString();
+        // 以每天 08:00 为分界点，与 playerInfo 保持一致
+        $now = Carbon::now();
+        $today8am = Carbon::today()->setTime(8, 0, 0);
+        $yesterday8am = Carbon::yesterday()->setTime(8, 0, 0);
+        $tomorrow8am = Carbon::tomorrow()->setTime(8, 0, 0);
 
+        if ($now->gte($today8am)) {
+            $todayStart     = $today8am->toDateTimeString();
+            $todayEnd       = $tomorrow8am->toDateTimeString();
+            $yesterdayStart = $yesterday8am->toDateTimeString();
+            $yesterdayEnd   = $today8am->toDateTimeString();
+        } else {
+            $todayStart     = $yesterday8am->toDateTimeString();
+            $todayEnd       = $today8am->toDateTimeString();
+            $yesterdayStart = Carbon::parse('-2 days')->setTime(8, 0, 0)->toDateTimeString();
+            $yesterdayEnd   = $yesterday8am->toDateTimeString();
+        }
+
+        // 线上游戏打码量（PlayGameRecord.bet）
         $todayScore = PlayGameRecord::query()
             ->where('player_id', $player->id)
             ->where('created_at', '>=', $todayStart)
-            ->where('created_at', '<=', $todayEnd)
-            ->whereNotIn('platform_id', self::getExcludedPlatformIds())
+            ->where('created_at', '<', $todayEnd)
             ->sum('bet');
 
         $yesterdayScore = PlayGameRecord::query()
             ->where('player_id', $player->id)
             ->where('created_at', '>=', $yesterdayStart)
-            ->where('created_at', '<=', $yesterdayEnd)
-            ->whereNotIn('platform_id', self::getExcludedPlatformIds())
+            ->where('created_at', '<', $yesterdayEnd)
             ->sum('bet');
+
+        // 实体机台打码量（PlayerGameLog.chip_amount）
+        $todayMachineBet = PlayerGameLog::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $todayStart)
+            ->where('created_at', '<', $todayEnd)
+            ->sum('chip_amount');
+
+        $yesterdayMachineBet = PlayerGameLog::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $yesterdayStart)
+            ->where('created_at', '<', $yesterdayEnd)
+            ->sum('chip_amount');
+
+        $todayScore     = (float) bcadd((string)$todayScore, (string)$todayMachineBet, 2);
+        $yesterdayScore = (float) bcadd((string)$yesterdayScore, (string)$yesterdayMachineBet, 2);
         // ---------------------------------------- VIP 相關 ----------------------------------------
         $vipLevel = $player->vipLevel()->first();
         $currentPeriod = $player->currentVipPeriod()->first();
