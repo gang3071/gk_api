@@ -352,6 +352,8 @@ Route::group('/api', function () {
         Route::post('/present-auto-records', [\app\api\controller\v1\PlayerController::class, 'getPresentAutoRecords']);
         // 活动记录列表（摸奖券、VIP升级礼金、生日礼金）
         Route::post('/activity-records', [\app\api\controller\v1\PlayerController::class, 'getActivityRecords']);
+        // 领取 VIP 每日登录奖励
+        Route::post('/claim-daily-login-bonus', [\app\api\controller\v1\PlayerController::class, 'claimDailyLoginBonus']);
         // 彩金中奖记录列表
         Route::post('/lottery-records', [\app\api\controller\v1\PlayerController::class, 'getLotteryRecords']);
 

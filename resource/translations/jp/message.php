@@ -662,4 +662,8 @@ return [
     'voucher_type_experience' => '体験券',
     'voucher_type_welfare' => '福利券',
     'unit_wan' => '万',
+    'vip_daily_login_bonus' => 'VIP毎日ログインボーナス',
+    'daily_login_bonus_not_available' => '現在のレベルには毎日ログインボーナスがありません',
+    'daily_login_bonus_already_received' => '本日のログインボーナスは受け取り済みです',
+    'daily_login_bonus_claim_success' => 'ログインボーナスを受け取りました',
 ];

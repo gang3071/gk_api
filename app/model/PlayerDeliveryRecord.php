@@ -82,6 +82,7 @@ class PlayerDeliveryRecord extends Model
     const TYPE_BIRTHDAY_BONUS = 34; // VIP生日礼金
     const TYPE_VIP_UPGRADE_BONUS = 35; // VIP升级礼金
     const TYPE_REVERSE_WATER_POOL = 36; // 反水池反水领取
+    const TYPE_VIP_DAILY_LOGIN_BONUS = 37; // VIP每日登录奖励
 
     protected $fillable = [
         'player_id',

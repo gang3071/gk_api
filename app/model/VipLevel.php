@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property float upgrade_bet_amount 升级所需打码量
  * @property float min_claim_amount 最小领取额
  * @property float birthday_bonus 生日礼金
+ * @property float daily_login_bonus 每日登录奖励
  * @property int sort 排序
  * @property int status 状态（0=禁用，1=启用）
  * @property int department_id 部门/渠道ID
