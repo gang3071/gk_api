@@ -979,9 +979,9 @@ class MachineController
     private function givePoints(Player $player, Machine $machine, int $ruleId, int $money): void
     {
         // 🔒 福利劵/体验劵使用后钱包锁定，禁止实体机上分
-        if (\app\service\WalletService::isWalletLocked($player->id)) {
-            throw new \Exception(trans('wallet_locked_cannot_open_score', [], 'message'));
-        }
+//        if (\app\service\WalletService::isWalletLocked($player->id)) {
+//            throw new \Exception(trans('wallet_locked_cannot_open_score', [], 'message'));
+//        }
 
         $machineCategoryGiveRule = null;
         $giftScore = 0;
