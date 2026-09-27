@@ -69,10 +69,6 @@ Route::group('/api', function () {
         Route::get('/announcements', [\app\api\controller\web\IndexController::class, 'announcements']);
         // 跑马灯
         Route::get('/marquee', [\app\api\controller\web\IndexController::class, 'marquee']);
-        // 获取福利券/体验券信息
-        Route::post('/voucher/info', [\app\api\controller\v1\TicketController::class, 'getVoucherInfo']);
-        // 领取福利券/体验券（出票）
-        Route::post('/voucher/print', [\app\api\controller\v1\TicketController::class, 'printVoucherTicket']);
         // 扫码开分（使用福利券/体验券）
         Route::post('/voucher/scan-open-score', [\app\api\controller\v1\TicketController::class, 'scanOpenScore']);
         // 彩金列表
