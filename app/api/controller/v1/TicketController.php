@@ -92,15 +92,19 @@ class TicketController
             return jsonFailResponse(trans('machine_crashed_cannot_wash_score', [], 'message'));
         }
 
-        // 🔒 钱包锁定状态下，余额需达到配置分数才能出票
+        // 🔒 钱包锁定状态下，余额需达到配置分数才能出票（钱包余额 + 机台分数合计）
         if (WalletService::isWalletLocked($player->id)) {
             $issueThreshold = (int) config('welfare_ticket.issue_threshold', 5000);
             $currentBalance = WalletService::getBalance($player->id);
-            if ($currentBalance < $issueThreshold) {
+            $machineScores = \app\service\WalletUnlockService::calculateAllMachineScores($player->id);
+            $totalBalance = (float) bcadd((string)$currentBalance, (string)$machineScores, 2);
+            if ($totalBalance < $issueThreshold) {
                 $this->releaseIdempotent($requestId);
                 Log::warning('redeemTicket: 钱包锁定，余额不足无法出票', [
                     'player_id' => $player->id,
-                    'balance' => $currentBalance,
+                    'wallet_balance' => $currentBalance,
+                    'machine_scores' => $machineScores,
+                    'total_balance' => $totalBalance,
                     'threshold' => $issueThreshold,
                 ]);
                 return jsonFailResponse(trans('ticket_locked_insufficient_balance', ['{limit}' => $issueThreshold], 'message'));
@@ -430,6 +434,7 @@ class TicketController
 
                 // 🔒 检查钱包是否被锁定（福利卷/体验卷锁定后不能开分）
                 if (\app\service\WalletService::isWalletLocked($player->id)) {
+                    $this->releaseIdempotent($requestId);
                     return jsonFailResponse(trans('wallet_locked', [], 'message'));
                 }
 

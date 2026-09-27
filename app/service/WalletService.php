@@ -1456,7 +1456,7 @@ LUA;
             $totalMachineScores = WalletUnlockService::calculateAllMachineScores($playerId);
             // 4. 计算总余额
             $totalBalance = bcadd((string)$balance, (string)$totalMachineScores, 2);
-            if ($totalBalance < $openScoreLimit) {
+            if ($totalBalance <= $openScoreLimit) {
                 self::unlockWallet($playerId);
                 Log::info('WalletService: 余额低于限制，自动解锁钱包', [
                     'player_id' => $playerId,

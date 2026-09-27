@@ -69,6 +69,8 @@ Route::group('/api', function () {
         Route::get('/announcements', [\app\api\controller\web\IndexController::class, 'announcements']);
         // 跑马灯
         Route::get('/marquee', [\app\api\controller\web\IndexController::class, 'marquee']);
+        // 扫码开分（使用福利券/体验券）
+        Route::post('/voucher/scan-open-score', [\app\api\controller\v1\TicketController::class, 'scanOpenScore']);
         // 彩金列表
         Route::post('/lottery-list', [\app\api\controller\web\LotteryController::class, 'lotteryList']);
         // 彩金中奖记录

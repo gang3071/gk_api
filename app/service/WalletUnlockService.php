@@ -46,6 +46,7 @@ class WalletUnlockService
 
             // 2. 获取解锁阈值
             $issueThreshold = (int) config('welfare_ticket.issue_threshold', 5000);
+            $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
 
             // 3. 计算玩家在所有机台上的总分数
             $totalMachineScores = self::calculateAllMachineScores($playerId);
@@ -53,8 +54,13 @@ class WalletUnlockService
             // 4. 计算总余额
             $totalBalance = bcadd((string)$currentBalance, (string)$totalMachineScores, 2);
 
-            // 5. 判断是否达到解锁条件
-            if ((float)$totalBalance < $issueThreshold) {
+            // 5. 判断是否达到解锁条件（满足任一条件即解锁）：
+            //    - 条件A：总余额 <= open_score_limit（余额过低，允许继续充值/上分）
+            //    - 条件B：总余额 >= issue_threshold（余额充足，满足福利券发放门槛）
+            $meetLowBalance  = (float)$totalBalance <= $openScoreLimit;
+            $meetHighBalance = (float)$totalBalance >= $issueThreshold;
+
+            if (!$meetLowBalance && !$meetHighBalance) {
                 return [
                     'unlocked' => false,
                     'message' => '余额不足，未达到解锁条件',
@@ -63,6 +69,7 @@ class WalletUnlockService
                         'machine_scores' => $totalMachineScores,
                         'total_balance' => (float)$totalBalance,
                         'threshold' => $issueThreshold,
+                        'open_score_limit' => $openScoreLimit,
                         'required' => $issueThreshold - (float)$totalBalance,
                     ],
                 ];
@@ -77,7 +84,7 @@ class WalletUnlockService
                     'wallet_balance' => $currentBalance,
                     'machine_scores' => $totalMachineScores,
                     'total_balance' => (float)$totalBalance,
-                    'threshold' => $issueThreshold,
+                    'unlock_condition' => $meetLowBalance ? 'low_balance' : 'high_balance',
                     'trigger_reason' => $reason,
                 ]);
 
