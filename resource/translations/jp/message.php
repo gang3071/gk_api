@@ -647,7 +647,6 @@ return [
     'voucher_welfare_tier_claimed' => 'このティア（{rule}ルール）は本日既に取得済みです',
     'voucher_claim_success' => '{type}取得成功',
     'voucher_claim_failed' => '取得失敗: {message}',
-    'voucher_no_valid_ticket' => '利用可能な福利券または体験券がありません',
     'voucher_label_experience' => '体験券 {score} pt',
     'voucher_label_welfare' => '福利券 {score} pt',
     'voucher_condition_not_new_user' => '新会員ではありません',

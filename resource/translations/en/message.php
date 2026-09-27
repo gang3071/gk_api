@@ -649,7 +649,6 @@ return [
     'voucher_welfare_tier_claimed' => 'This tier ({rule} rule) has already been claimed today',
     'voucher_claim_success' => '{type} claimed successfully',
     'voucher_claim_failed' => 'Claim failed: {message}',
-    'voucher_no_valid_ticket' => 'No valid welfare or experience voucher available',
     'voucher_label_experience' => 'Experience {score} pts',
     'voucher_label_welfare' => 'Welfare {score} pts',
     'voucher_condition_not_new_user' => 'Not a new member',

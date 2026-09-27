@@ -666,7 +666,6 @@ return [
     'voucher_welfare_tier_claimed' => '该档位福利券({rule}规则)今日已领取过',
     'voucher_claim_success' => '{type}领取成功',
     'voucher_claim_failed' => '领取失败: {message}',
-    'voucher_no_valid_ticket' => '暂无可用的福利券或体验券',
     'voucher_label_experience' => '体验券 {score} 分',
     'voucher_label_welfare' => '福利券 {score} 分',
     'voucher_condition_not_new_user' => '非新会员',
