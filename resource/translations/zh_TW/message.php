@@ -656,6 +656,7 @@ return [
     'voucher_welfare_tier_claimed' => '該檔位福利券({rule}規則)今日已領取過',
     'voucher_claim_success' => '{type}領取成功',
     'voucher_claim_failed' => '領取失敗: {message}',
+    'voucher_no_valid_ticket' => '目前沒有可用的福利券或體驗券',
     'voucher_label_experience' => '體驗券 {score} 分',
     'voucher_label_welfare' => '福利券 {score} 分',
     'voucher_condition_not_new_user' => '非新會員',
