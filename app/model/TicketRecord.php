@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
  * @property string $store_name 店名
  * @property int $machine_no 台号
  * @property int $machine_id 机台ID
+ * @property int $issue_device_id 出票设备ID
  * @property int $player_id 玩家ID
  * @property string $player_name 玩家名称
  * @property float $score 分数/金额
@@ -28,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property int $status 状态: 0=禁用 1=正常 2=已打印 3=已使用 4=待核销
  * @property string|null $scanned_at 扫码时间
  * @property string|null $scanned_by 扫码人
+ * @property int $redeem_device_id 核销设备ID
  * @property int $print_count 打印次数
  * @property string|null $last_print_time 最后打印时间
  * @property array|null $extra_data 扩展数据

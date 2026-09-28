@@ -18,6 +18,7 @@ namespace support;
  * Class Request
  * @property string $department_id 渠道ID
  * @property string $site_id 站點標識
+ * @property mixed $device 设备信息（游戏机/储值机，中间件挂载）
  *
  * @package support
  */
@@ -32,4 +33,8 @@ class Request extends \Webman\Http\Request
      * @var mixed|null
      */
     public $site_id;
+    /**
+     * @var mixed|null
+     */
+    public $device;
 }

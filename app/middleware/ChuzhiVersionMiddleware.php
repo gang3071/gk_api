@@ -101,7 +101,7 @@ class ChuzhiVersionMiddleware implements MiddlewareInterface
         }
 
         // 将设备信息传递给后续处理
-        $request->chuzhi_device = $device;
+        $request->device = $device;
         $request->department_id = $departmentId;
 
         return $handler($request);
