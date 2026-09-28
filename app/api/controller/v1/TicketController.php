@@ -216,6 +216,9 @@ class TicketController
         $orderId = TicketRecord::generateOrderId();
         $qrCodeNo = TicketRecord::generateQrCodeNo();
 
+        // 解析出票设备ID（中间件设备查询逻辑）
+        $issueDeviceId = $this->resolveDeviceId($request);
+
         // 开始事务处理
         DB::beginTransaction();
         try {
@@ -233,6 +236,7 @@ class TicketController
                 'store_name' => $storeName,
                 'machine_no' => 0,
                 'machine_id' => 0,
+                'issue_device_id' => $issueDeviceId,
                 'player_id' => $player->id,
                 'player_name' => $player->name ?? '',
                 'score' => $washAmount,
@@ -529,6 +533,9 @@ class TicketController
                     }
                 }
 
+                // 解析核销设备ID（中间件设备查询逻辑）
+                $redeemDeviceId = $this->resolveDeviceId($request);
+
                 Db::beginTransaction();
 
                 // 上分
@@ -577,6 +584,7 @@ class TicketController
                     'status' => TicketRecord::STATUS_MACHINE_USED,
                     'scanned_at' => date('Y-m-d H:i:s'),
                     'scanned_by' => $player->id,
+                    'redeem_device_id' => $redeemDeviceId,
                 ];
                 // 洗分票且已绑定玩家时，不更新 player_id，保留出票时的玩家绑定
                 if (empty($ticket->player_id)) {
@@ -1157,6 +1165,9 @@ class TicketController
             $orderId = TicketRecord::generateOrderId($ticketType);
             $qrCodeNo = TicketRecord::generateQrCodeNo();
 
+            // 解析出票设备ID（中间件设备查询逻辑）
+            $issueDeviceId = $this->resolveDeviceId($request);
+
             $storeName = '';
             if ($player->storeAdmin) {
                 $storeName = $player->storeAdmin->nickname ?? $player->storeAdmin->username ?? '';
@@ -1175,6 +1186,7 @@ class TicketController
                 'store_name' => $storeName,
                 'machine_no' => 0,
                 'machine_id' => 0,
+                'issue_device_id' => $issueDeviceId,
                 'player_id' => $player->id,
                 'player_name' => $player->name ?? '',
                 'score' => $score,
@@ -1445,8 +1457,8 @@ class TicketController
 
             try {
                 // 创建两张新票据
-                $ticket1 = $this->createNewTicket($ticket, (float)$splitScore, TicketRecord::SOURCE_TYPE_SPLIT);
-                $ticket2 = $this->createNewTicket($ticket, (float)$remainScore, TicketRecord::SOURCE_TYPE_SPLIT);
+                $ticket1 = $this->createNewTicket($ticket, (float)$splitScore, TicketRecord::SOURCE_TYPE_SPLIT, (int)$device->id);
+                $ticket2 = $this->createNewTicket($ticket, (float)$remainScore, TicketRecord::SOURCE_TYPE_SPLIT, (int)$device->id);
 
                 // 更新原票状态
                 $ticket->update([
@@ -1640,7 +1652,7 @@ class TicketController
                 $sourceTicket = $hasWithdrawType ? $withdrawTicket : $firstTicket;
 
                 // 使用确定的来源票据创建新票据
-                $newTicket = $this->createNewTicket($sourceTicket, (float)$totalScore, TicketRecord::SOURCE_TYPE_MERGE);
+                $newTicket = $this->createNewTicket($sourceTicket, (float)$totalScore, TicketRecord::SOURCE_TYPE_MERGE, (int)$device->id);
 
                 // 合票产生的新票不绑定用户
                 $newTicket->update([
@@ -1792,6 +1804,9 @@ class TicketController
             $orderId = TicketRecord::generateOrderId();
             $qrCodeNo = TicketRecord::generateQrCodeNo();
 
+            // 解析出票设备ID（中间件设备查询逻辑）
+            $issueDeviceId = $this->resolveDeviceId($request);
+
             // 创建票据记录
             $ticket = TicketRecord::create([
                 'order_id' => $orderId,
@@ -1800,6 +1815,7 @@ class TicketController
                 'store_name' => $storeName,
                 'machine_no' => 0,
                 'machine_id' => 0,
+                'issue_device_id' => $issueDeviceId,
                 'player_id' => 0,
                 'player_name' => '',
                 'score' => $score,
@@ -1912,6 +1928,40 @@ class TicketController
     }
 
     /**
+     * 解析当前请求的设备ID
+     *
+     * 设备有游戏机/储值机两种，出票可能发生在任一设备上，只需关注 device_id。
+     * 复用中间件的设备查询逻辑：
+     * 1. 中间件已把设备挂载到 $request->device（ChuzhiVersionMiddleware / DeviceCollectMiddleware）
+     * 2. 未挂载时按 DeviceCpuID 头查询 admin_device（与中间件一致）
+     *
+     * @param Request $request 请求对象
+     * @return int 设备ID，无法解析时返回 0
+     */
+    private function resolveDeviceId(Request $request): int
+    {
+        // 中间件已查询并挂载设备（缓存命中时为数组，未命中时为模型）
+        $device = $request->device ?? null;
+        if (!empty($device)) {
+            $deviceId = is_array($device) ? (int)($device['id'] ?? 0) : (int)($device->id ?? 0);
+            if ($deviceId > 0) {
+                return $deviceId;
+            }
+        }
+
+        // 未挂载时：按 DeviceCpuID 查询设备
+        $deviceCpuId = $request->header('DeviceCpuID', '');
+        if (!empty($deviceCpuId)) {
+            $deviceId = (int)AdminDevice::query()->where('device_no', $deviceCpuId)->value('id');
+            if ($deviceId > 0) {
+                return $deviceId;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
      * 验证票据是否可操作（拆分/合并）
      *
      * @param TicketRecord $ticket 票据对象
@@ -1965,9 +2015,10 @@ class TicketController
      * @param TicketRecord $sourceTicket 来源票据
      * @param float $score 分值
      * @param string $sourceType 来源类型（split/merge）
+     * @param int $issueDeviceId 出票设备ID（执行拆分/合并的储值机）
      * @return TicketRecord
      */
-    private function createNewTicket(TicketRecord $sourceTicket, float $score, string $sourceType): TicketRecord
+    private function createNewTicket(TicketRecord $sourceTicket, float $score, string $sourceType, int $issueDeviceId = 0): TicketRecord
     {
         $orderId = TicketRecord::generateOrderId((int)$sourceTicket->ticket_type);
         $qrCodeNo = TicketRecord::generateQrCodeNo();
@@ -1979,6 +2030,7 @@ class TicketController
             'store_name' => $sourceTicket->store_name ?? '',
             'machine_no' => 0,
             'machine_id' => 0,
+            'issue_device_id' => $issueDeviceId,
             'player_id' => $sourceTicket->player_id,
             'player_name' => $sourceTicket->player_name ?? '',
             'score' => $score,

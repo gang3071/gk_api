@@ -51,6 +51,9 @@ class DeviceCollectMiddleware implements MiddlewareInterface
             }
         }
 
+        // 将设备信息传递给后续处理（设备区分游戏机/储值机，业务只关注 device_id）
+        $request->device = $device;
+
         return $handler($request);
     }
 }
