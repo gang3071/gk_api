@@ -522,12 +522,12 @@ class TicketController
                         return jsonFailResponse(trans('ticket_expired', [], 'message'));
                     }
 
-                    // 检查钱包余额：钱包余额 + 机台分数必须低于配置值才能使用福利卷/体验卷
+                    // 检查钱包余额：钱包余额 + 机台分数必须不超过配置值（小于等于）才能使用福利卷/体验卷
                     $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
                     $currentWalletBalance = WalletService::getBalance($player->id);
                     $totalBalance = bcadd((string)$currentWalletBalance, (string)$machineScores, 2);
 
-                    if ((float)$totalBalance >= $openScoreLimit) {
+                    if ((float)$totalBalance > $openScoreLimit) {
                         $this->releaseIdempotent($requestId);
                         return jsonFailResponse(trans('ticket_wallet_balance_too_high', ['{limit}' => $openScoreLimit], 'message'));
                     }

@@ -1450,15 +1450,15 @@ LUA;
                 return false;
             }
 
-            // 钱包已锁定，检查余额是否低于阈值，低于则自动解锁
+            // 钱包已锁定，检查余额是否不超过阈值（小于等于），不超过则自动解锁
             $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
             $balance = self::getBalance($playerId);
             $totalMachineScores = WalletUnlockService::calculateAllMachineScores($playerId);
             // 4. 计算总余额
             $totalBalance = bcadd((string)$balance, (string)$totalMachineScores, 2);
-            if ($totalBalance < $openScoreLimit) {
+            if ($totalBalance <= $openScoreLimit) {
                 self::unlockWallet($playerId);
-                Log::info('WalletService: 余额低于限制，自动解锁钱包', [
+                Log::info('WalletService: 余额不超过限制，自动解锁钱包', [
                     'player_id' => $playerId,
                     'balance' => $balance,
                     'total_balance' => $totalBalance,
@@ -1478,7 +1478,7 @@ LUA;
     }
 
     /**
-     * 扣款后自动检查是否需要解锁（余额低于配置值自动解锁）
+     * 扣款后自动检查是否需要解锁（余额不超过配置值，即小于等于自动解锁）
      *
      * @param int $playerId 玩家ID
      * @return void
@@ -1492,9 +1492,9 @@ LUA;
 
             $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
             $balance = self::getBalance($playerId);
-            if ($balance < $openScoreLimit) {
+            if ($balance <= $openScoreLimit) {
                 self::unlockWallet($playerId);
-                Log::info('WalletService: 余额低于限制，自动解锁钱包', [
+                Log::info('WalletService: 余额不超过限制，自动解锁钱包', [
                     'player_id' => $playerId,
                     'balance' => $balance,
                 ]);
