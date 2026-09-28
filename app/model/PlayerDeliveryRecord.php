@@ -15,6 +15,7 @@ use Webman\Event\Event;
  * @property int target_id 质料id
  * @property int department_id 部门/渠道id
  * @property int machine_id 机台id
+ * @property int device_id 设备ID（admin_device.id，如储值机）
  * @property int platform_id 电子游戏平台id
  * @property string machine_name 机台名称
  * @property int machine_type 机台类型
@@ -89,6 +90,7 @@ class PlayerDeliveryRecord extends Model
         'target',
         'target_id',
         'department_id',
+        'device_id',
         'type',
         'source',
         'amount',
