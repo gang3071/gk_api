@@ -3814,7 +3814,7 @@ class PlayerController
             $playerMoneyEditLog->department_id = $player->department_id;
             $playerMoneyEditLog->type = PlayerMoneyEditLog::TYPE_INCREASE;
             $playerMoneyEditLog->action = PlayerMoneyEditLog::VIP_DAILY_LOGIN_BONUS;
-            $playerMoneyEditLog->tradeno = 'DLB' . date('YmdHis') . str_pad($player->id, 6, '0', STR_PAD_LEFT) . mt_rand(100, 999);
+            $playerMoneyEditLog->tradeno = date('YmdHis') . rand(10000, 99999);
             $playerMoneyEditLog->currency = $player->currency;
             $playerMoneyEditLog->money = $bonusAmount;
             $playerMoneyEditLog->inmoney = $bonusAmount;
