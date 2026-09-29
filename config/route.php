@@ -77,6 +77,28 @@ Route::group('/api', function () {
         Route::post('/lottery-list', [\app\api\controller\web\LotteryController::class, 'lotteryList']);
         // 彩金中奖记录
         Route::post('/lottery-record-list', [\app\api\controller\web\LotteryController::class, 'lotteryRecordList']);
+
+        // ========== 點餐系統 ==========
+        // 菜品分類列表
+        Route::post('/dish/category-list', [\app\api\controller\v1\DishController::class, 'categoryList']);
+        // 菜品列表
+        Route::post('/dish/list', [\app\api\controller\v1\DishController::class, 'dishList']);
+        // 玩家積分餘額
+        Route::post('/dish/points-balance', [\app\api\controller\v1\DishController::class, 'pointsBalance']);
+        // 客人下單
+        Route::post('/dish/order', [\app\api\controller\v1\DishController::class, 'dishOrder']);
+        // 我的訂單列表
+        Route::post('/dish/my-orders', [\app\api\controller\v1\DishController::class, 'myOrders']);
+        // 訂單詳情（客人）
+        Route::post('/dish/order-detail', [\app\api\controller\v1\DishController::class, 'orderDetail']);
+        // 取消訂單（客人）
+        Route::post('/dish/cancel', [\app\api\controller\v1\DishController::class, 'cancel']);
+        // 店家訂單列表
+        Route::post('/dish-admin/order-list', [\app\api\controller\v1\DishAdminController::class, 'orderList']);
+        // 店家訂單詳情
+        Route::post('/dish-admin/order-detail', [\app\api\controller\v1\DishAdminController::class, 'orderDetail']);
+        // 店家更新訂單狀態（出餐）
+        Route::post('/dish-admin/update-status', [\app\api\controller\v1\DishAdminController::class, 'updateStatus']);
     });
 });
 
