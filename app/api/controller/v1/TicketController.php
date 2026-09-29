@@ -1195,6 +1195,8 @@ class TicketController
                 'qr_code_no' => $qrCodeNo,
                 'encrypted_content' => $orderId,
                 'ticket_type' => $ticketType,
+                // 领取入口仅在储值机（/chuzhi），来源标注为储值机
+                'source_type' => TicketRecord::SOURCE_TYPE_CHUZHI,
                 'extra_data' => $extraData,
                 'status' => TicketRecord::STATUS_NORMAL,
                 'print_count' => 0,

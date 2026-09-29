@@ -15,9 +15,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $department_id 渠道ID
  * @property int $type 类型
  * @property string $source 来源
- * @property int $points 积分变动
- * @property int $points_before 变动前积分
- * @property int $points_after 变动后积分
+ * @property float $points 积分变动
+ * @property float $points_before 变动前积分
+ * @property float $points_after 变动后积分
  * @property float|null $bet_amount 汇总打码量（仅打码汇总时填写）
  * @property string|null $summary_period 汇总周期
  * @property string|null $summary_date 汇总日期
@@ -71,9 +71,9 @@ class PlayerPointsRecord extends Model
         'player_id' => 'integer',
         'department_id' => 'integer',
         'type' => 'integer',
-        'points' => 'integer',
-        'points_before' => 'integer',
-        'points_after' => 'integer',
+        'points' => 'float',
+        'points_before' => 'float',
+        'points_after' => 'float',
         'bet_amount' => 'decimal:2',
         'game_count' => 'integer',
         'exchange_order_id' => 'integer',

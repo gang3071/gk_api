@@ -12,10 +12,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $id 主键ID
  * @property int $player_id 玩家ID
  * @property int $department_id 渠道ID
- * @property int $total_points 总积分（历史累计）
- * @property int $available_points 可用积分（当前余额）
- * @property int $frozen_points 冻结积分
- * @property int $used_points 已使用积分
+ * @property float $total_points 总积分（历史累计）
+ * @property float $available_points 可用积分（当前余额）
+ * @property float $frozen_points 冻结积分
+ * @property float $used_points 已使用积分
  * @property int $version 乐观锁版本号
  * @property string $created_at 创建时间
  * @property string $updated_at 更新时间
@@ -42,10 +42,11 @@ class PlayerPoints extends Model
     protected $casts = [
         'player_id' => 'integer',
         'department_id' => 'integer',
-        'total_points' => 'integer',
-        'available_points' => 'integer',
-        'frozen_points' => 'integer',
-        'used_points' => 'integer',
+        // 积分保留4位小数（decimal(14,4)），必须用 float，integer 会在读取时截断小数
+        'total_points' => 'float',
+        'available_points' => 'float',
+        'frozen_points' => 'float',
+        'used_points' => 'float',
         'version' => 'integer',
     ];
 

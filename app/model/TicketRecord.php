@@ -34,7 +34,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $last_print_time 最后打印时间
  * @property array|null $extra_data 扩展数据
  * @property int|null $source_ticket_id 来源原票ID
- * @property string|null $source_type 来源类型: split/merge/purchase
+ * @property string|null $source_type 来源类型: split/merge/purchase/chuzhi
  * @property array|null $related_ticket_ids 关联的新票ID数组
  * @property int $operation_type 操作类型: 0=无操作, 1=拆分, 2=合并, 3=购票
  * @property string|null $operated_at 操作时间
@@ -84,6 +84,7 @@ class TicketRecord extends Model
     const SOURCE_TYPE_SPLIT = 'split';       // 来源：拆分
     const SOURCE_TYPE_MERGE = 'merge';       // 来源：合并
     const SOURCE_TYPE_PURCHASE = 'purchase'; // 来源：购票
+    const SOURCE_TYPE_CHUZHI = 'chuzhi';     // 来源：储值机（体验券/福利券领取）
 
     /**
      * 获取票据类型名称

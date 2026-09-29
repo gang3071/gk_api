@@ -81,7 +81,7 @@ class PlayerPointsService
      * @param array $recordIds 游戏记录IDs（可选，用于查询平台信息）
      * @param string $batchId 批次ID（幂等性）
      * @param Carbon|null $createdAt 时间
-     * @return array ['points_earned' => int, 'total_points' => int, 'available_points' => int]
+     * @return array ['points_earned' => float, 'total_points' => float, 'available_points' => float]
      * @throws Exception
      */
     public static function addPointsFromBetting(
@@ -253,13 +253,13 @@ class PlayerPointsService
      * - 退还积分（TYPE_REFUND / SOURCE_REFUND）：只恢复 available_points，不增加 total_points
      *
      * @param int $playerId 玩家ID
-     * @param int $points 增加的积分数
+     * @param float $points 增加的积分数
      * @param int $type 类型（4=后台调整 5=活动奖励 6=订单退款）
      * @param string $source 来源（admin/activity/refund）
      * @param string $remark 备注
      * @param array $extraData 额外数据
      * @param array|null $adminInfo 操作人员信息 ['admin_id' => int, 'admin_name' => string, 'admin_ip' => string]
-     * @return array ['points_added' => int, 'total_points' => int, 'available_points' => int]
+     * @return array ['points_added' => float, 'total_points' => float, 'available_points' => float]
      */
     public static function addPoints(
         int $playerId,
@@ -730,7 +730,7 @@ LUA;
      * 获取玩家积分（优先从Redis读取）
      *
      * @param int $playerId 玩家ID
-     * @return array ['available_points' => int, 'frozen_points' => int, 'total_points' => int]
+     * @return array ['available_points' => float, 'frozen_points' => float, 'total_points' => float, 'used_points' => float]
      */
     public static function getPlayerPoints(int $playerId): array
     {
@@ -745,6 +745,7 @@ LUA;
                 'available_points' => round(floatval($data['available_points'] ?? 0), 4),
                 'frozen_points' => round(floatval($data['frozen_points'] ?? 0), 4),
                 'total_points' => round(floatval($data['total_points'] ?? 0), 4),
+                'used_points' => round(floatval($data['used_points'] ?? 0), 4),
             ];
         }
 
@@ -757,6 +758,7 @@ LUA;
                 'available_points' => $playerPoints->available_points,
                 'frozen_points' => $playerPoints->frozen_points,
                 'total_points' => $playerPoints->total_points,
+                'used_points' => $playerPoints->used_points,
                 'last_update' => time(),
             ]);
             $redis->expire($key, config('points_config.redis_ttl', 86400 * 365));
@@ -765,6 +767,7 @@ LUA;
                 'available_points' => round(floatval($playerPoints->available_points), 4),
                 'frozen_points' => round(floatval($playerPoints->frozen_points), 4),
                 'total_points' => round(floatval($playerPoints->total_points), 4),
+                'used_points' => round(floatval($playerPoints->used_points), 4),
             ];
         }
 
@@ -773,6 +776,7 @@ LUA;
             'available_points' => 0.0,
             'frozen_points' => 0.0,
             'total_points' => 0.0,
+            'used_points' => 0.0,
         ];
     }
 
@@ -875,7 +879,7 @@ LUA;
      * 扣除积分（兑换、过期、后台调整等）
      *
      * @param int $playerId 玩家ID
-     * @param int $points 扣除积分数
+     * @param float $points 扣除积分数
      * @param int $type 类型（2=兑换 3=过期 4=后台调整）
      * @param string $remark 备注
      * @param array $extraData 额外数据
@@ -1049,7 +1053,7 @@ LUA;
      * 冻结积分（用于兑换处理中）
      *
      * @param int $playerId 玩家ID
-     * @param int $points 冻结积分数
+     * @param float $points 冻结积分数
      * @param string $remark 备注
      * @param array $extraData 额外数据（如订单ID）
      * @param bool $useTransaction 是否使用事务（默认true，嵌套调用时传false）
@@ -1162,7 +1166,7 @@ LUA;
      * 解冻积分
      *
      * @param int $playerId 玩家ID
-     * @param int $points 解冻积分数
+     * @param float $points 解冻积分数
      * @param bool $deduct 是否扣除（true=兑换成功扣除，false=兑换失败退回）
      * @param string $remark 备注
      * @param array $extraData 额外数据
@@ -1381,10 +1385,10 @@ LUA;
      * 检查积分是否足够
      *
      * @param int $playerId 玩家ID
-     * @param int $points 需要的积分数
+     * @param float $points 需要的积分数
      * @return bool
      */
-    public static function hasEnoughPoints(int $playerId, int $points): bool
+    public static function hasEnoughPoints(int $playerId, float $points): bool
     {
         $playerPoints = self::getPlayerPoints($playerId);
         return $playerPoints['available_points'] >= $points;
@@ -1396,10 +1400,10 @@ LUA;
      * ✅ 优化：使用 Lua 脚本原子性地检查+累加，防止并发超限
      *
      * @param int $playerId 玩家ID
-     * @param int $newPoints 新增积分
+     * @param float $newPoints 新增积分
      * @return bool true=累加成功，false=超限拒绝
      */
-    public static function checkAndRecordDailyPoints(int $playerId, int $newPoints): bool
+    public static function checkAndRecordDailyPoints(int $playerId, float $newPoints): bool
     {
         if ($newPoints <= 0) {
             return true;
@@ -1437,8 +1441,8 @@ if today_points + new_points > daily_limit then
     return {0, today_points}  -- 返回失败，当前今日积分
 end
 
--- 累加并设置过期时间
-redis.call('INCRBY', key, new_points)
+-- 累加并设置过期时间（INCRBYFLOAT 支持小数积分）
+redis.call('INCRBYFLOAT', key, new_points)
 redis.call('EXPIRE', key, ttl)
 
 return {1, today_points + new_points}  -- 返回成功，累加后的今日积分
@@ -1465,7 +1469,7 @@ LUA;
     /**
      * @deprecated 已被 checkAndRecordDailyPoints() 替代（原子操作）
      */
-    public static function checkDailyLimit(int $playerId, int $newPoints): bool
+    public static function checkDailyLimit(int $playerId, float $newPoints): bool
     {
         return self::checkAndRecordDailyPoints($playerId, $newPoints);
     }
@@ -1678,6 +1682,7 @@ LUA;
                                 'total_points' => $redisPoints['total_points'],
                                 'available_points' => $redisPoints['available_points'],
                                 'frozen_points' => $redisPoints['frozen_points'],
+                                'used_points' => $redisPoints['used_points'],
                                 'version' => $currentVersion + 1,
                                 'updated_at' => date('Y-m-d H:i:s'),
                             ]);
@@ -1829,6 +1834,7 @@ LUA;
                                 'total_points' => $redisPoints['total_points'],
                                 'available_points' => $redisPoints['available_points'],
                                 'frozen_points' => $redisPoints['frozen_points'],
+                                'used_points' => $redisPoints['used_points'],
                                 'version' => $currentVersion + 1,
                                 'updated_at' => date('Y-m-d H:i:s'),
                             ]);
