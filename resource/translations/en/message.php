@@ -666,6 +666,7 @@ return [
     'points_not_enough' => 'Insufficient points',
     'unit_wan' => 'W',
     'vip_daily_login_bonus' => 'VIP Daily Login Bonus',
+    'activity_give' => 'Activity Give',
     'daily_login_bonus_not_available' => 'No daily login bonus for current level',
     'daily_login_bonus_already_received' => "Today's login bonus already claimed",
     'daily_login_bonus_claim_success' => 'Login bonus claimed successfully',

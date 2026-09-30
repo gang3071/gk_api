@@ -682,6 +682,7 @@ return [
     'voucher_type_welfare' => '福利券',
     'unit_wan' => '万',
     'vip_daily_login_bonus' => 'VIP每日登录奖励',
+    'activity_give' => '活动外增',
     'daily_login_bonus_not_available' => '当前等级无每日登录奖励',
     'daily_login_bonus_already_received' => '今日登录奖励已领取',
     'daily_login_bonus_claim_success' => '登录奖励领取成功',

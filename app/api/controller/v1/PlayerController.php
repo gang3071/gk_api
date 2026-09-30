@@ -4298,7 +4298,7 @@ class PlayerController
         $player = checkPlayer();
         $data = $request->all();
 
-        // 构建查询（摸奖券中奖、VIP升级礼金、生日礼金、反水池反水）
+        // 构建查询（摸奖券中奖、VIP升级礼金、生日礼金、反水池反水、活动外增）
         $query = PlayerDeliveryRecord::query()
             ->where('player_id', $player->id)
             ->whereIn('type', [
@@ -4307,6 +4307,7 @@ class PlayerController
                 PlayerDeliveryRecord::TYPE_BIRTHDAY_BONUS,
                 PlayerDeliveryRecord::TYPE_REVERSE_WATER_POOL,
                 PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS,
+                PlayerDeliveryRecord::TYPE_ACTIVITY_GIVE,
             ])
             ->orderBy('id', 'desc');
 
@@ -4322,6 +4323,7 @@ class PlayerController
                 PlayerDeliveryRecord::TYPE_BIRTHDAY_BONUS => trans('vip_birthday_bonus', [], 'message'),
                 PlayerDeliveryRecord::TYPE_REVERSE_WATER_POOL => trans('reverse_water_pool', [], 'message'),
                 PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS => trans('vip_daily_login_bonus', [], 'message'),
+                PlayerDeliveryRecord::TYPE_ACTIVITY_GIVE => trans('activity_give', [], 'message'),
                 default => trans('other', [], 'message'),
             };
 
