@@ -253,10 +253,18 @@ class PlayerController
         $dailyLoginBonus = $this->formatAmount((float)($vipLevel->daily_login_bonus ?? 0));
         $isDailyLoginBonusReceived = false;
         if ($dailyLoginBonus > 0) {
+            $now8am = \Illuminate\Support\Carbon::now();
+            $today8am = \Illuminate\Support\Carbon::today()->setTime(8, 0, 0);
+            $shiftStart8am = $now8am->gte($today8am)
+                ? $today8am
+                : \Illuminate\Support\Carbon::yesterday()->setTime(8, 0, 0);
+            $shiftEnd8am = $shiftStart8am->copy()->addDay();
+
             $isDailyLoginBonusReceived = PlayerDeliveryRecord::query()
                 ->where('player_id', $player->id)
                 ->where('type', PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS)
-                ->whereDate('created_at', date('Y-m-d'))
+                ->where('created_at', '>=', $shiftStart8am->toDateTimeString())
+                ->where('created_at', '<', $shiftEnd8am->toDateTimeString())
                 ->exists();
         }
 
