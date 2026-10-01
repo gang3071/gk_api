@@ -3788,11 +3788,19 @@ class PlayerController
             return jsonFailResponse(trans('daily_login_bonus_not_available', [], 'message'));
         }
 
-        // 今日是否已领取
+        // 今日是否已领取（以 08:00 为班次分界点）
+        $now = \Illuminate\Support\Carbon::now();
+        $today8am = \Illuminate\Support\Carbon::today()->setTime(8, 0, 0);
+        $shiftStart = $now->gte($today8am)
+            ? $today8am                                              // 08:00 之后：本日 08:00
+            : \Illuminate\Support\Carbon::yesterday()->setTime(8, 0, 0); // 08:00 之前：昨日 08:00
+        $shiftEnd = $shiftStart->copy()->addDay();
+
         $hasReceived = PlayerDeliveryRecord::query()
             ->where('player_id', $player->id)
             ->where('type', PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS)
-            ->whereDate('created_at', date('Y-m-d'))
+            ->where('created_at', '>=', $shiftStart->toDateTimeString())
+            ->where('created_at', '<', $shiftEnd->toDateTimeString())
             ->exists();
 
         if ($hasReceived) {
