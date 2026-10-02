@@ -176,7 +176,8 @@ class PlayerController
                 'storeName' => $storeName,
                 'todayScore' => self::formatAmount($todayScore),
                 'yesterdayScore' => self::formatAmount($yesterdayScore),
-                'createdAt' => $player->created_at
+                'createdAt' => $player->created_at,
+                'available_points' => (int)\app\service\PlayerPointsService::getPlayerPoints($player->id)['available_points'],
             ],
             'store' => $storeInfo,
             'vip' => [
