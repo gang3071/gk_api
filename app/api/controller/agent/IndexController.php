@@ -410,6 +410,7 @@ class IndexController
             'type' => $player->type,
             'currency' => $player->currency,
             'recommended_code' => $player->recommended_code,
+            'client' => 'V1',
         ]);
         //首选域名
         $url[] = $channel->domain . '?token=' . $token['access_token'];
@@ -431,7 +432,7 @@ class IndexController
      */
     public function logout(Request $request): Response
     {
-        if (JwtToken::clear()) {
+        if (JwtToken::clear('V1')) {
             return jsonSuccessResponse('success');
         } else {
             return jsonFailResponse($this->failCode['3902'], [], 3902);
