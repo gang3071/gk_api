@@ -6,7 +6,7 @@ class CreatePlayerIdCardBlacklistTable extends AbstractMigration
 {
     public function change(): void
     {
-        $table = $this->table($this->getTable('player_id_card_blacklist'));
+        $table = $this->table('player_id_card_blacklist');
         $table->addColumn('id_number', 'string', ['limit' => 100, 'comment' => '身份证号'])
             ->addColumn('player_id', 'integer', ['null' => true, 'comment' => '玩家ID'])
             ->addColumn('player_name', 'string', ['limit' => 100, 'null' => true, 'comment' => '玩家名称'])
