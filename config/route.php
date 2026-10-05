@@ -422,6 +422,20 @@ Route::group('/api', function () {
         Route::post('/dish-admin/order-detail', [\app\api\controller\v1\DishAdminController::class, 'orderDetail']);
         // 店家更新訂單狀態（出餐）
         Route::post('/dish-admin/update-status', [\app\api\controller\v1\DishAdminController::class, 'updateStatus']);
+
+        // ========== 排行榜 ==========
+        // 排行榜整頁（各店週排行 + 金樽週/月 + VIP 排行）
+        Route::post('/leaderboard/overview', [\app\api\controller\v1\LeaderboardController::class, 'overview']);
+        // 各店週排行（分渠道）
+        Route::post('/leaderboard/store-weekly', [\app\api\controller\v1\LeaderboardController::class, 'storeWeekly']);
+        // 金樽遊戲量週排行（全站）
+        Route::post('/leaderboard/golden-weekly', [\app\api\controller\v1\LeaderboardController::class, 'goldenWeekly']);
+        // 金樽遊戲量月排行（全站）
+        Route::post('/leaderboard/golden-monthly', [\app\api\controller\v1\LeaderboardController::class, 'goldenMonthly']);
+        // VIP 排行（分渠道）
+        Route::post('/leaderboard/vip-ranking', [\app\api\controller\v1\LeaderboardController::class, 'vipRanking']);
+        // 排行榜獎勵規則（門檻、名次贈分）
+        Route::post('/leaderboard/rules', [\app\api\controller\v1\LeaderboardController::class, 'rules']);
     });
     Route::group('/auth', function () {
         // 绑定Q-talk账号
