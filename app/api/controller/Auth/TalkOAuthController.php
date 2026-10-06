@@ -139,7 +139,6 @@ class TalkOAuthController
 
         addLoginRecord($player->id);
 
-        $deviceType = getDeviceType(); // 获取设备类型
         return jsonSuccessResponse('success', [
             'token' => JwtToken::generateToken([
                 'id' => $player->id,
@@ -148,7 +147,7 @@ class TalkOAuthController
                 'type' => $player->type,
                 'currency' => $player->currency,
                 'recommended_code' => $player->recommended_code,
-                'client' => $deviceType, // ✅ 添加设备类型，用于单点登录区分
+                'client' => 'V1',
             ]),
             'player_activity_phase' => (new ActivityServices(null, $player))->playerUnreceivedActivity()
         ]);
@@ -214,7 +213,6 @@ class TalkOAuthController
             return jsonFailResponse($e->getMessage());
         }
 
-        $deviceType = getDeviceType(); // 获取设备类型
         return jsonSuccessResponse('success', [
             'token' => JwtToken::generateToken([
                 'id' => $player->id,
@@ -223,7 +221,7 @@ class TalkOAuthController
                 'type' => $player->type,
                 'currency' => $player->currency,
                 'recommended_code' => $player->recommended_code,
-                'client' => $deviceType, // ✅ 添加设备类型，用于单点登录区分
+                'client' => 'V1',
             ]),
             'player_activity_phase' => (new ActivityServices(null, $player))->playerUnreceivedActivity()
         ]);
@@ -272,7 +270,6 @@ class TalkOAuthController
 
                 addLoginRecord($player->id);
 
-                $deviceType = getDeviceType(); // 获取设备类型
                 return jsonSuccessResponse('success', [
                     'token' => JwtToken::generateToken([
                         'id' => $player->id,
@@ -281,7 +278,7 @@ class TalkOAuthController
                         'type' => $player->type,
                         'currency' => $player->currency,
                         'recommended_code' => $player->recommended_code,
-                        'client' => $deviceType, // ✅ 添加设备类型，用于单点登录区分
+                        'client' => 'V1',
                     ]),
                     'player_activity_phase' => (new ActivityServices(null, $player))->playerUnreceivedActivity()
                 ]);
