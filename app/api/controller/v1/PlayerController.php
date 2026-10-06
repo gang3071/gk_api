@@ -2454,6 +2454,7 @@ class PlayerController
                 })->where('status', 1);
             })
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
             ->where('maintaining', 0)
             ->where('status', 1)
             ->orderBy('sort')
