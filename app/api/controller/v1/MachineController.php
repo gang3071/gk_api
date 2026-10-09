@@ -32,6 +32,7 @@ use app\service\ActivityServices;
 use app\service\machine\Jackpot;
 use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
+use app\service\machine\PokemonBall;
 use app\service\machine\Slot;
 use app\service\MediaServer;
 use Carbon\Carbon;
@@ -912,6 +913,7 @@ class MachineController
                 GameType::TYPE_STEEL_BALL => trans('machine_type_steel_ball', [], 'message'),  // 钢珠机
                 GameType::TYPE_SLOT => trans('machine_type_slot', [], 'message'),              // 斯洛机
                 GameType::TYPE_FISH => trans('machine_type_fish', [], 'message'),              // 捕鱼机
+                GameType::TYPE_POKEMON_BALL => trans('machine_type_pokemon_ball', [], 'message'), // 精灵球机
             ];
 
             Log::error('[checkAction] 机台类型不匹配', [
@@ -1521,7 +1523,69 @@ class MachineController
         
         return jsonSuccessResponse('success');
     }
-    
+
+    #[RateLimiter(limit: 5)]
+    /**
+     * 精灵球操作
+     * @param Request $request
+     * @return Response
+     * @throws Exception
+     */
+    public function pokemonBallAction(Request $request): Response
+    {
+        try {
+            /** @var Player $player */
+            /** @var Machine $machine */
+            /** @var PokemonBall $services */
+            [$player, $machine, $data, $action, $services, $hasLottery] = $this->checkAction($request,
+                GameType::TYPE_POKEMON_BALL);
+
+            // 机台锁定
+            if ($services->has_lock == 1) {
+                return jsonFailResponse(trans('machine_has_lock', [], 'message'), []);
+            }
+            // 机台被他人占用
+            if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
+                return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'), [], 101);
+            }
+
+            switch ($action) {
+                case PokemonBall::START_GAME: // 启动一次
+                    // 统一加锁机制（15秒超时 + finally 保护）
+                    $actionLockerKey = 'machine_operation_lock_' . $machine->id;
+                    $lock = Locker::lock($actionLockerKey, 15, true);
+
+                    try {
+                        if (!$lock->acquire()) {
+                            return jsonFailResponse(trans('busy_operations', [], 'message'));
+                        }
+
+                        $services->sendCmd(PokemonBall::START_GAME, 0, 'player', $player->id);
+                    } finally {
+                        try {
+                            if ($lock->isAcquired()) {
+                                $lock->release();
+                            }
+                        } catch (\Exception $lockError) {
+                            Log::critical('[PokemonBallAction] 锁释放失败', [
+                                'machine_id' => $machine->id,
+                                'action' => $action,
+                                'lock_key' => $actionLockerKey,
+                                'error' => $lockError->getMessage(),
+                            ]);
+                        }
+                    }
+                    break;
+                default:
+                    throw new Exception(trans('exception_msg.action_not_fount', [], 'message'));
+            }
+        } catch (Exception $e) {
+            return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
+        }
+
+        return jsonSuccessResponse('success');
+    }
+
     #[RateLimiter(limit: 5)]
     /**
      * 保留机台

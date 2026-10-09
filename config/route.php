@@ -51,6 +51,8 @@ Route::group('/api', function () {
         Route::post('/jackpot-action', [\app\api\controller\v1\MachineController::class, 'jackPotAction']);
         // 斯洛机台操作
         Route::post('/slot-action', [\app\api\controller\v1\MachineController::class, 'slotAction']);
+        // 精灵球操作
+        Route::post('/pokemon-ball-action', [\app\api\controller\v1\MachineController::class, 'pokemonBallAction']);
         // 保留机台
         Route::post('/machine-keep', [\app\api\controller\v1\MachineController::class, 'machineKeep']);
         // 取消机台保留
