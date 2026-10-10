@@ -6,7 +6,7 @@ class AddVoucherEnabledToAdminUsers extends AbstractMigration
 {
     public function change()
     {
-        $table = $this->table($this->getTable('admin_users'));
+        $table = $this->table('admin_users');
         $table->addColumn('experience_voucher_enabled', 'boolean', [
             'signed' => false,
             'null' => false,
