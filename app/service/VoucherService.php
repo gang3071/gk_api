@@ -56,9 +56,11 @@ class VoucherService
         $claimableExperience = 0;
         $claimableWelfare = 0;
 
+        $storeAdmin = \app\model\AdminUser::query()->find($player->store_admin_id);
+
         // ---- 体验券可领数量 ----
         $expConfig = $voucherConfig['experience'] ?? [];
-        if (!empty($expConfig['enabled'])) {
+        if (!empty($expConfig['enabled']) && ($storeAdmin?->experience_voucher_enabled ?? true)) {
             $dailyLimit = $expConfig['daily_limit'] ?? 1;
             $totalLimit = $expConfig['total_limit'] ?? 6;
             $registerAfter = $expConfig['register_after'] ?? '2026-01-01 00:00:00';
@@ -81,7 +83,6 @@ class VoucherService
             $isDailyLimitReached = $claimedToday >= $dailyLimit;
             $isTotalLimitReached = $claimedTotal >= $totalLimit;
 
-            $storeAdmin = \app\model\AdminUser::query()->find($player->store_admin_id);
             $experienceBetCheckEnabled = $storeAdmin?->experience_bet_check_enabled ?? false;
 
             $betCheckPassed = true;
@@ -112,7 +113,7 @@ class VoucherService
         }
 
         // 今日福利券规则
-        if (!empty($todayWelfareConfig['enabled']) && !empty($todayWelfareConfig['rules'])) {
+        if (!empty($todayWelfareConfig['enabled']) && !empty($todayWelfareConfig['rules']) && ($storeAdmin?->welfare_voucher_enabled ?? true)) {
             foreach ($todayWelfareConfig['rules'] as $rule) {
                 if ($todayBetAmount < $rule['bet_amount']) {
                     continue;
@@ -137,7 +138,7 @@ class VoucherService
         }
 
         // 昨日福利券规则（仅最高档位可领）
-        if (!empty($welfareConfig['enabled']) && !empty($welfareConfig['rules'])) {
+        if (!empty($welfareConfig['enabled']) && !empty($welfareConfig['rules']) && ($storeAdmin?->welfare_voucher_enabled ?? true)) {
             $maxQualifiedScore = 0;
             foreach ($welfareConfig['rules'] as $rule) {
                 if ($yesterdayBetAmount >= $rule['bet_amount']) {

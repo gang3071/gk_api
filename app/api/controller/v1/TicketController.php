@@ -997,6 +997,15 @@ class TicketController
             return jsonFailResponse(trans('voucher_activity_ended', [], 'message'));
         }
 
+        // 检查门店劵类活动开关
+        $storeAdmin = \app\model\AdminUser::query()->find($player->store_admin_id);
+        if ($ticketType === TicketRecord::TYPE_EXPERIENCE && $storeAdmin && !($storeAdmin->experience_voucher_enabled ?? true)) {
+            return jsonFailResponse(trans('voucher_activity_ended', [], 'message'));
+        }
+        if ($ticketType === TicketRecord::TYPE_WELFARE && $storeAdmin && !($storeAdmin->welfare_voucher_enabled ?? true)) {
+            return jsonFailResponse(trans('voucher_activity_ended', [], 'message'));
+        }
+
         // 时间区间：以每天08:00:00作为分界点
         $timeRanges = $this->get8amTimeRanges();
         ['now' => $now, 'todayStart' => $todayStart, 'todayEnd' => $todayEnd, 'yesterdayStart' => $yesterdayStart, 'yesterdayEnd' => $yesterdayEnd, 'isAfter8am' => $isAfter8am] = $timeRanges;
