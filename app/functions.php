@@ -1256,19 +1256,17 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
         throw new Exception(trans('machine_odds_error', [], 'message'));
     }
 
-    // ✅ 小淞线下Slot特殊逻辑：验证钱包总金额是100的倍数
-    // 原因：gk_work需要将机台分数转换成次数
-    // giftScore是赠送的钱包金额（不是机台分数）
+    // ✅ 小淞线下Slot特殊逻辑：验证换算后机台分数是OPEN_UNIT的倍数
+    // 原因：gk_work每次发送固定300分的开分指令（SongOfflineSlot::OPEN_UNIT=300）
     if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
         && $machine->control_type == Machine::CONTROL_TYPE_SONG
         && $machine->type == GameType::TYPE_SLOT) {
 
-        $totalMoney = $money + $giftScore;  // 钱包总金额
-        $openUnit = 100;  // 固定100分为单位
+        $openUnit = 300;  // 固定300分为单位（与SongOfflineSlot::OPEN_UNIT一致）
+        $totalMachineScore = (int) floor(($money + $giftScore) * $machine->odds_y / $machine->odds_x);
 
-        // 验证钱包总金额是否100的倍数
-        if ($totalMoney % $openUnit != 0) {
-            throw new Exception('充值金额（含赠送）必须是100的倍数，当前：' . $totalMoney);
+        if ($totalMachineScore % $openUnit != 0) {
+            throw new Exception('充值金额（含赠送）换算后机台分数必须是' . $openUnit . '的倍数，当前机台分：' . $totalMachineScore);
         }
     }
 

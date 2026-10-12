@@ -253,10 +253,18 @@ class PlayerController
         $dailyLoginBonus = $this->formatAmount((float)($vipLevel->daily_login_bonus ?? 0));
         $isDailyLoginBonusReceived = false;
         if ($dailyLoginBonus > 0) {
+            $now8am = \Illuminate\Support\Carbon::now();
+            $today8am = \Illuminate\Support\Carbon::today()->setTime(8, 0, 0);
+            $shiftStart8am = $now8am->gte($today8am)
+                ? $today8am
+                : \Illuminate\Support\Carbon::yesterday()->setTime(8, 0, 0);
+            $shiftEnd8am = $shiftStart8am->copy()->addDay();
+
             $isDailyLoginBonusReceived = PlayerDeliveryRecord::query()
                 ->where('player_id', $player->id)
                 ->where('type', PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS)
-                ->whereDate('created_at', date('Y-m-d'))
+                ->where('created_at', '>=', $shiftStart8am->toDateTimeString())
+                ->where('created_at', '<', $shiftEnd8am->toDateTimeString())
                 ->exists();
         }
 
@@ -318,7 +326,7 @@ class PlayerController
             'reverse_water_pool_remaining' => $this->formatAmount($reverseWaterPoolRemaining), // 剩余待领取金额（不足最低额部分）
             'reverse_water_pool_min_claim' => $minClaimAmount > 0 ? $this->formatAmount($minClaimAmount) : 0, // 当前等级最低领取金额，未设置返回0
             'claimable_voucher_counts' => \app\service\VoucherService::getClaimableCounts($player), // 今日可领福利券/体验券数量
-            'available_points' => (int)\app\service\PlayerPointsService::getPlayerPoints($player->id)['available_points'],
+            'available_points' => (int)\app\model\PlayerPoints::getOrCreate($player->id, $player->department_id)->available_points, // 用户可用积分
             'daily_login_bonus' => $dailyLoginBonus, // 当前 VIP 等级每日登录奖励金额（0=无奖励）
             'is_daily_login_bonus_received' => $isDailyLoginBonusReceived, // 今日是否已领取
         ]);
@@ -2446,6 +2454,7 @@ class PlayerController
                 })->where('status', 1);
             })
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
             ->where('maintaining', 0)
             ->where('status', 1)
             ->orderBy('sort')
@@ -3788,11 +3797,19 @@ class PlayerController
             return jsonFailResponse(trans('daily_login_bonus_not_available', [], 'message'));
         }
 
-        // 今日是否已领取
+        // 今日是否已领取（以 08:00 为班次分界点）
+        $now = \Illuminate\Support\Carbon::now();
+        $today8am = \Illuminate\Support\Carbon::today()->setTime(8, 0, 0);
+        $shiftStart = $now->gte($today8am)
+            ? $today8am                                              // 08:00 之后：本日 08:00
+            : \Illuminate\Support\Carbon::yesterday()->setTime(8, 0, 0); // 08:00 之前：昨日 08:00
+        $shiftEnd = $shiftStart->copy()->addDay();
+
         $hasReceived = PlayerDeliveryRecord::query()
             ->where('player_id', $player->id)
             ->where('type', PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS)
-            ->whereDate('created_at', date('Y-m-d'))
+            ->where('created_at', '>=', $shiftStart->toDateTimeString())
+            ->where('created_at', '<', $shiftEnd->toDateTimeString())
             ->exists();
 
         if ($hasReceived) {

@@ -5,15 +5,14 @@ namespace app\api\controller\web;
 use app\exception\PlayerCheckException;
 use app\model\Channel;
 use app\model\GamePlatform;
-use app\model\GameType;
 use app\model\LotteryTicket;
 use app\model\LotteryTicketActivity;
 use app\model\LotteryTicketVipConfig;
 use app\model\Machine;
 use app\model\PlayerDeliveryRecord;
+use app\model\PlayerGameLog;
 use app\model\PlayerMoneyEditLog;
 use app\model\PlayerReverseWaterDetail;
-use app\model\PlayerGameLog;
 use app\model\PlayGameRecord;
 use app\model\SystemSetting;
 use app\model\VipLevel;
@@ -541,11 +540,6 @@ class PlayerController
             $machineInfo['type'] = $value->type;
             $machineInfo['odds_x'] = $value->odds_x;
             $machineInfo['odds_y'] = $value->odds_y;
-
-            if ($value->type == GameType::TYPE_STEEL_BALL) {
-                $machineInfo['odds_x'] = $value->machineCategory->name;
-                $machineInfo['odds_y'] = '';
-            }
 
             $machineInfo['category_name'] = $value->machineCategory->name;
             $machineInfo['turn_used_point'] = rtrim(rtrim(number_format($value->machineCategory->turn_used_point, 2, '.', ''), '0'), '.');
