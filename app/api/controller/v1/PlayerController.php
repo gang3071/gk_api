@@ -4158,27 +4158,25 @@ class PlayerController
             $settings['home_notice'] = $homeNoticeSetting->content;
         }
 
-        // 获取配置 - 是否开启实体机台（直接使用 status 字段）
+        // 获取配置 - 是否开启实体机台（玩家个人开关 AND 店家配置，两者都要开启）
         $physicalMachineSetting = StoreSetting::getSetting(
             'enable_physical_machine',
             $player->department_id,
             null,
             $adminUserId
         );
-        if ($physicalMachineSetting) {
-            $settings['enable_physical_machine'] = $physicalMachineSetting->status == 1;
-        }
+        $storeEnablePhysical = $physicalMachineSetting ? $physicalMachineSetting->status == 1 : true;
+        $settings['enable_physical_machine'] = (bool)$player->status_machine && $storeEnablePhysical;
 
-        // 获取配置 - 是否开启真人百家（直接使用 status 字段）
+        // 获取配置 - 是否开启真人百家（玩家个人开关 AND 店家配置，两者都要开启）
         $liveBaccaratSetting = StoreSetting::getSetting(
             'enable_live_baccarat',
             $player->department_id,
             null,
             $adminUserId
         );
-        if ($liveBaccaratSetting) {
-            $settings['enable_live_baccarat'] = $liveBaccaratSetting->status == 1;
-        }
+        $storeEnableBaccarat = $liveBaccaratSetting ? $liveBaccaratSetting->status == 1 : true;
+        $settings['enable_live_baccarat'] = (bool)$player->status_baccarat && $storeEnableBaccarat;
 
         // 获取配置 - 点菜菜单图片
         $menuImageSetting = StoreSetting::getSetting(

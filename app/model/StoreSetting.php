@@ -52,20 +52,13 @@ class StoreSetting extends Model
      */
     protected static function booted()
     {
-        static::created(function (StoreSetting $setting) {
-            $cacheKey = self::getCacheKey($setting->department_id, $setting->admin_user_id, $setting->feature);
-            Cache::delete($cacheKey);
-        });
+        $clearCache = function (StoreSetting $setting) {
+            Cache::delete(self::getCacheKey($setting->department_id, $setting->admin_user_id, $setting->feature));
+        };
 
-        static::deleted(function (StoreSetting $setting) {
-            $cacheKey = self::getCacheKey($setting->department_id, $setting->admin_user_id, $setting->feature);
-            Cache::delete($cacheKey);
-        });
-
-        static::updated(function (StoreSetting $setting) {
-            $cacheKey = self::getCacheKey($setting->department_id, $setting->admin_user_id, $setting->feature);
-            Cache::delete($cacheKey);
-        });
+        static::created($clearCache);
+        static::updated($clearCache);
+        static::deleted($clearCache);
     }
 
     /**
@@ -83,7 +76,7 @@ class StoreSetting extends Model
      *
      * @param string $feature 功能名称
      * @param int $departmentId 部门ID
-     * @param int|null $playerId 玩家ID（已废弃，保留参数兼容性）
+     * @param int|null $playerId 保留参数，兼容旧调用
      * @param int|null $adminUserId 后台账号ID（代理/店家）
      * @return StoreSetting|null
      */
