@@ -634,7 +634,7 @@ return [
     // Voucher (Experience / Welfare)
     'voucher_invalid_ticket_type' => 'Invalid ticket type',
     'voucher_score_must_positive' => 'Score must be greater than 0',
-    'voucher_activity_ended' => 'Activity has ended, welfare and experience coupons are not available. Please check platform announcements for opening hours',
+    'voucher_activity_ended' => 'Activity has ended, please check platform announcements for opening hours',
     'voucher_experience_disabled' => 'Experience coupon is not enabled',
     'voucher_experience_not_new_user' => 'Only new members can claim experience coupons',
     'voucher_experience_daily_limit' => 'Daily experience coupon claim limit reached',

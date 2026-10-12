@@ -632,7 +632,7 @@ return [
     // 体験券/福利券
     'voucher_invalid_ticket_type' => '無効な券種類です',
     'voucher_score_must_positive' => 'スコアは0より大きい必要があります',
-    'voucher_activity_ended' => 'イベントが終了しました、福利券と体験券は現在発行できません。開放時間はプラットフォームのお知らせをご確認ください',
+    'voucher_activity_ended' => 'イベントが終了しました、開放時間はプラットフォームのお知らせをご確認ください',
     'voucher_experience_disabled' => '体験券機能が有効になっていません',
     'voucher_experience_not_new_user' => '新会員のみ体験券を取得できます',
     'voucher_experience_daily_limit' => '本日の体験券取得回数の上限に達しました',
