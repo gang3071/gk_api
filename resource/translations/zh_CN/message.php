@@ -651,7 +651,7 @@ return [
     // 体验券/福利券
     'voucher_invalid_ticket_type' => '无效的票据类型',
     'voucher_score_must_positive' => '分数必须大于0',
-    'voucher_activity_ended' => '活动已结束，暂不发放福利券和体验券',
+    'voucher_activity_ended' => '活动已结束,开放时间请关注平台公告',
     'voucher_experience_disabled' => '体验券功能未启用',
     'voucher_experience_not_new_user' => '只有新会员才能领取体验券',
     'voucher_experience_daily_limit' => '今日体验券领取次数已用完',

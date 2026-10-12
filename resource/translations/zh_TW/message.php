@@ -641,7 +641,7 @@ return [
     // 體驗券/福利券
     'voucher_invalid_ticket_type' => '無效的票據類型',
     'voucher_score_must_positive' => '分數必須大於0',
-    'voucher_activity_ended' => '活動已結束，暫不發放福利券和體驗券',
+    'voucher_activity_ended' => '活動已結束,開放時間請關注平台公告',
     'voucher_experience_disabled' => '體驗券功能未啟用',
     'voucher_experience_not_new_user' => '只有新會員才能領取體驗券',
     'voucher_experience_daily_limit' => '今日體驗券領取次數已用完',
