@@ -430,13 +430,6 @@ class TicketController
                     return jsonFailResponse(trans('ticket_not_found', [], 'message'));
                 }
 
-                // 验证券类型（仅允许开分券/福利券/体验券，拒绝洗分票等）
-                $allowedTypes = [TicketRecord::TYPE_RECHARGE, TicketRecord::TYPE_WELFARE, TicketRecord::TYPE_EXPERIENCE];
-                if (!in_array((int)$ticket->ticket_type, $allowedTypes, true)) {
-                    $this->releaseIdempotent($requestId);
-                    return jsonFailResponse(trans('voucher_invalid_ticket_type', [], 'message'));
-                }
-
                 // 验证状态（已打印或待核销状态才能扫码）
                 if ((int)$ticket->status !== TicketRecord::STATUS_NORMAL) {
                     $this->releaseIdempotent($requestId);
