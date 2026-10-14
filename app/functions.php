@@ -949,7 +949,24 @@ function machineOpenAny(
                 if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
                     && $machine->control_type == Machine::CONTROL_TYPE_SONG
                     && $machine->type == GameType::TYPE_SLOT) {
-                    $services->sendCmd($services::OPEN_ANY_POINT,  bcadd($money, $giftScore, 2), 'player', $player->id);
+                    // 离线小淞：上分前记录当前 card_score，发送指令后轮询确认
+                    // B7 心跳每秒上报一次，机台收到 A5 后 card_score 会增加
+                    $cardScoreBefore = $services->card_score;
+                    $services->sendCmd($services::OPEN_ANY_POINT, bcadd($money, $giftScore, 2), 'player', $player->id);
+
+                    // 最多等 10 秒（25 × 400ms）等待 card_score 增加
+                    // 若超时说明机台未执行上分，抛出异常触发补偿逻辑（退款 + 解锁机台）
+                    $openConfirmed = false;
+                    for ($oi = 0; $oi < 25; $oi++) {
+                        usleep(400000); // 400ms
+                        if ($services->card_score > $cardScoreBefore) {
+                            $openConfirmed = true;
+                            break;
+                        }
+                    }
+                    if (!$openConfirmed) {
+                        throw new Exception("上分失败：机台未在10秒内确认收分（card_score={$services->card_score}），已自动退款");
+                    }
                 } else {
                     $services->sendCmd($services::OPEN_ANY_POINT, $openScore, 'player', $player->id);
                 }
