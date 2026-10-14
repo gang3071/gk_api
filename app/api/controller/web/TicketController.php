@@ -30,13 +30,19 @@ class TicketController
             return jsonFailResponse(trans('ticket_order_id_empty', [], 'message'));
         }
 
-        $allowedTypes = [TicketRecord::TYPE_RECHARGE, TicketRecord::TYPE_WELFARE, TicketRecord::TYPE_EXPERIENCE];
+        $allowedTypes = [
+            TicketRecord::TYPE_RECHARGE,
+            TicketRecord::TYPE_WITHDRAW,
+            TicketRecord::TYPE_WELFARE,
+            TicketRecord::TYPE_EXPERIENCE,
+        ];
 
         /** @var TicketRecord|null $ticket */
         $ticket = TicketRecord::query()
-            ->where('order_id', $orderId)
+            ->where(function ($q) use ($orderId) {
+                $q->where('order_id', $orderId)->orWhere('qr_code', $orderId);
+            })
             ->whereIn('ticket_type', $allowedTypes)
-            ->whereNull('deleted_at')
             ->first();
 
         if (!$ticket) {
@@ -52,8 +58,9 @@ class TicketController
             ]);
         }
 
-        // 开分券（TYPE_RECHARGE）无活动时效和余额限制，状态正常即可使用
-        if ((int)$ticket->ticket_type === TicketRecord::TYPE_RECHARGE) {
+        // 开分券/洗分票无活动时效和余额限制，状态正常即可使用
+        $noLimitTypes = [TicketRecord::TYPE_RECHARGE, TicketRecord::TYPE_WITHDRAW];
+        if (in_array((int)$ticket->ticket_type, $noLimitTypes, true)) {
             return jsonSuccessResponse('success', [
                 'can_use' => true,
                 'reason'  => '',
@@ -106,7 +113,7 @@ class TicketController
 
     private static function formatTicket(TicketRecord $ticket): array
     {
-        $isRecharge = (int)$ticket->ticket_type === TicketRecord::TYPE_RECHARGE;
+        $noExpiry    = in_array((int)$ticket->ticket_type, [TicketRecord::TYPE_RECHARGE, TicketRecord::TYPE_WITHDRAW], true);
         $expireHours = (int) config('welfare_ticket.expire_hours', 24);
 
         return [
@@ -116,9 +123,9 @@ class TicketController
             'ticket_type'      => $ticket->ticket_type,
             'ticket_type_name' => $ticket->ticket_type_name,
             'status'           => $ticket->status,
-            'is_expired'       => $isRecharge ? false : $ticket->isExpired(),
+            'is_expired'       => $noExpiry ? false : $ticket->isExpired(),
             'created_at'       => $ticket->created_at?->toDateTimeString(),
-            'expires_at'       => $isRecharge ? null : $ticket->created_at?->addHours($expireHours)->toDateTimeString(),
+            'expires_at'       => $noExpiry ? null : $ticket->created_at?->addHours($expireHours)->toDateTimeString(),
         ];
     }
 }
