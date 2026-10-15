@@ -1145,6 +1145,13 @@ function machineOpenAny(
                 ]);
             }
 
+            // 无论 DB 补偿成功与否，都清 Redis gaming 状态
+            // DB成功：DB/Redis 保持一致；DB失败：至少 Redis 侧解锁，避免玩家侧卡死
+            try {
+                $services->gaming = 0;
+                $services->gaming_user_id = 0;
+            } catch (\Exception $redisClearError) { }
+
             // 4. 退款到玩家账户（仅在确认机台未上分时执行）
             try {
                 \app\service\WalletService::add($player->id, $money, 1);
