@@ -1062,8 +1062,8 @@ class MachineController
         ]);
 
         // 调用 gk_work 完整业务逻辑
-        // 超时30秒，因为要处理完整的数据库事务
-        $client = new MachineClient(null, 30);
+        // 超时45秒：SongOfflineSlot 上分最长阻塞22.5s + card_score轮询10s = 32.5s，需大于此值
+        $client = new MachineClient(null, 45);
 
         // ✅ 传递金额（money），不是分数（openScore）
         $result = $client->openMachine(
