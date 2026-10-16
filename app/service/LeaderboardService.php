@@ -233,7 +233,7 @@ class LeaderboardService
     // ========================================
 
     /**
-     * 取某榜最新已結算期別
+     * 取某榜最新期別（含進行中當期；定案與否都可顯示）
      *
      * @param string $code
      * @return string|null
@@ -242,7 +242,6 @@ class LeaderboardService
     {
         $key = Db::table('leaderboard')
             ->where('code', $code)
-            ->whereNotNull('settle_at')
             ->orderBy('period_key', 'desc')
             ->value('period_key');
 
