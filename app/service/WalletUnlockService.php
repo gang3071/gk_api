@@ -303,8 +303,13 @@ class WalletUnlockService
 
         switch ($machine->type) {
             case GameType::TYPE_SLOT:
-                // Slot机台：当前分数（point）通过比值转换
-                $currentPoint = (int)($services->point ?? 0);
+                // SongOfflineSlot（小淞线下版）：使用 machine_score（心跳B2字段，机台实际分数）
+                // 其他slot：使用 point（card_score，机台当前分数）
+                $isSongOfflineSlot = $machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
+                    && $machine->control_type == Machine::CONTROL_TYPE_SONG;
+                $currentPoint = $isSongOfflineSlot
+                    ? (int)($services->score ?? 0)
+                    : (int)($services->point ?? 0);
                 $ratio = ($machine->odds_x > 0 && $machine->odds_y > 0)
                     ? bcdiv((string)$machine->odds_x, (string)$machine->odds_y, 6)
                     : 1;
