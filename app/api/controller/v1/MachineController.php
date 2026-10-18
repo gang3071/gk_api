@@ -1062,8 +1062,8 @@ class MachineController
         ]);
 
         // 调用 gk_work 完整业务逻辑
-        // 超时45秒：SongOfflineSlot 上分最长阻塞22.5s + card_score轮询10s = 32.5s，需大于此值
-        $client = new MachineClient(null, 45);
+        // 超时60秒：SongOfflineSlot 上分最长 10×(3s登入+0.3s)=33s + EA D4轮询25×0.6s=15s = 48s，需大于此值
+        $client = new MachineClient(null, 60);
 
         // ✅ 传递金额（money），不是分数（openScore）
         $result = $client->openMachine(
@@ -2274,8 +2274,8 @@ class MachineController
         ]);
 
         // 调用 gk_work 完整业务逻辑
-        // 超时30秒，因为要处理完整的数据库事务
-        $client = new MachineClient(null, 30);
+        // 超时60秒：SongOfflineSlot 洗分最长 10×(3s登入+0.3s)=33s + EA D4轮询25×0.6s=15s = 48s，需大于此值
+        $client = new MachineClient(null, 60);
 
         $result = $client->washMachine(
             $machine->id,
