@@ -1077,17 +1077,15 @@ class MachineController
 
         if (!$result['success']) {
             // Unknown error = gk_work HTTP response body 為空（TCP連線在長阻塞後被重置）。
-            // 結合 gk_work 已改為 catch(\Throwable)，Unknown error 此後只代表 TCP 斷線，
-            // 代表 gk_work 極可能已成功執行（機台上分+錢包已處理）。
-            // 記錄警告供人工核查，視為成功避免玩家誤以為失敗重複操作。
+            // gk_work 極可能已成功執行，記錄警告供人工核查，並給玩家友好提示。
             if (($result['message'] ?? '') === 'Unknown error') {
-                Log::channel('machine_operations')->warning('[MachineOpenAnyV2] Unknown error（TCP斷線）視為成功，請人工核查', [
+                Log::channel('machine_operations')->warning('[MachineOpenAnyV2] Unknown error（TCP斷線），gk_work可能已執行，請人工核查', [
                     'player_id'  => $player->id,
                     'machine_id' => $machine->id,
                     'money'      => $money,
                     'gift_score' => $giftScore,
                 ]);
-                return;
+                throw new Exception(trans('open_point_check_machine', [], 'message'));
             }
             throw new Exception($result['message'] ?? trans('machine_open_point_failed', [], 'message'));
         }
