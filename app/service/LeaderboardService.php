@@ -17,7 +17,7 @@ use support\Db;
 class LeaderboardService
 {
     /** 各榜取前 N 名 */
-    const TOP = 8;
+    const TOP = 10;
 
     /** VIP 排行：最低 VIP 等級 */
     const VIP_MIN_LEVEL = 5;
