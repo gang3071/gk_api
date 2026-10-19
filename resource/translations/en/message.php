@@ -593,7 +593,7 @@ return [
     'check_machine_online_failed' => 'Failed to check machine online status',
     'batch_check_machine_online_failed' => 'Failed to batch check machine online status',
     'machine_open_point_failed' => 'Machine open point operation failed',
-    'open_point_check_machine' => 'Open point command sent. Please check your machine score shortly. Contact support if needed.',
+    'open_point_check_machine' => 'Request sent, please verify machine score',
     'machine_open_command_failed' => 'Machine open point command failed, please contact support',
     'machine_wash_point_failed' => 'Machine wash point operation failed',
     'machine_wash_command_failed' => 'Machine wash point command failed, please contact support',

@@ -609,7 +609,7 @@ return [
     'check_machine_online_failed' => '检查机台在线状态失败',
     'batch_check_machine_online_failed' => '批量检查机台在线状态失败',
     'machine_open_point_failed' => '机台上分操作失败',
-    'open_point_check_machine' => '上分指令已送出，请稍后确认机台分数是否增加，如有问题请联系客服',
+    'open_point_check_machine' => '上分请求已送出，请确认机台分数',
     'machine_open_command_failed' => '机台上分指令发送失败，请联系客服',
     'machine_wash_point_failed' => '机台洗分操作失败',
     'machine_wash_command_failed' => '机台洗分指令发送失败，请联系客服',
