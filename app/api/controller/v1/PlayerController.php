@@ -268,6 +268,29 @@ class PlayerController
                 ->exists();
         }
 
+        // 当前等级保级信息（保级开始时间 / 保级到期时间 / 剩余保级天数）
+        // 到期时间 = 周期开始时间 + 当前等级保级天数（retain_level_days）
+        // 口径与 gk_admin VipService / PlayerVipPeriod::getRemainingDays 一致（整秒运算）
+        /** @var PlayerVipPeriod|null $retainPeriod */
+        $retainPeriod = $player->vipPeriods()
+            ->where('period_type', PlayerVipPeriod::PERIOD_TYPE_RETAIN)
+            ->where('status', PlayerVipPeriod::STATUS_ONGOING)
+            ->where('vip_level_id', $player->vip_level_id)
+            ->latest('id')
+            ->first();
+        $retainStartTime = $retainPeriod ? Carbon::parse($retainPeriod->started_at)->toDateTimeString() : '';
+        $retainEndTime = '';
+        $retainRemainingDays = 0;
+        if ($retainPeriod) {
+            $retainLevelDays = (int)($vipLevel->retain_level_days ?? 0);
+            if ($retainLevelDays > 0) {
+                $retainEndTs = Carbon::parse($retainPeriod->started_at)->getTimestamp() + $retainLevelDays * 86400;
+                $retainEndTime = date('Y-m-d H:i:s', $retainEndTs);
+                // 剩余保级天数：到期前按天向上取整，已到期为 0
+                $retainRemainingDays = max(0, (int)ceil(($retainEndTs - time()) / 86400));
+            }
+        }
+
         return jsonSuccessResponse('success', [
             'id' => $player->id,
             'phone' => $player->phone,
@@ -316,6 +339,9 @@ class PlayerController
                 'period_bet_amount' => $periodBetAmount,
                 'upgrade_bet_amount' => $vipLevel ? $vipLevel->upgrade_bet_amount : 0,
                 'retain_level_bet_amount' => $vipLevel ? $vipLevel->retain_level_bet_amount : 0,
+                'retain_start_time' => $retainStartTime, // 保级开始时间（当前等级保级周期开始时间，无周期返回空字符串）
+                'retain_end_time' => $retainEndTime, // 保级到期时间（开始时间 + 保级天数，无周期或未配置保级天数返回空字符串）
+                'retain_remaining_days' => $retainRemainingDays, // 剩余保级天数（按天向上取整，已到期为 0）
                 'sort' => $vipLevel->sort,
             ],
             'valid_lottery_ticket_count' => $validLotteryTicketCount, // 有效摸奖券数量
