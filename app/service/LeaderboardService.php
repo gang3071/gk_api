@@ -35,6 +35,7 @@ class LeaderboardService
     {
         return [
             'store_weekly'   => self::storeWeekly($departmentId),
+            'store_monthly'  => self::storeMonthly($departmentId),
             'golden_weekly'  => self::goldenWeekly(),
             'golden_monthly' => self::goldenMonthly(),
             'vip_ranking'    => self::vipRanking($departmentId),
@@ -49,7 +50,30 @@ class LeaderboardService
      */
     public static function storeWeekly(int $departmentId): array
     {
-        $periodKey = self::latestPeriodKey('store_weekly');
+        return self::store('store_weekly', $departmentId);
+    }
+
+    /**
+     * 各店月排行（分渠道）
+     *
+     * @param int $departmentId
+     * @return array
+     */
+    public static function storeMonthly(int $departmentId): array
+    {
+        return self::store('store_monthly', $departmentId);
+    }
+
+    /**
+     * 各店榜共用查詢（分渠道，每店各自排名）
+     *
+     * @param string $code
+     * @param int $departmentId
+     * @return array
+     */
+    private static function store(string $code, int $departmentId): array
+    {
+        $periodKey = self::latestPeriodKey($code);
         if (!$periodKey) {
             return [];
         }
@@ -60,11 +84,11 @@ class LeaderboardService
                 JOIN leaderboard l ON l.id = e.leaderboard_id
                 JOIN player p ON p.id = e.player_id
                 LEFT JOIN admin_users au ON au.id = e.store_admin_id
-                WHERE l.code = 'store_weekly' AND l.period_key = ?
+                WHERE l.code = ? AND l.period_key = ?
                   AND p.department_id = ? AND e.`rank` <= ?
                 ORDER BY e.store_admin_id ASC, e.`rank` ASC";
 
-        $rows = Db::select($sql, [$periodKey, $departmentId, self::TOP]);
+        $rows = Db::select($sql, [$code, $periodKey, $departmentId, self::TOP]);
 
         $stores = [];
         foreach ($rows as $r) {

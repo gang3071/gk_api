@@ -42,6 +42,21 @@ class LeaderboardController
     }
 
     /**
+     * 各店月排行（分渠道）
+     *
+     * @param Request $request
+     * @return Response
+     */
+    public function storeMonthly(Request $request): Response
+    {
+        $departmentId = (int)$request->department_id;
+
+        return jsonSuccessResponse('success', [
+            'list' => LeaderboardService::storeMonthly($departmentId),
+        ]);
+    }
+
+    /**
      * 金樽遊戲量週排行（全站）
      *
      * @return Response

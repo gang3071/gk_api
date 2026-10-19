@@ -428,6 +428,8 @@ Route::group('/api', function () {
         Route::post('/leaderboard/overview', [\app\api\controller\v1\LeaderboardController::class, 'overview']);
         // 各店週排行（分渠道）
         Route::post('/leaderboard/store-weekly', [\app\api\controller\v1\LeaderboardController::class, 'storeWeekly']);
+        // 各店月排行（分渠道）
+        Route::post('/leaderboard/store-monthly', [\app\api\controller\v1\LeaderboardController::class, 'storeMonthly']);
         // 金樽遊戲量週排行（全站）
         Route::post('/leaderboard/golden-weekly', [\app\api\controller\v1\LeaderboardController::class, 'goldenWeekly']);
         // 金樽遊戲量月排行（全站）
