@@ -184,7 +184,8 @@ class PlayerController
                 'vipLevel' => $vipLevel->sort,
                 'nextVipLevel' => empty($nextLevel) ? '' : $nextLevel->name,
                 'currentBetAmount' => $currentBetAmount,
-                'upgradeBetAmount' => $vipLevel->upgrade_bet_amount
+                'upgradeBetAmount' => $vipLevel->upgrade_bet_amount,
+                'retainLevelBetAmount' => $vipLevel->retain_level_bet_amount,
             ],
             'machine' => $machine,
             'settings' => [
