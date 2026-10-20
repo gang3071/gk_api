@@ -1653,6 +1653,13 @@ class PlayerController
                     $item['source'] = trans('source.agent_in', [], 'message');
                     $item['target'] = trans('target.agent_in', [], 'message');
                     break;
+                case PlayerDeliveryRecord::TYPE_REFUND:
+                    $refundSource = $item['source'] ?? '';
+                    $item['source'] = $item['code'] ?? '';
+                    $item['target'] = $refundSource === 'retry_refund'
+                        ? trans('target.retry_refund', [], 'message')
+                        : trans('target.machine_open_failed_refund', [], 'message');
+                    break;
                 default:
                     break;
             }

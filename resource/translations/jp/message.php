@@ -308,6 +308,8 @@ return [
         'present_out' => '選手が移籍',
         'machine_up' => '貸出',
         'machine_down' => '計数',
+        'machine_open_failed_refund' => '台上載入失敗返金',
+        'retry_refund' => '上載部分失敗返金',
         'artificial_recharge' => '手動リチャージ',
         'coin_recharge' => 'コインディーラーリチャージ',
         'self_recharge' => 'プラットフォーム リチャージ',

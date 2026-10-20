@@ -309,6 +309,8 @@ return [
         'present_out' => 'Player transfers out',
         'machine_up' => 'Machine up',
         'machine_down' => 'Machine down',
+        'machine_open_failed_refund' => 'Machine Open Score Failed - Refund',
+        'retry_refund' => 'Partial Open Failure Refund',
         'artificial_recharge' => 'Manual recharge',
         'coin_recharge' => 'Coin dealer recharge',
         'self_recharge' => 'Platform recharge',
