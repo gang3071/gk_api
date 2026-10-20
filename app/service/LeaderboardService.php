@@ -2,6 +2,9 @@
 
 namespace app\service;
 
+use app\model\GamePlatform;
+use Carbon\Carbon;
+use support\Cache;
 use support\Db;
 
 /**
@@ -19,11 +22,14 @@ class LeaderboardService
     /** 各榜取前 N 名 */
     const TOP = 10;
 
-    /** VIP 排行：最低 VIP 等級 */
+    /** VIP 排行：最低 VIP 等級（對應 vip_level.sort） */
     const VIP_MIN_LEVEL = 5;
 
     /** VIP 排行：每店取前 N */
-    const VIP_TOP = 5;
+    const VIP_TOP = 10;
+
+    /** VIP 排行：快取秒數 */
+    const VIP_CACHE_TTL = 30;
 
     /**
      * 排行榜整頁資料
@@ -174,29 +180,126 @@ class LeaderboardService
     /**
      * VIP 排行（分渠道，每店前 N，VIP5 以上）
      *
+     * 週榜：本週一 08:00 ~ 下週一 08:00
+     * 月榜：本月 1 號 08:00 ~ 下月 1 號 08:00
+     * 分數：play_game_record 電子遊戲已結算下注額合計（與門市榜、金樽榜同口徑）
+     *
      * @param int $departmentId
-     * @return array
+     * @return array ['weekly' => [...], 'monthly' => [...]]
      */
     public static function vipRanking(int $departmentId): array
     {
+        return [
+            'weekly'  => self::vipBoard('weekly', $departmentId),
+            'monthly' => self::vipBoard('monthly', $departmentId),
+        ];
+    }
+
+    /**
+     * VIP 單一週期榜單（含期別資訊）
+     *
+     * @param string $type weekly / monthly
+     * @param int $departmentId
+     * @return array
+     */
+    private static function vipBoard(string $type, int $departmentId): array
+    {
+        [$start, $end, $periodKey] = self::vipPeriod($type);
+        $cacheKey = "leaderboard_vip_{$type}_{$departmentId}_{$periodKey}";
+
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $board = [
+            'period_key' => $periodKey,
+            'start_at'   => $start->format('Y-m-d H:i:s'),
+            'end_at'     => $end->format('Y-m-d H:i:s'),
+            'list'       => self::vipQuery($departmentId, $start, $end),
+        ];
+
+        Cache::set($cacheKey, $board, self::VIP_CACHE_TTL);
+
+        return $board;
+    }
+
+    /**
+     * VIP 榜單期間（08:00 制）
+     *
+     * @param string $type weekly / monthly
+     * @return array [Carbon $start, Carbon $end, string $periodKey]
+     */
+    private static function vipPeriod(string $type): array
+    {
+        $now = Carbon::now('Asia/Shanghai');
+
+        if ($type === 'weekly') {
+            $start = $now->copy()->startOfWeek(Carbon::MONDAY)->setTime(8, 0, 0);
+            if ($now->lt($start)) {
+                $start->subWeek();
+            }
+            $end = $start->copy()->addWeek();
+            $periodKey = $start->format('Y-m-d');
+        } else {
+            $start = $now->copy()->startOfMonth()->setTime(8, 0, 0);
+            if ($now->lt($start)) {
+                $start->subMonthNoOverflow();
+            }
+            $end = $start->copy()->addMonthNoOverflow();
+            $periodKey = $start->format('Y-m');
+        }
+
+        return [$start, $end, $periodKey];
+    }
+
+    /**
+     * VIP 榜單查詢（依分數排名，每店前 N）
+     *
+     * @param int $departmentId
+     * @param Carbon $start
+     * @param Carbon $end
+     * @return array
+     */
+    private static function vipQuery(int $departmentId, Carbon $start, Carbon $end): array
+    {
+        $platformIds = self::electronicPlatformIds();
+        if (empty($platformIds)) {
+            return [];
+        }
+
+        $in = implode(',', array_fill(0, count($platformIds), '?'));
+
         $sql = "SELECT t.store_admin_id, au.nickname AS store_name,
-                       t.player_id, t.name, t.vip_level_id, t.rn
+                       t.player_id, t.name, t.vip_level_id, t.vip_level_name, t.score, t.rn
                 FROM (
                     SELECT p.store_admin_id, p.id AS player_id, p.name, p.vip_level_id,
+                           vl.name AS vip_level_name, SUM(r.bet) AS score,
                            ROW_NUMBER() OVER (PARTITION BY p.store_admin_id
-                                              ORDER BY p.vip_level_id DESC, p.id ASC) AS rn
-                    FROM player p
-                    WHERE p.department_id = ?
-                      AND p.vip_level_id >= ?
-                      AND p.status = 1
-                      AND p.deleted_at IS NULL
-                      AND p.store_admin_id > 0
+                                              ORDER BY SUM(r.bet) DESC, p.id ASC) AS rn
+                    FROM play_game_record r
+                    JOIN player p ON p.id = r.player_id
+                    JOIN vip_level vl ON vl.id = p.vip_level_id
+                    WHERE r.created_at >= ? AND r.created_at < ?
+                      AND r.settlement_status = 1 AND r.type = 1 AND r.bet > 0
+                      AND r.platform_id IN ({$in})
+                      AND r.department_id = ?
+                      AND p.department_id = ?
+                      AND vl.sort >= ?
+                      AND p.status = 1 AND p.deleted_at IS NULL AND p.store_admin_id > 0
+                    GROUP BY p.id
                 ) t
                 LEFT JOIN admin_users au ON au.id = t.store_admin_id
                 WHERE t.rn <= ?
                 ORDER BY t.store_admin_id ASC, t.rn ASC";
 
-        $rows = Db::select($sql, [$departmentId, self::VIP_MIN_LEVEL, self::VIP_TOP]);
+        $bindings = array_merge(
+            [$start->format('Y-m-d H:i:s'), $end->format('Y-m-d H:i:s')],
+            $platformIds,
+            [$departmentId, $departmentId, self::VIP_MIN_LEVEL, self::VIP_TOP]
+        );
+
+        $rows = Db::select($sql, $bindings);
 
         $stores = [];
         foreach ($rows as $r) {
@@ -208,15 +311,54 @@ class LeaderboardService
                     'list'       => [],
                 ];
             }
+            $score = (string)$r->score;
             $stores[$sid]['list'][] = [
-                'rank'      => (int)$r->rn,
-                'player_id' => (int)$r->player_id,
-                'name'      => (string)$r->name,
-                'vip_level' => (int)$r->vip_level_id,
+                'rank'           => (int)$r->rn,
+                'player_id'      => (int)$r->player_id,
+                'name'           => (string)$r->name,
+                'vip_level'      => (int)$r->vip_level_id,
+                'vip_level_name' => (string)($r->vip_level_name ?? ''),
+                'score'          => $score,
+                'score_text'     => self::scoreText($score),
             ];
         }
 
         return array_values($stores);
+    }
+
+    /**
+     * 分數顯示文字（整數不帶小數，其餘保留兩位）
+     *
+     * @param string $score
+     * @return string
+     */
+    private static function scoreText(string $score): string
+    {
+        $value = (float)$score;
+        $decimals = (floor($value) == $value) ? 0 : 2;
+
+        return number_format($value, $decimals);
+    }
+
+    /**
+     * 電子遊戲平台 ID 清單（來源：platform_filter.included_platforms）
+     *
+     * @return array
+     */
+    private static function electronicPlatformIds(): array
+    {
+        $codes = config('platform_filter.included_platforms', []);
+        if (empty($codes)) {
+            return [];
+        }
+
+        return GamePlatform::query()
+            ->whereIn('code', $codes)
+            ->pluck('id')
+            ->map(function ($v) {
+                return (int)$v;
+            })
+            ->all();
     }
 
     /**

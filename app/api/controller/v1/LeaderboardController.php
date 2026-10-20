@@ -81,7 +81,7 @@ class LeaderboardController
     }
 
     /**
-     * VIP 排行（分渠道）
+     * VIP 排行（分渠道，週榜 + 月榜）
      *
      * @param Request $request
      * @return Response
@@ -90,9 +90,7 @@ class LeaderboardController
     {
         $departmentId = (int)$request->department_id;
 
-        return jsonSuccessResponse('success', [
-            'list' => LeaderboardService::vipRanking($departmentId),
-        ]);
+        return jsonSuccessResponse('success', LeaderboardService::vipRanking($departmentId));
     }
 
     /**
