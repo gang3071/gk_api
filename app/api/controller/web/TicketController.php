@@ -30,11 +30,19 @@ class TicketController
             return jsonFailResponse(trans('ticket_order_id_empty', [], 'message'));
         }
 
+        $allowedTypes = [
+            TicketRecord::TYPE_RECHARGE,
+            TicketRecord::TYPE_WITHDRAW,
+            TicketRecord::TYPE_WELFARE,
+            TicketRecord::TYPE_EXPERIENCE,
+        ];
+
         /** @var TicketRecord|null $ticket */
         $ticket = TicketRecord::query()
-            ->where('order_id', $orderId)
-            ->whereIn('ticket_type', [TicketRecord::TYPE_WELFARE, TicketRecord::TYPE_EXPERIENCE])
-            ->whereNull('deleted_at')
+            ->where(function ($q) use ($orderId) {
+                $q->where('order_id', $orderId)->orWhere('qr_code', $orderId);
+            })
+            ->whereIn('ticket_type', $allowedTypes)
             ->first();
 
         if (!$ticket) {
@@ -50,7 +58,17 @@ class TicketController
             ]);
         }
 
-        // 检查各项前置条件，按优先级排列
+        // 开分券/洗分票无活动时效和余额限制，状态正常即可使用
+        $noLimitTypes = [TicketRecord::TYPE_RECHARGE, TicketRecord::TYPE_WITHDRAW];
+        if (in_array((int)$ticket->ticket_type, $noLimitTypes, true)) {
+            return jsonSuccessResponse('success', [
+                'can_use' => true,
+                'reason'  => '',
+                'voucher' => self::formatTicket($ticket),
+            ]);
+        }
+
+        // 福利券/体验券：检查各项前置条件，按优先级排列
         $canUse = true;
         $reason = '';
 
@@ -95,6 +113,7 @@ class TicketController
 
     private static function formatTicket(TicketRecord $ticket): array
     {
+        $noExpiry    = in_array((int)$ticket->ticket_type, [TicketRecord::TYPE_RECHARGE, TicketRecord::TYPE_WITHDRAW], true);
         $expireHours = (int) config('welfare_ticket.expire_hours', 24);
 
         return [
@@ -102,10 +121,11 @@ class TicketController
             'order_id'         => $ticket->order_id,
             'score'            => (float) $ticket->score,
             'ticket_type'      => $ticket->ticket_type,
+            'ticket_type_name' => $ticket->ticket_type_name,
             'status'           => $ticket->status,
-            'is_expired'       => $ticket->isExpired(),
+            'is_expired'       => $noExpiry ? false : $ticket->isExpired(),
             'created_at'       => $ticket->created_at?->toDateTimeString(),
-            'expires_at'       => $ticket->created_at?->addHours($expireHours)->toDateTimeString(),
+            'expires_at'       => $noExpiry ? null : $ticket->created_at?->addHours($expireHours)->toDateTimeString(),
         ];
     }
 }

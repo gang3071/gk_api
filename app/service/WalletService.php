@@ -1492,11 +1492,16 @@ LUA;
 
             $openScoreLimit = (float) config('welfare_ticket.open_score_limit', 100);
             $balance = self::getBalance($playerId);
-            if ($balance <= $openScoreLimit) {
+            $totalMachineScores = WalletUnlockService::calculateAllMachineScores($playerId);
+            $totalBalance = bcadd((string)$balance, (string)$totalMachineScores, 2);
+            if ((float)$totalBalance <= $openScoreLimit) {
                 self::unlockWallet($playerId);
                 Log::info('WalletService: 余额不超过限制，自动解锁钱包', [
                     'player_id' => $playerId,
                     'balance' => $balance,
+                    'machine_scores' => $totalMachineScores,
+                    'total_balance' => (float)$totalBalance,
+                    'limit' => $openScoreLimit,
                 ]);
             }
         } catch (\Throwable $e) {

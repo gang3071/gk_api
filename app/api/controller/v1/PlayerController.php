@@ -22,6 +22,7 @@ use app\model\Player;
 use app\model\PlayerBank;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerFavoriteMachine;
+use app\model\PlayerGameLog;
 use app\model\PlayerGameRecord;
 use app\model\PlayerLotteryRecord;
 use app\model\PlayerMoneyEditLog;
@@ -33,7 +34,6 @@ use app\model\PlayerVipPeriod;
 use app\model\PlayerWalletTransfer;
 use app\model\PlayerWithdrawRecord;
 use app\model\PlayGameRecord;
-use app\model\PlayerGameLog;
 use app\model\Slider;
 use app\model\StoreSetting;
 use app\model\SystemSetting;
@@ -253,11 +253,42 @@ class PlayerController
         $dailyLoginBonus = $this->formatAmount((float)($vipLevel->daily_login_bonus ?? 0));
         $isDailyLoginBonusReceived = false;
         if ($dailyLoginBonus > 0) {
+            $now8am = \Illuminate\Support\Carbon::now();
+            $today8am = \Illuminate\Support\Carbon::today()->setTime(8, 0, 0);
+            $shiftStart8am = $now8am->gte($today8am)
+                ? $today8am
+                : \Illuminate\Support\Carbon::yesterday()->setTime(8, 0, 0);
+            $shiftEnd8am = $shiftStart8am->copy()->addDay();
+
             $isDailyLoginBonusReceived = PlayerDeliveryRecord::query()
                 ->where('player_id', $player->id)
                 ->where('type', PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS)
-                ->whereDate('created_at', date('Y-m-d'))
+                ->where('created_at', '>=', $shiftStart8am->toDateTimeString())
+                ->where('created_at', '<', $shiftEnd8am->toDateTimeString())
                 ->exists();
+        }
+
+        // 当前等级保级信息（保级开始时间 / 保级到期时间 / 剩余保级天数）
+        // 到期时间 = 周期开始时间 + 当前等级保级天数（retain_level_days）
+        // 口径与 gk_admin VipService / PlayerVipPeriod::getRemainingDays 一致（整秒运算）
+        /** @var PlayerVipPeriod|null $retainPeriod */
+        $retainPeriod = $player->vipPeriods()
+            ->where('period_type', PlayerVipPeriod::PERIOD_TYPE_RETAIN)
+            ->where('status', PlayerVipPeriod::STATUS_ONGOING)
+            ->where('vip_level_id', $player->vip_level_id)
+            ->latest('id')
+            ->first();
+        $retainStartTime = $retainPeriod ? Carbon::parse($retainPeriod->started_at)->toDateTimeString() : '';
+        $retainEndTime = '';
+        $retainRemainingDays = 0;
+        if ($retainPeriod) {
+            $retainLevelDays = (int)($vipLevel->retain_level_days ?? 0);
+            if ($retainLevelDays > 0) {
+                $retainEndTs = Carbon::parse($retainPeriod->started_at)->getTimestamp() + $retainLevelDays * 86400;
+                $retainEndTime = date('Y-m-d H:i:s', $retainEndTs);
+                // 剩余保级天数：到期前按天向上取整，已到期为 0
+                $retainRemainingDays = max(0, (int)ceil(($retainEndTs - time()) / 86400));
+            }
         }
 
         return jsonSuccessResponse('success', [
@@ -308,6 +339,9 @@ class PlayerController
                 'period_bet_amount' => $periodBetAmount,
                 'upgrade_bet_amount' => $vipLevel ? $vipLevel->upgrade_bet_amount : 0,
                 'retain_level_bet_amount' => $vipLevel ? $vipLevel->retain_level_bet_amount : 0,
+                'retain_start_time' => $retainStartTime, // 保级开始时间（当前等级保级周期开始时间，无周期返回空字符串）
+                'retain_end_time' => $retainEndTime, // 保级到期时间（开始时间 + 保级天数，无周期或未配置保级天数返回空字符串）
+                'retain_remaining_days' => $retainRemainingDays, // 剩余保级天数（按天向上取整，已到期为 0）
                 'sort' => $vipLevel->sort,
             ],
             'valid_lottery_ticket_count' => $validLotteryTicketCount, // 有效摸奖券数量
@@ -318,7 +352,7 @@ class PlayerController
             'reverse_water_pool_remaining' => $this->formatAmount($reverseWaterPoolRemaining), // 剩余待领取金额（不足最低额部分）
             'reverse_water_pool_min_claim' => $minClaimAmount > 0 ? $this->formatAmount($minClaimAmount) : 0, // 当前等级最低领取金额，未设置返回0
             'claimable_voucher_counts' => \app\service\VoucherService::getClaimableCounts($player), // 今日可领福利券/体验券数量
-            'available_points' => \app\model\PlayerPoints::getOrCreate($player->id, $player->department_id)->available_points, // 用户可用积分
+            'available_points' => (int)\app\model\PlayerPoints::getOrCreate($player->id, $player->department_id)->available_points, // 用户可用积分
             'daily_login_bonus' => $dailyLoginBonus, // 当前 VIP 等级每日登录奖励金额（0=无奖励）
             'is_daily_login_bonus_received' => $isDailyLoginBonusReceived, // 今日是否已领取
         ]);
@@ -2446,6 +2480,7 @@ class PlayerController
                 })->where('status', 1);
             })
             ->where('gaming_user_id', $player->id)
+            ->where('machine_source', Machine::MACHINE_SOURCE_ONLINE)
             ->where('maintaining', 0)
             ->where('status', 1)
             ->orderBy('sort')
@@ -3788,11 +3823,19 @@ class PlayerController
             return jsonFailResponse(trans('daily_login_bonus_not_available', [], 'message'));
         }
 
-        // 今日是否已领取
+        // 今日是否已领取（以 08:00 为班次分界点）
+        $now = \Illuminate\Support\Carbon::now();
+        $today8am = \Illuminate\Support\Carbon::today()->setTime(8, 0, 0);
+        $shiftStart = $now->gte($today8am)
+            ? $today8am                                              // 08:00 之后：本日 08:00
+            : \Illuminate\Support\Carbon::yesterday()->setTime(8, 0, 0); // 08:00 之前：昨日 08:00
+        $shiftEnd = $shiftStart->copy()->addDay();
+
         $hasReceived = PlayerDeliveryRecord::query()
             ->where('player_id', $player->id)
             ->where('type', PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS)
-            ->whereDate('created_at', date('Y-m-d'))
+            ->where('created_at', '>=', $shiftStart->toDateTimeString())
+            ->where('created_at', '<', $shiftEnd->toDateTimeString())
             ->exists();
 
         if ($hasReceived) {
@@ -4141,27 +4184,25 @@ class PlayerController
             $settings['home_notice'] = $homeNoticeSetting->content;
         }
 
-        // 获取配置 - 是否开启实体机台（直接使用 status 字段）
+        // 获取配置 - 是否开启实体机台（玩家个人开关 AND 店家配置，两者都要开启）
         $physicalMachineSetting = StoreSetting::getSetting(
             'enable_physical_machine',
             $player->department_id,
             null,
             $adminUserId
         );
-        if ($physicalMachineSetting) {
-            $settings['enable_physical_machine'] = $physicalMachineSetting->status == 1;
-        }
+        $storeEnablePhysical = $physicalMachineSetting ? $physicalMachineSetting->status == 1 : true;
+        $settings['enable_physical_machine'] = (bool)$player->status_machine && $storeEnablePhysical;
 
-        // 获取配置 - 是否开启真人百家（直接使用 status 字段）
+        // 获取配置 - 是否开启真人百家（玩家个人开关 AND 店家配置，两者都要开启）
         $liveBaccaratSetting = StoreSetting::getSetting(
             'enable_live_baccarat',
             $player->department_id,
             null,
             $adminUserId
         );
-        if ($liveBaccaratSetting) {
-            $settings['enable_live_baccarat'] = $liveBaccaratSetting->status == 1;
-        }
+        $storeEnableBaccarat = $liveBaccaratSetting ? $liveBaccaratSetting->status == 1 : true;
+        $settings['enable_live_baccarat'] = (bool)$player->status_baccarat && $storeEnableBaccarat;
 
         // 获取配置 - 点菜菜单图片
         $menuImageSetting = StoreSetting::getSetting(

@@ -593,6 +593,7 @@ return [
     'check_machine_online_failed' => 'Failed to check machine online status',
     'batch_check_machine_online_failed' => 'Failed to batch check machine online status',
     'machine_open_point_failed' => 'Machine open point operation failed',
+    'open_point_check_machine' => 'Request sent, please verify machine score',
     'machine_open_command_failed' => 'Machine open point command failed, please contact support',
     'machine_wash_point_failed' => 'Machine wash point operation failed',
     'machine_wash_command_failed' => 'Machine wash point command failed, please contact support',
@@ -634,7 +635,7 @@ return [
     // Voucher (Experience / Welfare)
     'voucher_invalid_ticket_type' => 'Invalid ticket type',
     'voucher_score_must_positive' => 'Score must be greater than 0',
-    'voucher_activity_ended' => 'Activity has ended, welfare and experience coupons are not available',
+    'voucher_activity_ended' => 'Activity has ended, please check platform announcements for opening hours',
     'voucher_experience_disabled' => 'Experience coupon is not enabled',
     'voucher_experience_not_new_user' => 'Only new members can claim experience coupons',
     'voucher_experience_daily_limit' => 'Daily experience coupon claim limit reached',

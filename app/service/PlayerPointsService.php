@@ -218,7 +218,19 @@ class PlayerPointsService
                 ]);
             }
 
-            // 10. 记录成功日志
+            // 10. 累加当日打码积分到 Redis（供 dailySummary 写汇总记录用）
+            try {
+                $dailyBettingKey = 'gk_api:player_points_betting_daily:' . $createdAt->toDateString() . ':' . $playerId;
+                $redis->incrByFloat($dailyBettingKey, $totalPointsEarned);
+                $redis->expire($dailyBettingKey, 86400 * 3);
+            } catch (Exception $e) {
+                self::log()->warning('[积分] 累加当日打码积分Key失败（不影响积分累加）', [
+                    'player_id' => $playerId,
+                    'error'     => $e->getMessage(),
+                ]);
+            }
+
+            // 11. 记录成功日志
             self::log()->debug('[积分] 累加成功', [
                 'player_id' => $playerId,
                 'total_bet_amount' => $totalBetAmount,
@@ -1806,6 +1818,7 @@ LUA;
             ]);
 
             // 2. 为每个玩家创建汇总记录
+            $redis = Redis::connection()->client();
             foreach ($players as $playerPoints) {
                 try {
                     // 检查是否已存在汇总记录（防止重复）
@@ -1851,9 +1864,32 @@ LUA;
                         }
                     }
 
-                    // 计算昨天获得的积分（使用版本号变化来判断）
-                    // 注意：这里是简化逻辑，实际应该从记录表统计
-                    // 暂时不创建汇总记录，因为积分是实时累加的，不需要每日汇总
+                    // 从 Redis 读取当日打码积分累计（由 addPointsFromBetting 写入）
+                    $dailyBettingKey = 'gk_api:player_points_betting_daily:' . $date . ':' . $playerPoints->player_id;
+                    $bettingPoints = round(floatval($redis->get($dailyBettingKey) ?: 0), 4);
+
+                    if ($bettingPoints > 0) {
+                        // 写入打码汇总记录（每日一条）
+                        PlayerPointsRecord::query()->create([
+                            'player_id'     => $playerPoints->player_id,
+                            'department_id' => $playerPoints->department_id,
+                            'type'          => PlayerPointsRecord::TYPE_BETTING_SUMMARY,
+                            'source'        => PlayerPointsRecord::SOURCE_BETTING_SUMMARY,
+                            'points'        => $bettingPoints,
+                            'points_before' => 0,
+                            'points_after'  => $redisPoints['available_points'],
+                            'remark'        => $date . ' 打码汇总',
+                            'batch_id'      => $batchId,
+                            'created_at'    => $date . ' 23:59:59',
+                        ]);
+                        $totalPoints += $bettingPoints;
+
+                        self::log()->info('[积分汇总] 写入打码汇总记录', [
+                            'player_id'      => $playerPoints->player_id,
+                            'betting_points' => $bettingPoints,
+                            'batch_id'       => $batchId,
+                        ]);
+                    }
 
                     $count++;
 

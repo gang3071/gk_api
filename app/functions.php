@@ -949,7 +949,24 @@ function machineOpenAny(
                 if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
                     && $machine->control_type == Machine::CONTROL_TYPE_SONG
                     && $machine->type == GameType::TYPE_SLOT) {
-                    $services->sendCmd($services::OPEN_ANY_POINT,  bcadd($money, $giftScore, 2), 'player', $player->id);
+                    // 离线小淞：上分前记录当前 card_score，发送指令后轮询确认
+                    // B7 心跳每秒上报一次，机台收到 A5 后 card_score 会增加
+                    $cardScoreBefore = $services->card_score;
+                    $services->sendCmd($services::OPEN_ANY_POINT, bcadd($money, $giftScore, 2), 'player', $player->id);
+
+                    // 最多等 10 秒（25 × 400ms）等待 card_score 增加
+                    // 若超时说明机台未执行上分，抛出异常触发补偿逻辑（退款 + 解锁机台）
+                    $openConfirmed = false;
+                    for ($oi = 0; $oi < 25; $oi++) {
+                        usleep(400000); // 400ms
+                        if ($services->card_score > $cardScoreBefore) {
+                            $openConfirmed = true;
+                            break;
+                        }
+                    }
+                    if (!$openConfirmed) {
+                        throw new Exception("上分失败：机台未在10秒内确认收分（card_score={$services->card_score}），已自动退款");
+                    }
                 } else {
                     $services->sendCmd($services::OPEN_ANY_POINT, $openScore, 'player', $player->id);
                 }
@@ -1128,6 +1145,13 @@ function machineOpenAny(
                 ]);
             }
 
+            // 无论 DB 补偿成功与否，都清 Redis gaming 状态
+            // DB成功：DB/Redis 保持一致；DB失败：至少 Redis 侧解锁，避免玩家侧卡死
+            try {
+                $services->gaming = 0;
+                $services->gaming_user_id = 0;
+            } catch (\Exception $redisClearError) { }
+
             // 4. 退款到玩家账户（仅在确认机台未上分时执行）
             try {
                 \app\service\WalletService::add($player->id, $money, 1);
@@ -1256,19 +1280,17 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
         throw new Exception(trans('machine_odds_error', [], 'message'));
     }
 
-    // ✅ 小淞线下Slot特殊逻辑：验证钱包总金额是100的倍数
-    // 原因：gk_work需要将机台分数转换成次数
-    // giftScore是赠送的钱包金额（不是机台分数）
+    // ✅ 小淞线下Slot特殊逻辑：验证换算后机台分数是OPEN_UNIT的倍数
+    // 原因：gk_work每次发送固定300分的开分指令（SongOfflineSlot::OPEN_UNIT=300）
     if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
         && $machine->control_type == Machine::CONTROL_TYPE_SONG
         && $machine->type == GameType::TYPE_SLOT) {
 
-        $totalMoney = $money + $giftScore;  // 钱包总金额
-        $openUnit = 100;  // 固定100分为单位
+        $openUnit = 300;  // 固定300分为单位（与SongOfflineSlot::OPEN_UNIT一致）
+        $totalMachineScore = (int) floor(($money + $giftScore) * $machine->odds_y / $machine->odds_x);
 
-        // 验证钱包总金额是否100的倍数
-        if ($totalMoney % $openUnit != 0) {
-            throw new Exception('充值金额（含赠送）必须是100的倍数，当前：' . $totalMoney);
+        if ($totalMachineScore % $openUnit != 0) {
+            throw new Exception('充值金额（含赠送）换算后机台分数必须是' . $openUnit . '的倍数，当前机台分：' . $totalMachineScore);
         }
     }
 

@@ -5,15 +5,15 @@ namespace app\api\controller\web;
 use app\exception\PlayerCheckException;
 use app\model\Channel;
 use app\model\GamePlatform;
-use app\model\GameType;
 use app\model\LotteryTicket;
 use app\model\LotteryTicketActivity;
 use app\model\LotteryTicketVipConfig;
 use app\model\Machine;
 use app\model\PlayerDeliveryRecord;
+use app\model\PlayerGameLog;
 use app\model\PlayerMoneyEditLog;
 use app\model\PlayerReverseWaterDetail;
-use app\model\PlayerGameLog;
+use app\model\PlayerVipPeriod;
 use app\model\PlayGameRecord;
 use app\model\SystemSetting;
 use app\model\VipLevel;
@@ -129,6 +129,29 @@ class PlayerController
             ->where('sort', '>', $vipLevel->sort)
             ->orderBy('sort', 'asc')
             ->first();
+
+        // 当前等级保级信息（保级开始时间 / 保级到期时间 / 剩余保级天数）
+        // 到期时间 = 周期开始时间 + 当前等级保级天数（retain_level_days）
+        // 口径与 gk_admin VipService / PlayerVipPeriod::getRemainingDays 一致（整秒运算）
+        /** @var PlayerVipPeriod|null $retainPeriod */
+        $retainPeriod = $player->vipPeriods()
+            ->where('period_type', PlayerVipPeriod::PERIOD_TYPE_RETAIN)
+            ->where('status', PlayerVipPeriod::STATUS_ONGOING)
+            ->where('vip_level_id', $player->vip_level_id)
+            ->latest('id')
+            ->first();
+        $retainStartTime = $retainPeriod ? Carbon::parse($retainPeriod->started_at)->toDateTimeString() : '';
+        $retainEndTime = '';
+        $retainRemainingDays = 0;
+        if ($retainPeriod) {
+            $retainLevelDays = (int)($vipLevel->retain_level_days ?? 0);
+            if ($retainLevelDays > 0) {
+                $retainEndTs = Carbon::parse($retainPeriod->started_at)->getTimestamp() + $retainLevelDays * 86400;
+                $retainEndTime = date('Y-m-d H:i:s', $retainEndTs);
+                // 剩余保级天数：到期前按天向上取整，已到期为 0
+                $retainRemainingDays = max(0, (int)ceil(($retainEndTs - time()) / 86400));
+            }
+        }
         // ---------------------------------------- 機台相關 ----------------------------------------
         $machine = Machine::query()
             ->whereHas('machineCategory', function ($query) {
@@ -176,7 +199,8 @@ class PlayerController
                 'storeName' => $storeName,
                 'todayScore' => self::formatAmount($todayScore),
                 'yesterdayScore' => self::formatAmount($yesterdayScore),
-                'createdAt' => $player->created_at
+                'createdAt' => $player->created_at,
+                'available_points' => (int)\app\service\PlayerPointsService::getPlayerPoints($player->id)['available_points'],
             ],
             'store' => $storeInfo,
             'vip' => [
@@ -184,7 +208,11 @@ class PlayerController
                 'vipLevel' => $vipLevel->sort,
                 'nextVipLevel' => empty($nextLevel) ? '' : $nextLevel->name,
                 'currentBetAmount' => $currentBetAmount,
-                'upgradeBetAmount' => $vipLevel->upgrade_bet_amount
+                'upgradeBetAmount' => $vipLevel->upgrade_bet_amount,
+                'retainLevelBetAmount' => $vipLevel->retain_level_bet_amount,
+                'retainStartTime' => $retainStartTime, // 保级开始时间（无周期返回空字符串）
+                'retainEndTime' => $retainEndTime, // 保级到期时间（无周期或未配置保级天数返回空字符串）
+                'retainRemainingDays' => $retainRemainingDays, // 剩余保级天数（按天向上取整，已到期为 0）
             ],
             'machine' => $machine,
             'settings' => [
@@ -540,11 +568,6 @@ class PlayerController
             $machineInfo['type'] = $value->type;
             $machineInfo['odds_x'] = $value->odds_x;
             $machineInfo['odds_y'] = $value->odds_y;
-
-            if ($value->type == GameType::TYPE_STEEL_BALL) {
-                $machineInfo['odds_x'] = $value->machineCategory->name;
-                $machineInfo['odds_y'] = '';
-            }
 
             $machineInfo['category_name'] = $value->machineCategory->name;
             $machineInfo['turn_used_point'] = rtrim(rtrim(number_format($value->machineCategory->turn_used_point, 2, '.', ''), '0'), '.');

@@ -590,6 +590,7 @@ return [
     'check_machine_online_failed' => 'マシンオンライン状態確認失敗',
     'batch_check_machine_online_failed' => 'マシンオンライン状態の一括確認失敗',
     'machine_open_point_failed' => 'マシンポイント投入操作失敗',
+    'open_point_check_machine' => 'リクエスト送信済み、マシンスコアをご確認ください',
     'machine_open_command_failed' => 'マシンポイント投入コマンド送信失敗、サポートに連絡してください',
     'machine_wash_point_failed' => 'マシンポイント精算操作失敗',
     'machine_wash_command_failed' => 'マシンポイント精算コマンド送信失敗、サポートに連絡してください',
@@ -632,7 +633,7 @@ return [
     // 体験券/福利券
     'voucher_invalid_ticket_type' => '無効な券種類です',
     'voucher_score_must_positive' => 'スコアは0より大きい必要があります',
-    'voucher_activity_ended' => 'イベントが終了しました、福利券と体験券は現在発行できません',
+    'voucher_activity_ended' => 'イベントが終了しました、開放時間はプラットフォームのお知らせをご確認ください',
     'voucher_experience_disabled' => '体験券機能が有効になっていません',
     'voucher_experience_not_new_user' => '新会員のみ体験券を取得できます',
     'voucher_experience_daily_limit' => '本日の体験券取得回数の上限に達しました',
