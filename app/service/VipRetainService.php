@@ -224,6 +224,43 @@ class VipRetainService
         float $carryOverExperience,
         float $currentBetAmount
     ): PlayerVipPeriod {
+        $carryOverExperience = max(0, $carryOverExperience);
+        $currentBetAmount = max(0, $currentBetAmount);
+
+        // 同等级已存在活跃周期时并入经验，避免重复创建、也避免结转被静默丢弃
+        /** @var PlayerVipPeriod|null $existing */
+        $existing = PlayerVipPeriod::query()
+            ->where('player_id', $player->id)
+            ->where('vip_level_id', $level->id)
+            ->where('period_type', PlayerVipPeriod::PERIOD_TYPE_RETAIN)
+            ->where('status', PlayerVipPeriod::STATUS_ONGOING)
+            ->orderByDesc('id')
+            ->lockForUpdate()
+            ->first();
+
+        if ($existing) {
+            $merged = max(
+                (float)$existing->period_bet_amount,
+                $carryOverExperience + $currentBetAmount
+            );
+
+            if ($merged > (float)$existing->period_bet_amount) {
+                $existing->period_bet_amount = $merged;
+                $existing->save();
+
+                Log::warning('[VipRetain] 周期已存在，结转经验已并入', [
+                    'player_id' => $player->id,
+                    'vip_level_id' => $level->id,
+                    'existing_period_id' => $existing->id,
+                    'carry_over' => $carryOverExperience,
+                    'current_bet' => $currentBetAmount,
+                    'merged_experience' => $merged,
+                ]);
+            }
+
+            return $existing;
+        }
+
         return PlayerVipPeriod::query()->create([
             'player_id' => $player->id,
             'vip_level_id' => $level->id,
@@ -231,7 +268,7 @@ class VipRetainService
             // 窗口起点：本窗口打码量 = total_bet_amount - start_bet_amount
             'start_bet_amount' => max(0, (float)$player->total_bet_amount - $currentBetAmount),
             // 升级经验：可结转
-            'period_bet_amount' => max(0, $carryOverExperience),
+            'period_bet_amount' => $carryOverExperience,
             'started_at' => date('Y-m-d H:i:s'),
             'status' => PlayerVipPeriod::STATUS_ONGOING,
         ]);
