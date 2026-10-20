@@ -9,6 +9,7 @@ use app\model\LotteryTicket;
 use app\model\LotteryTicketActivity;
 use app\model\LotteryTicketVipConfig;
 use app\model\Machine;
+use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerGameLog;
 use app\model\PlayerMoneyEditLog;
@@ -19,6 +20,7 @@ use app\model\SystemSetting;
 use app\model\VipLevel;
 use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
+use app\service\VipRetainService;
 use app\service\WalletService;
 use Carbon\Carbon;
 use Exception;
@@ -42,6 +44,7 @@ class PlayerController
     {
         // ---------------------------------------- 基本資料 ----------------------------------------
         $player = checkPlayer();
+
         $storeName = '';
         $storeInfo = null;
 
@@ -133,25 +136,36 @@ class PlayerController
         // 当前等级保级信息（保级开始时间 / 保级到期时间 / 剩余保级天数）
         // 到期时间 = 周期开始时间 + 当前等级保级天数（retain_level_days）
         // 口径与 gk_admin VipService / PlayerVipPeriod::getRemainingDays 一致（整秒运算）
-        /** @var PlayerVipPeriod|null $retainPeriod */
-        $retainPeriod = $player->vipPeriods()
-            ->where('period_type', PlayerVipPeriod::PERIOD_TYPE_RETAIN)
-            ->where('status', PlayerVipPeriod::STATUS_ONGOING)
-            ->where('vip_level_id', $player->vip_level_id)
-            ->latest('id')
-            ->first();
-        $retainStartTime = $retainPeriod ? Carbon::parse($retainPeriod->started_at)->toDateTimeString() : '';
-        $retainEndTime = '';
-        $retainRemainingDays = 0;
-        if ($retainPeriod) {
+        $retainLevelDays = (int)($vipLevel->retain_level_days ?? 0);
+        [$retainPeriod, $retainEndTs, $retainRemainingDays] = $this->retainPeriodInfo($player, $retainLevelDays);
+
+        // 剩余保级天数 <= 0：玩家真的长时间没打码，补做保级结算
+        //（天数就用上面算好的，不再查一次库）
+        if ($retainLevelDays > 0 && $retainRemainingDays <= 0
+            && VipRetainService::settleIfDue($player, $retainRemainingDays) !== VipRetainService::RESULT_NONE
+        ) {
+            // 已降级 / 滚周期：VIP 等级与保级数据都变了，重取
+            $player->refresh();
+            $vipLevel = $player->vipLevel()->first() ?: $vipLevel;
+            $nextLevel = VipLevel::query()
+                ->where('department_id', $player->department_id)
+                ->where('sort', '>', $vipLevel->sort)
+                ->orderBy('sort', 'asc')
+                ->first();
+            $currentPeriod = $player->currentVipPeriod()->first();
+            $currentBetAmount = $currentPeriod ? $currentPeriod->period_bet_amount : 0;
             $retainLevelDays = (int)($vipLevel->retain_level_days ?? 0);
-            if ($retainLevelDays > 0) {
-                $retainEndTs = Carbon::parse($retainPeriod->started_at)->getTimestamp() + $retainLevelDays * 86400;
-                $retainEndTime = date('Y-m-d H:i:s', $retainEndTs);
-                // 剩余保级天数：到期前按天向上取整，已到期为 0
-                $retainRemainingDays = max(0, (int)ceil(($retainEndTs - time()) / 86400));
-            }
+            [$retainPeriod, $retainEndTs, $retainRemainingDays] = $this->retainPeriodInfo($player, $retainLevelDays);
         }
+
+        $retainStartTime = $retainPeriod ? Carbon::parse($retainPeriod->started_at)->toDateTimeString() : '';
+        $retainEndTime = $retainEndTs ? date('Y-m-d H:i:s', $retainEndTs) : '';
+
+        // 本保级窗口内新增打码量（保级进度的分子）
+        // ⚠️ 与 currentBetAmount（升级经验）是两个独立计数，不可混用
+        $retainWindowBetAmount = $retainPeriod
+            ? $retainPeriod->getRetainWindowBetAmount((float)($player->total_bet_amount ?? 0))
+            : 0;
         // ---------------------------------------- 機台相關 ----------------------------------------
         $machine = Machine::query()
             ->whereHas('machineCategory', function ($query) {
@@ -207,9 +221,10 @@ class PlayerController
                 'vipName' => $vipLevel->name,
                 'vipLevel' => $vipLevel->sort,
                 'nextVipLevel' => empty($nextLevel) ? '' : $nextLevel->name,
-                'currentBetAmount' => $currentBetAmount,
+                'currentBetAmount' => $currentBetAmount, // 升级经验（跨保级窗口结转，对应 upgradeBetAmount）
                 'upgradeBetAmount' => $vipLevel->upgrade_bet_amount,
                 'retainLevelBetAmount' => $vipLevel->retain_level_bet_amount,
+                'retainWindowBetAmount' => self::formatAmount($retainWindowBetAmount), // 本保级窗口打码量（对应 retainLevelBetAmount）
                 'retainStartTime' => $retainStartTime, // 保级开始时间（无周期返回空字符串）
                 'retainEndTime' => $retainEndTime, // 保级到期时间（无周期或未配置保级天数返回空字符串）
                 'retainRemainingDays' => $retainRemainingDays, // 剩余保级天数（按天向上取整，已到期为 0）
@@ -603,6 +618,35 @@ class PlayerController
         return apiSuccessResponse('success', [
             'list' => $list
         ]);
+    }
+
+    /**
+     * 当前保级周期 + 到期时间戳 + 剩余保级天数
+     *
+     * 口径与接口返回的 retainRemainingDays 一致（按天向上取整，已到期为 0）。
+     *
+     * @param int $retainLevelDays 当前等级保级天数（retain_level_days）
+     * @return array{0: PlayerVipPeriod|null, 1: int, 2: int} [周期, 到期时间戳(无则 0), 剩余天数]
+     */
+    private function retainPeriodInfo(Player $player, int $retainLevelDays): array
+    {
+        /** @var PlayerVipPeriod|null $period */
+        $period = $player->vipPeriods()
+            ->where('period_type', PlayerVipPeriod::PERIOD_TYPE_RETAIN)
+            ->where('status', PlayerVipPeriod::STATUS_ONGOING)
+            ->where('vip_level_id', $player->vip_level_id)
+            ->latest('id')
+            ->first();
+
+        $endTs = 0;
+        $remainingDays = 0;
+        if ($period && $retainLevelDays > 0) {
+            $endTs = Carbon::parse($period->started_at)->getTimestamp() + $retainLevelDays * 86400;
+            // 剩余保级天数：到期前按天向上取整，已到期为 0
+            $remainingDays = max(0, (int)ceil(($endTs - time()) / 86400));
+        }
+
+        return [$period, $endTs, $remainingDays];
     }
 
     /**
