@@ -114,9 +114,20 @@ class VipRetainService
         $level = self::currentLevel($player);
 
         if (!$period) {
-            // 周期缺失：补建，否则接口拿不到保级开始/到期时间
+            // 周期缺失：补建，并继承同等级上一周期的升级经验，
+            // 否则接口拿不到保级时间，且历史升级经验会永久丢失
             if ($level) {
-                self::createPeriod($player, $level, 0, 0);
+                $inherited = self::lastExperienceFor($player, $level);
+
+                Log::warning('[VipRetain] 周期缺失，补建并继承历史经验', [
+                    'player_id' => $player->id,
+                    'level_id' => $level->id,
+                    'inherited_experience' => $inherited,
+                    'total_bet_amount' => $player->total_bet_amount,
+                    'hint' => '走到这里说明周期链断裂过（上一次结算只关了旧周期没建出新周期）',
+                ]);
+
+                self::createPeriod($player, $level, $inherited, 0);
                 return self::RESULT_CREATED;
             }
             return self::RESULT_NONE;
@@ -210,6 +221,25 @@ class VipRetainService
         $oldPeriod->save();
 
         self::createPeriod($player, $level, $carryOverExperience, 0);
+    }
+
+    /**
+     * 取同等级最近一条周期的升级经验（用于「周期缺失补建」时继承）
+     *
+     * ⚠️ 只在补建路径使用。降级后最近一条就是清零的那条，所以不会把经验复活。
+     *    若不继承，周期链一旦断裂，历史升级经验就永久丢失。
+     */
+    private static function lastExperienceFor(Player $player, VipLevel $level): float
+    {
+        /** @var PlayerVipPeriod|null $last */
+        $last = PlayerVipPeriod::query()
+            ->where('player_id', $player->id)
+            ->where('vip_level_id', $level->id)
+            ->where('period_type', PlayerVipPeriod::PERIOD_TYPE_RETAIN)
+            ->orderByDesc('id')
+            ->first();
+
+        return $last ? max(0, (float)$last->period_bet_amount) : 0.0;
     }
 
     /**
