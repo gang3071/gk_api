@@ -1258,14 +1258,22 @@ class GameLotteryServices
             throw new Exception('压注金额错误');
         }
         $lotteryList = $this->lotteryList;
+        $redis = \support\Redis::connection()->client();
         /** @var GameLottery $lottery */
         foreach ($lotteryList as $lottery) {
-            // 检查是否达到最大彩池限制（最大彩池必须设置）
-            if ($lottery->max_pool_amount > 0 && $lottery->amount >= $lottery->max_pool_amount) {
+            // 真實彩金 = DB 金額 + Redis 尚未同步的累積量
+            $redisKey      = self::REDIS_KEY_LOTTERY_AMOUNT . $lottery->id;
+            $pendingAmount = (float)($redis->get($redisKey) ?: 0);
+            $realAmount    = (float)bcadd($lottery->amount, $pendingAmount, 4);
+
+            // 检查是否达到最大彩池限制（必須用真實金額比較，否則Redis未同步量導致超限）
+            if ($lottery->max_pool_amount > 0 && $realAmount >= $lottery->max_pool_amount) {
                 $this->log->info('彩金池累计已达最大彩池上限:', [
-                    'lottery_id' => $lottery->id,
-                    'name' => $lottery->name,
-                    'amount' => $lottery->amount,
+                    'lottery_id'     => $lottery->id,
+                    'name'           => $lottery->name,
+                    'db_amount'      => $lottery->amount,
+                    'pending_amount' => $pendingAmount,
+                    'real_amount'    => $realAmount,
                     'max_pool_amount' => $lottery->max_pool_amount,
                 ]);
                 continue;
@@ -1298,11 +1306,14 @@ class GameLotteryServices
                 }
             }
 
-            $newAmount = bcadd($lottery->amount, $addAmount, 4);
-            // 检查是否超过最大彩池限制
+            $newAmount = bcadd($realAmount, $addAmount, 4);
+            // 检查是否超过最大彩池限制（以真實金額為基準計算上限）
             if ($lottery->max_pool_amount > 0 && $newAmount > $lottery->max_pool_amount) {
                 $newAmount = $lottery->max_pool_amount;
-                $addAmount = bcsub($lottery->max_pool_amount, $lottery->amount, 4);
+                $addAmount = bcsub($lottery->max_pool_amount, $realAmount, 4);
+                if ((float)$addAmount <= 0) {
+                    continue;
+                }
             }
             // 记录彩金累积日志
             $this->log->info('彩金池累积:', [
@@ -1319,9 +1330,6 @@ class GameLotteryServices
             ]);
             // 使用 Redis 原子操作累积彩金（性能优化）
             try {
-                $redisKey = self::REDIS_KEY_LOTTERY_AMOUNT . $lottery->id;
-                $redis = \support\Redis::connection()->client();
-
                 // 使用 Redis 的 INCRBYFLOAT 原子操作累积
                 $currentRedisAmount = $redis->incrByFloat($redisKey, (float)$addAmount);
 

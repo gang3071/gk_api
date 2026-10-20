@@ -650,6 +650,13 @@ class MachineClient
 
         try {
             $response = Http::timeout($this->timeout)
+                ->withOptions([
+                    'curl' => [
+                        CURLOPT_TCP_KEEPALIVE => 1,
+                        CURLOPT_TCP_KEEPIDLE  => 5,  // 空閒5秒後發探測包，防止長阻塞期間TCP被重置
+                        CURLOPT_TCP_KEEPINTVL => 3,
+                    ],
+                ])
                 ->withHeaders($headers)
                 ->post($this->baseUrl . '/api/v1/machine/execute', $requestPayload);
 

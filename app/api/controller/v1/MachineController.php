@@ -1062,8 +1062,8 @@ class MachineController
         ]);
 
         // 调用 gk_work 完整业务逻辑
-        // 超时30秒，因为要处理完整的数据库事务
-        $client = new MachineClient(null, 30);
+        // 超时60秒：SongOfflineSlot 上分最长 10×(3s登入+0.3s)=33s + EA D4轮询25×0.6s=15s = 48s，需大于此值
+        $client = new MachineClient(null, 60);
 
         // ✅ 传递金额（money），不是分数（openScore）
         $result = $client->openMachine(
@@ -1076,6 +1076,17 @@ class MachineController
         );
 
         if (!$result['success']) {
+            // Unknown error = gk_work HTTP response body 為空（TCP連線在長阻塞後被重置）。
+            // gk_work 極可能已成功執行，記錄警告供人工核查，並給玩家友好提示。
+            if (($result['message'] ?? '') === 'Unknown error') {
+                Log::channel('machine_operations')->warning('[MachineOpenAnyV2] Unknown error（TCP斷線），gk_work可能已執行，請人工核查', [
+                    'player_id'  => $player->id,
+                    'machine_id' => $machine->id,
+                    'money'      => $money,
+                    'gift_score' => $giftScore,
+                ]);
+                throw new Exception(trans('open_point_check_machine', [], 'message'));
+            }
             throw new Exception($result['message'] ?? trans('machine_open_point_failed', [], 'message'));
         }
 
@@ -2274,8 +2285,8 @@ class MachineController
         ]);
 
         // 调用 gk_work 完整业务逻辑
-        // 超时30秒，因为要处理完整的数据库事务
-        $client = new MachineClient(null, 30);
+        // 超时60秒：SongOfflineSlot 洗分最长 10×(3s登入+0.3s)=33s + EA D4轮询25×0.6s=15s = 48s，需大于此值
+        $client = new MachineClient(null, 60);
 
         $result = $client->washMachine(
             $machine->id,

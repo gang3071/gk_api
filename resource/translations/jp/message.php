@@ -590,6 +590,7 @@ return [
     'check_machine_online_failed' => 'マシンオンライン状態確認失敗',
     'batch_check_machine_online_failed' => 'マシンオンライン状態の一括確認失敗',
     'machine_open_point_failed' => 'マシンポイント投入操作失敗',
+    'open_point_check_machine' => 'リクエスト送信済み、マシンスコアをご確認ください',
     'machine_open_command_failed' => 'マシンポイント投入コマンド送信失敗、サポートに連絡してください',
     'machine_wash_point_failed' => 'マシンポイント精算操作失敗',
     'machine_wash_command_failed' => 'マシンポイント精算コマンド送信失敗、サポートに連絡してください',

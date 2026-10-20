@@ -22,6 +22,7 @@ use app\model\Player;
 use app\model\PlayerBank;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerFavoriteMachine;
+use app\model\PlayerGameLog;
 use app\model\PlayerGameRecord;
 use app\model\PlayerLotteryRecord;
 use app\model\PlayerMoneyEditLog;
@@ -33,7 +34,6 @@ use app\model\PlayerVipPeriod;
 use app\model\PlayerWalletTransfer;
 use app\model\PlayerWithdrawRecord;
 use app\model\PlayGameRecord;
-use app\model\PlayerGameLog;
 use app\model\Slider;
 use app\model\StoreSetting;
 use app\model\SystemSetting;
@@ -2523,7 +2523,7 @@ class PlayerController
                 })->where('status', 1);
             })
             ->where('gaming_user_id', $player->id)
-            ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
+            ->where('machine_source', Machine::MACHINE_SOURCE_ONLINE)
             ->where('maintaining', 0)
             ->where('status', 1)
             ->orderBy('sort')

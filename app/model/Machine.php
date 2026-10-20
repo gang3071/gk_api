@@ -66,6 +66,7 @@ use support\Cache;
  * @property int keeping_user_id 保留中玩家
  * @property int strategy_id 攻略id
  * @property int is_use 使用中
+ * @property int machine_source 机台来源（1=线上/有直播，2=线下/无直播）
  * @property int control_type 工控类型
  * @property int correct_rate 确率
  * @property int is_special 是否特仕机

@@ -599,6 +599,7 @@ return [
     'check_machine_online_failed' => '檢查機台在線狀態失敗',
     'batch_check_machine_online_failed' => '批量檢查機台在線狀態失敗',
     'machine_open_point_failed' => '機台上分操作失敗',
+    'open_point_check_machine' => '上分請求已送出，請確認機台分數',
     'machine_open_command_failed' => '機台上分指令發送失敗，請聯繫客服',
     'machine_wash_point_failed' => '機台洗分操作失敗',
     'machine_wash_command_failed' => '機台洗分指令發送失敗，請聯繫客服',
