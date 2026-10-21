@@ -76,10 +76,8 @@ class DeviceServiceController
 
             if (!$lock->acquire()) {
                 // 获取锁失败 = 5 秒内已经请求过
-                $remainingTtl = Cache::ttl($lockKey);
-
                 return jsonFailResponse(trans('service_call_waiting', [], 'message'), [
-                    'retry_after' => $remainingTtl > 0 ? $remainingTtl : 0
+                    'retry_after' => $lockTtl
                 ]);
             }
 

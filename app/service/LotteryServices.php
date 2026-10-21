@@ -1259,6 +1259,18 @@ class LotteryServices
                 ];
             }
             if (isset($fixedAllowLottery['amount']) && $fixedAllowLottery['amount'] > 0) {
+                // 取得業務鎖（與 gk_work 使用相同 key），防止 addLotteryPool sync
+                // 在扣款期間並發執行 refresh()+save() 覆蓋正確扣款值
+                $lotteryLockKey = 'machine_lottery_pool_fixed_locker_' . $fixedAllowLottery['lottery_id'];
+                $lotteryLock = Locker::lock($lotteryLockKey, 3, true);
+                if (!$lotteryLock->acquire()) {
+                    \support\Log::warning('[固定彩金-API] 無法取得彩池鎖，跳過派彩', [
+                        'lottery_id' => $fixedAllowLottery['lottery_id'],
+                        'player_id'  => $this->player->id,
+                        'machine_id' => $this->machine->id,
+                    ]);
+                    return null;
+                }
                 DB::beginTransaction();
                 try {
                     // 生成派彩记录
@@ -1288,22 +1300,27 @@ class LotteryServices
                     $playerLotteryRecord->lottery_sort = $fixedAllowLottery['lottery_sort'];
                     $playerLotteryRecord->save();
 
-                    // 扣减彩金池（从 lottery.amount 扣减）
+                    // 扣減彩池：lockForUpdate 確保讀最新值，防止並發快照覆蓋問題
                     /** @var Lottery $lotteryModel */
-                    $lotteryModel = Lottery::find($fixedAllowLottery['lottery_id']);
-                    if ($lotteryModel) {
-                        // 根据rate计算实际扣减金额
-                        $rate = $lotteryModel->rate > 0 ? $lotteryModel->rate : 100;
-                        $baseDeductAmount = bcmul($lotteryModel->amount, bcdiv($rate, 100, 4), 2);
-                        $lotteryModel->amount = bcsub($lotteryModel->amount, $baseDeductAmount, 2);
-                        $lotteryModel->save();
-
-                        // 清除彩金缓存
-                        self::clearLotteryListCache($this->machine->type);
-
-                        // 实时推送彩池数据变化
-                        self::pushLotteryPoolData();
+                    $lotteryModel = Lottery::query()
+                        ->where('id', $fixedAllowLottery['lottery_id'])
+                        ->lockForUpdate()
+                        ->first();
+                    if (!$lotteryModel || $lotteryModel->amount < $fixedAllowLottery['amount']) {
+                        DB::rollback();
+                        $lotteryLock->release();
+                        \support\Log::warning('[固定彩金-API] 彩池餘額不足，派彩終止', [
+                            'lottery_id'   => $fixedAllowLottery['lottery_id'],
+                            'pool_amount'  => $lotteryModel->amount ?? 0,
+                            'prize_amount' => $fixedAllowLottery['amount'],
+                            'player_id'    => $this->player->id,
+                        ]);
+                        return null;
                     }
+                    $rate = $lotteryModel->rate > 0 ? $lotteryModel->rate : 100;
+                    $baseDeductAmount = bcmul($lotteryModel->amount, bcdiv($rate, 100, 4), 2);
+                    $lotteryModel->amount = bcsub($lotteryModel->amount, $baseDeductAmount, 2);
+                    $lotteryModel->save();
 
                     if ($hasSend) {
                         sendSocketMessage('player-' . $this->player->id, $fixedAllowLottery);
@@ -1333,11 +1350,28 @@ class LotteryServices
                     $notice->title = '彩金獎勵待稽核';
                     $notice->content = $content;
                     $notice->save();
-                    
+
                     DB::commit();
+
+                    // 清除 Redis 累積 key，防止 gk_work sync 在扣款後疊加舊值覆蓋
+                    try {
+                        \support\Redis::connection()->client()->del(self::REDIS_KEY_LOTTERY_AMOUNT . $lotteryModel->id);
+                    } catch (\Exception $e) {
+                        \support\Log::warning('[固定彩金-API] 清除 Redis 累積 key 失敗', [
+                            'lottery_id' => $lotteryModel->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+
+                    // 清除彩金缓存並推送
+                    self::clearLotteryListCache($this->machine->type);
+                    self::pushLotteryPoolData();
+
                 } catch (\Exception $e) {
                     DB::rollback();
                     throw new Exception($e->getMessage());
+                } finally {
+                    $lotteryLock->release();
                 }
             }
         }

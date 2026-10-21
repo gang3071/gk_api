@@ -3634,16 +3634,11 @@ function machineWash(
         }
         /** TODO 计算打码量 */
     }
-    // 斯洛离开机台或弃台下分重置活动 检查彩金中奖情况
+    // 斯洛离开机台或弃台下分重置活动
     if ($machine->type == GameType::TYPE_SLOT) {
         // 离开机台参与活动结束
         $activityServices = new ActivityServices($machine, $player);
         $activityServices->playerFinishActivity(true);
-        // 下分检查彩金获奖情况
-        if ($money > 0) {
-            $playerLotteryRecord = (new LotteryServices())->setMachine($machine)->setPlayer($player)->fixedPotCheckLottery($money,
-                false, $path == 'leave');
-        }
     }
 
     DB::commit();
@@ -3668,6 +3663,27 @@ function machineWash(
         ]);
 
         throw new Exception($e->getMessage());
+    }
+
+    // ✅ 固定彩金检查：必须在 DB::commit() 之后执行（独立事务）
+    // 若在外层事务内调用，内层 DB::beginTransaction() 退化为 SAVEPOINT，
+    // commit() 只释放 SAVEPOINT，行锁仍由外层事务持有，导致 addLotteryPool sync
+    // 读到 MVCC 旧值并在行锁释放后覆盖正确扣款结果（彩池永远不被扣减）。
+    if ($machine->type == GameType::TYPE_SLOT && $money > 0) {
+        try {
+            $playerLotteryRecord = (new LotteryServices())
+                ->setMachine($machine)
+                ->setPlayer($player)
+                ->fixedPotCheckLottery($money, false, $path == 'leave');
+        } catch (\Exception $e) {
+            Log::channel('machine_operations')->error('[MachineWash] 固定彩金检查失败（洗分已完成）', [
+                'wash_id'    => $washId,
+                'machine_id' => $machine->id,
+                'player_id'  => $player->id,
+                'money'      => $money,
+                'error'      => $e->getMessage(),
+            ]);
+        }
     }
 
     // ✅ 修复：统一在数据库事务提交后更新Redis

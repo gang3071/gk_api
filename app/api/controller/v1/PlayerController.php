@@ -45,6 +45,7 @@ use app\service\machine\MachineServices;
 use app\service\payment\EHpayService;
 use app\service\payment\GBpayService;
 use app\service\SmsServicesServices;
+use app\service\VipRetainService;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Arr;
@@ -96,6 +97,7 @@ class PlayerController
     public function playerInfo(): Response
     {
         $player = checkPlayer();
+
         /** @var PlayerPlatformCash $wallet */
         $wallet = PlayerPlatformCash::query()->firstOrCreate(
             [
@@ -271,25 +273,36 @@ class PlayerController
         // 当前等级保级信息（保级开始时间 / 保级到期时间 / 剩余保级天数）
         // 到期时间 = 周期开始时间 + 当前等级保级天数（retain_level_days）
         // 口径与 gk_admin VipService / PlayerVipPeriod::getRemainingDays 一致（整秒运算）
-        /** @var PlayerVipPeriod|null $retainPeriod */
-        $retainPeriod = $player->vipPeriods()
-            ->where('period_type', PlayerVipPeriod::PERIOD_TYPE_RETAIN)
-            ->where('status', PlayerVipPeriod::STATUS_ONGOING)
-            ->where('vip_level_id', $player->vip_level_id)
-            ->latest('id')
-            ->first();
-        $retainStartTime = $retainPeriod ? Carbon::parse($retainPeriod->started_at)->toDateTimeString() : '';
-        $retainEndTime = '';
-        $retainRemainingDays = 0;
-        if ($retainPeriod) {
+        $retainLevelDays = (int)($vipLevel->retain_level_days ?? 0);
+        [$retainPeriod, $retainEndTs, $retainRemainingDays] = $this->retainPeriodInfo($player, $retainLevelDays);
+
+        // 剩余保级天数 <= 0：玩家真的长时间没打码，补做保级结算
+        //（天数就用上面算好的，不再查一次库）
+        if ($retainLevelDays > 0 && $retainRemainingDays <= 0
+            && VipRetainService::settleIfDue($player, $retainRemainingDays) !== VipRetainService::RESULT_NONE
+        ) {
+            // 已降级 / 滚周期：VIP 等级与保级数据都变了，重取
+            $player->refresh();
+            $vipLevel = $player->vipLevel()->first() ?: $vipLevel;
+            $nextVipLevel = $vipLevel
+                ? VipLevel::query()->where('department_id', $player->department_id)->where('sort', '>', $vipLevel->sort)->orderBy('sort', 'asc')->first()
+                : null;
+            $currentPeriod = $player->currentVipPeriod()->first();
+            $periodBetAmount = $currentPeriod ? $currentPeriod->period_bet_amount : 0;
+            $minClaimAmount = $vipLevel->min_claim_amount ?? 0;
+            $dailyLoginBonus = $this->formatAmount((float)($vipLevel->daily_login_bonus ?? 0));
             $retainLevelDays = (int)($vipLevel->retain_level_days ?? 0);
-            if ($retainLevelDays > 0) {
-                $retainEndTs = Carbon::parse($retainPeriod->started_at)->getTimestamp() + $retainLevelDays * 86400;
-                $retainEndTime = date('Y-m-d H:i:s', $retainEndTs);
-                // 剩余保级天数：到期前按天向上取整，已到期为 0
-                $retainRemainingDays = max(0, (int)ceil(($retainEndTs - time()) / 86400));
-            }
+            [$retainPeriod, $retainEndTs, $retainRemainingDays] = $this->retainPeriodInfo($player, $retainLevelDays);
         }
+
+        $retainStartTime = $retainPeriod ? Carbon::parse($retainPeriod->started_at)->toDateTimeString() : '';
+        $retainEndTime = $retainEndTs ? date('Y-m-d H:i:s', $retainEndTs) : '';
+
+        // 本保级窗口内新增打码量（保级进度的分子）
+        // ⚠️ 与 period_bet_amount（升级经验）是两个独立计数，不可混用
+        $retainWindowBetAmount = $retainPeriod
+            ? $retainPeriod->getRetainWindowBetAmount((float)($player->total_bet_amount ?? 0))
+            : 0;
 
         return jsonSuccessResponse('success', [
             'id' => $player->id,
@@ -336,9 +349,10 @@ class PlayerController
                 'vip_level_name' => $vipLevel ? $vipLevel->name : '',
                 'next_vip_level_name' => $nextVipLevel ? $nextVipLevel->name : '',
                 'total_bet_amount' => $player->total_bet_amount ?? 0,
-                'period_bet_amount' => $periodBetAmount,
+                'period_bet_amount' => $periodBetAmount, // 升级经验（跨保级窗口结转，对应 upgrade_bet_amount）
                 'upgrade_bet_amount' => $vipLevel ? $vipLevel->upgrade_bet_amount : 0,
                 'retain_level_bet_amount' => $vipLevel ? $vipLevel->retain_level_bet_amount : 0,
+                'retain_window_bet_amount' => $this->formatAmount($retainWindowBetAmount), // 本保级窗口打码量（对应 retain_level_bet_amount）
                 'retain_start_time' => $retainStartTime, // 保级开始时间（当前等级保级周期开始时间，无周期返回空字符串）
                 'retain_end_time' => $retainEndTime, // 保级到期时间（开始时间 + 保级天数，无周期或未配置保级天数返回空字符串）
                 'retain_remaining_days' => $retainRemainingDays, // 剩余保级天数（按天向上取整，已到期为 0）
@@ -356,6 +370,35 @@ class PlayerController
             'daily_login_bonus' => $dailyLoginBonus, // 当前 VIP 等级每日登录奖励金额（0=无奖励）
             'is_daily_login_bonus_received' => $isDailyLoginBonusReceived, // 今日是否已领取
         ]);
+    }
+
+    /**
+     * 当前保级周期 + 到期时间戳 + 剩余保级天数
+     *
+     * 口径与接口返回的 retain_remaining_days 一致（按天向上取整，已到期为 0）。
+     *
+     * @param int $retainLevelDays 当前等级保级天数（retain_level_days）
+     * @return array{0: PlayerVipPeriod|null, 1: int, 2: int} [周期, 到期时间戳(无则 0), 剩余天数]
+     */
+    private function retainPeriodInfo(Player $player, int $retainLevelDays): array
+    {
+        /** @var PlayerVipPeriod|null $period */
+        $period = $player->vipPeriods()
+            ->where('period_type', PlayerVipPeriod::PERIOD_TYPE_RETAIN)
+            ->where('status', PlayerVipPeriod::STATUS_ONGOING)
+            ->where('vip_level_id', $player->vip_level_id)
+            ->latest('id')
+            ->first();
+
+        $endTs = 0;
+        $remainingDays = 0;
+        if ($period && $retainLevelDays > 0) {
+            $endTs = Carbon::parse($period->started_at)->getTimestamp() + $retainLevelDays * 86400;
+            // 剩余保级天数：到期前按天向上取整，已到期为 0
+            $remainingDays = max(0, (int)ceil(($endTs - time()) / 86400));
+        }
+
+        return [$period, $endTs, $remainingDays];
     }
 
     /**
@@ -1609,6 +1652,13 @@ class PlayerController
                 case PlayerDeliveryRecord::TYPE_AGENT_IN:
                     $item['source'] = trans('source.agent_in', [], 'message');
                     $item['target'] = trans('target.agent_in', [], 'message');
+                    break;
+                case PlayerDeliveryRecord::TYPE_REFUND:
+                    $refundSource = $item['source'] ?? '';
+                    $item['source'] = $item['code'] ?? '';
+                    $item['target'] = $refundSource === 'retry_refund'
+                        ? trans('target.retry_refund', [], 'message')
+                        : trans('target.machine_open_failed_refund', [], 'message');
                     break;
                 default:
                     break;

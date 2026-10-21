@@ -309,6 +309,8 @@ return [
         'present_out' => '玩家轉出',
         'machine_up' => '機器上分',
         'machine_down' => '機器下分',
+        'machine_open_failed_refund' => '機台上分失敗退款',
+        'retry_refund' => '開分部分失敗回補',
         'artificial_recharge' => '人工儲值',
         'coin_recharge' => '幣商儲值',
         'self_recharge' => '平台充值',
