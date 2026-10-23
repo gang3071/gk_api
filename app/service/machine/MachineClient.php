@@ -17,12 +17,6 @@ class MachineClient
     private int $timeout;
 
     /**
-     * HTTP客户端连接池（每个worker进程维护一个实例，支持Keep-Alive）
-     * @var \Illuminate\Http\Client\PendingRequest|null
-     */
-    private static $httpClientPool = null;
-
-    /**
      * @param string|null $baseUrl gk_work 的基础 URL，默认从环境变量读取
      * @param int $timeout 请求超时时间（秒）
      */
@@ -30,37 +24,6 @@ class MachineClient
     {
         $this->baseUrl = $baseUrl ?? config('services.gk_work.url');
         $this->timeout = $timeout;
-    }
-
-    /**
-     * 获取HTTP客户端实例（支持连接复用和Keep-Alive）
-     *
-     * @return \Illuminate\Http\Client\PendingRequest
-     */
-    private function getHttpClient()
-    {
-        if (self::$httpClientPool === null) {
-            self::$httpClientPool = Http::timeout($this->timeout)
-                ->withOptions([
-                    'http_version' => '1.1',  // 使用HTTP/1.1（支持Keep-Alive）
-                    'curl' => [
-                        CURLOPT_FORBID_REUSE => false,    // 允许连接复用
-                        CURLOPT_FRESH_CONNECT => false,   // 不强制新连接
-                        CURLOPT_MAXCONNECTS => 50,        // 连接池大小（最多保持50个Keep-Alive连接）
-                        CURLOPT_TCP_KEEPALIVE => 1,       // 启用TCP Keep-Alive
-                        CURLOPT_TCP_KEEPIDLE => 60,       // 空闲60秒后发送探测包
-                        CURLOPT_TCP_KEEPINTVL => 10,      // 探测包间隔10秒
-                    ],
-                ]);
-
-            Log::info('[MachineClient] HTTP连接池已初始化', [
-                'worker_id' => posix_getpid(),
-                'pool_size' => 50,
-                'keep_alive' => true,
-            ]);
-        }
-
-        return self::$httpClientPool;
     }
 
     /**
