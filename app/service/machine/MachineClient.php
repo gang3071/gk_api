@@ -20,7 +20,7 @@ class MachineClient
      * @param string|null $baseUrl gk_work 的基础 URL，默认从环境变量读取
      * @param int $timeout 请求超时时间（秒）
      */
-    public function __construct(?string $baseUrl = null, int $timeout = 10)
+    public function __construct(?string $baseUrl = null, int $timeout = 30)
     {
         $this->baseUrl = $baseUrl ?? config('services.gk_work.url');
         $this->timeout = $timeout;
