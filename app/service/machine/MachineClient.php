@@ -700,13 +700,23 @@ class MachineClient
         } catch (RequestException $e) {
             $duration = round((microtime(true) - $startTime) * 1000, 2);
 
+            // duration_ms 诊断参考：
+            //   ~10000  = MachineClient 默认超时（new MachineClient() 未指定timeout）
+            //   ~60000  = 旧版90s超时或nginx默认60s先断
+            //   ~90000  = MachineClient 90s超时
+            //   其他值  = gk_work 主动断连或网络重置
+            $curlErrno = null;
+            $prev = $e->getPrevious();
+            if ($prev instanceof \GuzzleHttp\Exception\ConnectException) {
+                $curlErrno = $prev->getHandlerContext()['errno'] ?? null;
+            }
             Log::channel('machine_operations')->error('[MachineClient] 操作执行异常（新接口）', [
-                'machine_id' => $machineId,
-                'action' => $action,
-                'player_id' => $playerId,
+                'machine_id'  => $machineId,
+                'action'      => $action,
+                'player_id'   => $playerId,
                 'duration_ms' => $duration,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'curl_errno'  => $curlErrno, // 28=超时, 56=接收断, 55=发送断, 7=连接拒绝
+                'error'       => $e->getMessage(),
             ]);
 
             return [

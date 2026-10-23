@@ -2285,9 +2285,10 @@ class MachineController
         ]);
 
         // 调用 gk_work 完整业务逻辑
-        // 超时60秒：SongOfflineSlot 洗分最长 10×(3s登入+0.3s)=33s + EA D4轮询25×0.6s=15s = 48s，需大于此值
-        $client = new MachineClient(null, 60);
+        // 超时90秒：洗分最坏 ~58s（D4轮询20s + 心跳5s + A5登入33s），需大于此值
+        $client = new MachineClient(null, 90);
 
+        $washStart = microtime(true);
         $result = $client->washMachine(
             $machine->id,
             $player->id,
@@ -2296,8 +2297,18 @@ class MachineController
             $is_system,
             $lang
         );
+        $washDurationMs = round((microtime(true) - $washStart) * 1000);
 
         if (!$result['success']) {
+            Log::channel('machine_operations')->error('[MachineWashV2] 洗分失败', [
+                'player_id'       => $player->id,
+                'machine_id'      => $machine->id,
+                'action'          => $action,
+                'duration_ms'     => $washDurationMs,
+                'message'         => $result['message'] ?? null,
+                // duration 接近 10000=MachineClient默认超时, 60000=旧超时, 90000=新超时, 60000=nginx默认
+                // 以此判断是哪层断掉的
+            ]);
             throw new Exception($result['message'] ?? trans('machine_wash_command_failed', [], 'message'));
         }
 
