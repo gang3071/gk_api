@@ -17,50 +17,13 @@ class MachineClient
     private int $timeout;
 
     /**
-     * HTTP客户端连接池（每个worker进程维护一个实例，支持Keep-Alive）
-     * @var \Illuminate\Http\Client\PendingRequest|null
-     */
-    private static $httpClientPool = null;
-
-    /**
      * @param string|null $baseUrl gk_work 的基础 URL，默认从环境变量读取
      * @param int $timeout 请求超时时间（秒）
      */
-    public function __construct(?string $baseUrl = null, int $timeout = 10)
+    public function __construct(?string $baseUrl = null, int $timeout = 30)
     {
         $this->baseUrl = $baseUrl ?? config('services.gk_work.url');
         $this->timeout = $timeout;
-    }
-
-    /**
-     * 获取HTTP客户端实例（支持连接复用和Keep-Alive）
-     *
-     * @return \Illuminate\Http\Client\PendingRequest
-     */
-    private function getHttpClient()
-    {
-        if (self::$httpClientPool === null) {
-            self::$httpClientPool = Http::timeout($this->timeout)
-                ->withOptions([
-                    'http_version' => '1.1',  // 使用HTTP/1.1（支持Keep-Alive）
-                    'curl' => [
-                        CURLOPT_FORBID_REUSE => false,    // 允许连接复用
-                        CURLOPT_FRESH_CONNECT => false,   // 不强制新连接
-                        CURLOPT_MAXCONNECTS => 50,        // 连接池大小（最多保持50个Keep-Alive连接）
-                        CURLOPT_TCP_KEEPALIVE => 1,       // 启用TCP Keep-Alive
-                        CURLOPT_TCP_KEEPIDLE => 60,       // 空闲60秒后发送探测包
-                        CURLOPT_TCP_KEEPINTVL => 10,      // 探测包间隔10秒
-                    ],
-                ]);
-
-            Log::info('[MachineClient] HTTP连接池已初始化', [
-                'worker_id' => posix_getpid(),
-                'pool_size' => 50,
-                'keep_alive' => true,
-            ]);
-        }
-
-        return self::$httpClientPool;
     }
 
     /**
@@ -700,13 +663,23 @@ class MachineClient
         } catch (RequestException $e) {
             $duration = round((microtime(true) - $startTime) * 1000, 2);
 
+            // duration_ms 诊断参考：
+            //   ~10000  = MachineClient 默认超时（new MachineClient() 未指定timeout）
+            //   ~60000  = 旧版90s超时或nginx默认60s先断
+            //   ~90000  = MachineClient 90s超时
+            //   其他值  = gk_work 主动断连或网络重置
+            $curlErrno = null;
+            $prev = $e->getPrevious();
+            if ($prev instanceof \GuzzleHttp\Exception\ConnectException) {
+                $curlErrno = $prev->getHandlerContext()['errno'] ?? null;
+            }
             Log::channel('machine_operations')->error('[MachineClient] 操作执行异常（新接口）', [
-                'machine_id' => $machineId,
-                'action' => $action,
-                'player_id' => $playerId,
+                'machine_id'  => $machineId,
+                'action'      => $action,
+                'player_id'   => $playerId,
                 'duration_ms' => $duration,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'curl_errno'  => $curlErrno, // 28=超时, 56=接收断, 55=发送断, 7=连接拒绝
+                'error'       => $e->getMessage(),
             ]);
 
             return [
