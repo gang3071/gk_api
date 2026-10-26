@@ -673,4 +673,5 @@ return [
     'daily_login_bonus_not_available' => 'No daily login bonus for current level',
     'daily_login_bonus_already_received' => "Today's login bonus already claimed",
     'daily_login_bonus_claim_success' => 'Login bonus claimed successfully',
+    'machine_vip_level_not_enough' => 'This machine requires {vip} or above to use',
 ];

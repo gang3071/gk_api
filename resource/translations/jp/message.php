@@ -670,4 +670,5 @@ return [
     'daily_login_bonus_not_available' => '現在のレベルには毎日ログインボーナスがありません',
     'daily_login_bonus_already_received' => '本日のログインボーナスは受け取り済みです',
     'daily_login_bonus_claim_success' => 'ログインボーナスを受け取りました',
+    'machine_vip_level_not_enough' => 'この台は{vip}以上のVIPレベルが必要です',
 ];

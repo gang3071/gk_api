@@ -689,4 +689,5 @@ return [
     'daily_login_bonus_not_available' => '当前等级无每日登录奖励',
     'daily_login_bonus_already_received' => '今日登录奖励已领取',
     'daily_login_bonus_claim_success' => '登录奖励领取成功',
+    'machine_vip_level_not_enough' => '该机台需要{vip}或以上等级才能使用',
 ];
