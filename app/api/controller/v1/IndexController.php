@@ -1137,6 +1137,10 @@ class IndexController
         }
         /** @var SystemSetting $systemSetting */
         $systemSetting = SystemSetting::where('feature', 'activity_open')->first();
+        // 排行榜开关（渠道后台系统配置，按渠道维度）
+        $leaderboardSwitch = SystemSetting::where('feature', 'leaderboard_switch')
+            ->where('department_id', $channel['department_id'] ?? 0)
+            ->value('status');
 
         // 获取总后台配置（大屏彩金Domain和TURN中继IP）
         $jackpotScreenDomain = '';
@@ -1206,6 +1210,7 @@ class IndexController
             'discussion_group_status' => (($channel['discussion_group_status'] ?? 0) == 1 || $channel['discussion_group_status'] == true),
             'ranking_status' => (($channel['ranking_status'] ?? 0) == 1 || $channel['ranking_status'] == true),
             'activity_open' => $systemSetting->status ?? 0,
+            'leaderboard_switch' => (int)($leaderboardSwitch ?? 1),
             'lottery_status' => (($channel['lottery_status'] ?? 0) == 1 || $channel['lottery_status'] == true),
             'lottery_ticket_enabled' => (($channel['lottery_ticket_enabled'] ?? 0) == 1),
             'status_machine' => (($channel['status_machine'] ?? 0) == 1 || $channel['status_machine'] == true),
