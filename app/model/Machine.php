@@ -70,6 +70,7 @@ use support\Cache;
  * @property int control_type 工控类型
  * @property int correct_rate 确率
  * @property int is_special 是否特仕机
+ * @property int min_vip_level_id 最低VIP等级限制(0=不限制)
  * @property string last_game_at 最後遊戲時間
  * @property string last_point_at 最後上下分時間
  * @property string last_keep_at 最後保留時間
