@@ -114,6 +114,45 @@ class PlayerController
 
         $todayScore     = (float) bcadd((string)$todayScore, (string)$todayMachineBet, 2);
         $yesterdayScore = (float) bcadd((string)$yesterdayScore, (string)$yesterdayMachineBet, 2);
+
+        // 本周/本月打码量区间（与 playerInfo 一致：周一08:00 ~ 下周一08:00、每月1号08:00 ~ 下月1号08:00）
+        // 归属按「业务日」走：凌晨08:00前仍算前一天，周/月跟着该业务日所属周期
+        $bizDate = $now->gte($today8am) ? $today8am->copy() : $yesterday8am->copy();
+        $weekStart = $bizDate->copy()->startOfWeek()->setTime(8, 0, 0);
+        $weekEnd = $weekStart->copy()->addWeek();
+        $monthStart = $bizDate->copy()->startOfMonth()->setTime(8, 0, 0);
+        $monthEnd = $monthStart->copy()->addMonth();
+
+        // 本周线上游戏打码量（PlayGameRecord.bet）
+        $weekScore = PlayGameRecord::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $weekStart->toDateTimeString())
+            ->where('created_at', '<', $weekEnd->toDateTimeString())
+            ->sum('bet');
+
+        // 本月线上游戏打码量（PlayGameRecord.bet）
+        $monthScore = PlayGameRecord::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $monthStart->toDateTimeString())
+            ->where('created_at', '<', $monthEnd->toDateTimeString())
+            ->sum('bet');
+
+        // 本周实体机台打码量（PlayerGameLog.chip_amount）
+        $weekMachineBet = PlayerGameLog::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $weekStart->toDateTimeString())
+            ->where('created_at', '<', $weekEnd->toDateTimeString())
+            ->sum('chip_amount');
+
+        // 本月实体机台打码量（PlayerGameLog.chip_amount）
+        $monthMachineBet = PlayerGameLog::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $monthStart->toDateTimeString())
+            ->where('created_at', '<', $monthEnd->toDateTimeString())
+            ->sum('chip_amount');
+
+        $weekScore  = (float) bcadd((string)$weekScore, (string)$weekMachineBet, 2);
+        $monthScore = (float) bcadd((string)$monthScore, (string)$monthMachineBet, 2);
         // ---------------------------------------- VIP 相關 ----------------------------------------
         $vipLevel = $player->vipLevel()->first();
         $currentPeriod = $player->currentVipPeriod()->first();
@@ -213,6 +252,8 @@ class PlayerController
                 'storeName' => $storeName,
                 'todayScore' => self::formatAmount($todayScore),
                 'yesterdayScore' => self::formatAmount($yesterdayScore),
+                'weekScore' => self::formatAmount($weekScore),   // 本周打码量（周一08:00起）
+                'monthScore' => self::formatAmount($monthScore), // 本月打码量（每月1号08:00起）
                 'createdAt' => $player->created_at,
                 'available_points' => (int)\app\service\PlayerPointsService::getPlayerPoints($player->id)['available_points'],
             ],
