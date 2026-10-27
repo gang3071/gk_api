@@ -1802,41 +1802,86 @@ LUA;
         $totalPoints = 0;
 
         try {
-            // 1. 查询昨天所有有积分变动的玩家
-            // 从 player_points 表查询有 updated_at 在昨天的记录
-            $players = PlayerPoints::query()
-                ->whereBetween('updated_at', [$startDate, $endDate])
-                ->get();
+            $redis = Redis::connection()->client();
 
-            if ($players->isEmpty()) {
-                self::log()->info('[积分汇总] 无积分变动的玩家', ['date' => $date]);
+            // 1. 扫描 Redis 获取当日有打码积分的玩家 ID
+            // 以 player_points_betting_daily:{date}:* 为准，不依赖 updated_at
+            // 原因：脏数据可能在午夜后才同步落库，导致 updated_at 变成今天而被遗漏
+            $keyPrefix = 'gk_api:player_points_betting_daily:' . $date . ':';
+            $pattern = $keyPrefix . '*';
+            $playerIds = [];
+            $cursor = 0;
+
+            do {
+                $result = $redis->scan($cursor, $pattern, 500);
+                if ($result === false) {
+                    break;
+                }
+                [$cursor, $keys] = (is_array($result) && count($result) === 2)
+                    ? $result
+                    : [0, []];
+
+                foreach ($keys as $key) {
+                    $playerId = (int)substr($key, strlen($keyPrefix));
+                    if ($playerId > 0) {
+                        $playerIds[] = $playerId;
+                    }
+                }
+            } while ($cursor != 0);
+
+            $playerIds = array_values(array_unique($playerIds));
+
+            if (empty($playerIds)) {
+                self::log()->info('[积分汇总] 无打码积分玩家', ['date' => $date]);
                 return 0;
             }
 
-            self::log()->info('[积分汇总] 找到有积分变动的玩家', [
-                'count' => $players->count(),
+            self::log()->info('[积分汇总] 找到有打码积分的玩家', [
+                'count' => count($playerIds),
+                'date'  => $date,
             ]);
 
-            // 2. 为每个玩家创建汇总记录
-            $redis = Redis::connection()->client();
-            foreach ($players as $playerPoints) {
-                try {
-                    // 检查是否已存在汇总记录（防止重复）
-                    $batchId = "daily_{$date}_{$playerPoints->player_id}";
-                    $existing = PlayerPointsRecord::where('batch_id', $batchId)->first();
+            // 2. 批量加载 MySQL 积分记录（避免 N+1）
+            $playerPointsMap = PlayerPoints::query()
+                ->whereIn('player_id', $playerIds)
+                ->get()
+                ->keyBy('player_id');
 
-                    if ($existing) {
+            // 3. 为每个玩家创建汇总记录
+            foreach ($playerIds as $playerId) {
+                try {
+                    $batchId = "daily_{$date}_{$playerId}";
+
+                    // 检查是否已存在汇总记录（防止重复执行）
+                    if (PlayerPointsRecord::where('batch_id', $batchId)->exists()) {
                         self::log()->debug('[积分汇总] 跳过已汇总的玩家', [
-                            'player_id' => $playerPoints->player_id,
-                            'batch_id' => $batchId,
+                            'player_id' => $playerId,
+                            'batch_id'  => $batchId,
                         ]);
                         continue;
                     }
 
-                    // 从 Redis 获取实时积分
-                    $redisPoints = self::getPlayerPoints($playerPoints->player_id);
+                    // 从 Redis 读取当日打码积分
+                    $bettingPoints = round(floatval($redis->get($keyPrefix . $playerId) ?: 0), 4);
+                    if ($bettingPoints <= 0) {
+                        continue;
+                    }
 
-                    // ✅ 使用乐观锁同步 Redis 数据到 MySQL
+                    // 从 Redis 获取实时积分余额
+                    $redisPoints = self::getPlayerPoints($playerId);
+
+                    // 获取或创建 MySQL 积分记录（取 department_id）
+                    $playerPoints = $playerPointsMap->get($playerId);
+                    if (!$playerPoints) {
+                        $playerInfo = self::getPlayerInfoCached($playerId);
+                        if (!$playerInfo) {
+                            self::log()->warning('[积分汇总] 玩家不存在，跳过', ['player_id' => $playerId]);
+                            continue;
+                        }
+                        $playerPoints = PlayerPoints::getOrCreate($playerId, $playerInfo['department_id']);
+                    }
+
+                    // 同步 Redis → MySQL（如有差异）
                     if ($redisPoints['total_points'] != $playerPoints->total_points ||
                         $redisPoints['available_points'] != $playerPoints->available_points) {
 
@@ -1844,65 +1889,57 @@ LUA;
                         $affected = PlayerPoints::where('id', $playerPoints->id)
                             ->where('version', $currentVersion)
                             ->update([
-                                'total_points' => $redisPoints['total_points'],
+                                'total_points'     => $redisPoints['total_points'],
                                 'available_points' => $redisPoints['available_points'],
-                                'frozen_points' => $redisPoints['frozen_points'],
-                                'used_points' => $redisPoints['used_points'],
-                                'version' => $currentVersion + 1,
-                                'updated_at' => date('Y-m-d H:i:s'),
+                                'frozen_points'    => $redisPoints['frozen_points'],
+                                'used_points'      => $redisPoints['used_points'],
+                                'version'          => $currentVersion + 1,
+                                'updated_at'       => date('Y-m-d H:i:s'),
                             ]);
 
                         if ($affected > 0) {
                             self::log()->debug('[积分汇总] 同步Redis到MySQL', [
-                                'player_id' => $playerPoints->player_id,
+                                'player_id'    => $playerId,
                                 'total_points' => $redisPoints['total_points'],
                             ]);
                         } else {
-                            self::log()->warning('[积分汇总] 乐观锁冲突，跳过同步', [
-                                'player_id' => $playerPoints->player_id,
-                            ]);
+                            self::log()->warning('[积分汇总] 乐观锁冲突，跳过同步', ['player_id' => $playerId]);
                         }
                     }
 
-                    // 从 Redis 读取当日打码积分累计（由 addPointsFromBetting 写入）
-                    $dailyBettingKey = 'gk_api:player_points_betting_daily:' . $date . ':' . $playerPoints->player_id;
-                    $bettingPoints = round(floatval($redis->get($dailyBettingKey) ?: 0), 4);
+                    // 写入打码汇总记录（每日一条）
+                    PlayerPointsRecord::query()->create([
+                        'player_id'     => $playerId,
+                        'department_id' => $playerPoints->department_id,
+                        'type'          => PlayerPointsRecord::TYPE_BETTING_SUMMARY,
+                        'source'        => PlayerPointsRecord::SOURCE_BETTING_SUMMARY,
+                        'points'        => $bettingPoints,
+                        'points_before' => 0,
+                        'points_after'  => $redisPoints['available_points'],
+                        'remark'        => $date . ' 打码汇总',
+                        'batch_id'      => $batchId,
+                        'created_at'    => $date . ' 23:59:59',
+                    ]);
 
-                    if ($bettingPoints > 0) {
-                        // 写入打码汇总记录（每日一条）
-                        PlayerPointsRecord::query()->create([
-                            'player_id'     => $playerPoints->player_id,
-                            'department_id' => $playerPoints->department_id,
-                            'type'          => PlayerPointsRecord::TYPE_BETTING_SUMMARY,
-                            'source'        => PlayerPointsRecord::SOURCE_BETTING_SUMMARY,
-                            'points'        => $bettingPoints,
-                            'points_before' => 0,
-                            'points_after'  => $redisPoints['available_points'],
-                            'remark'        => $date . ' 打码汇总',
-                            'batch_id'      => $batchId,
-                            'created_at'    => $date . ' 23:59:59',
-                        ]);
-                        $totalPoints += $bettingPoints;
-
-                        self::log()->info('[积分汇总] 写入打码汇总记录', [
-                            'player_id'      => $playerPoints->player_id,
-                            'betting_points' => $bettingPoints,
-                            'batch_id'       => $batchId,
-                        ]);
-                    }
-
+                    $totalPoints += $bettingPoints;
                     $count++;
+
+                    self::log()->info('[积分汇总] 写入打码汇总记录', [
+                        'player_id'      => $playerId,
+                        'betting_points' => $bettingPoints,
+                        'batch_id'       => $batchId,
+                    ]);
 
                 } catch (Exception $e) {
                     self::log()->error('[积分汇总] 处理玩家失败', [
-                        'player_id' => $playerPoints->player_id,
-                        'error' => $e->getMessage(),
+                        'player_id' => $playerId,
+                        'error'     => $e->getMessage(),
                     ]);
                 }
             }
 
             self::log()->info('[积分汇总] 每日汇总完成', [
-                'date' => $date,
+                'date'         => $date,
                 'player_count' => $count,
                 'total_points' => $totalPoints,
             ]);
@@ -1911,7 +1948,7 @@ LUA;
 
         } catch (Exception $e) {
             self::log()->error('[积分汇总] 汇总失败', [
-                'date' => $date,
+                'date'  => $date,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
