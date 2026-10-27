@@ -184,7 +184,24 @@ class PlayerPointsService
                 'player_id' => $playerId,
                 'points' => $totalPointsEarned,
             ]);
-            $result = self::incrementPointsByLua($playerId, $totalPointsEarned);
+            try {
+                $result = self::incrementPointsByLua($playerId, $totalPointsEarned);
+            } catch (Exception $e) {
+                // 步骤5已消耗每日限额，步骤6失败需回滚，否则重试时限额被永久浪费
+                if ($dailyLimit > 0) {
+                    try {
+                        $dailyKey = 'gk_api:player_points_daily:' . date('Ymd') . ':' . $playerId;
+                        $redis->incrByFloat($dailyKey, -$totalPointsEarned);
+                    } catch (Exception $rollbackEx) {
+                        self::log()->error('[积分] 回滚每日限额失败', [
+                            'player_id' => $playerId,
+                            'points'    => $totalPointsEarned,
+                            'error'     => $rollbackEx->getMessage(),
+                        ]);
+                    }
+                }
+                throw $e;
+            }
             self::log()->debug('[积分] Lua累加返回', [
                 'player_id' => $playerId,
                 'result' => $result,
@@ -204,7 +221,8 @@ class PlayerPointsService
                 $redis->incrByFloat($dailyBettingKey, $totalPointsEarned);
                 $redis->expire($dailyBettingKey, 86400 * 7);
             } catch (Exception $e) {
-                self::log()->warning('[积分] 累加当日打码积分Key失败（不影响积分累加）', [
+                // 此处失败会导致 dailySummary 永久遗漏该玩家的汇总记录（积分本身已正确入账）
+                self::log()->error('[积分] 累加当日打码积分Key失败，dailySummary将遗漏该玩家', [
                     'player_id' => $playerId,
                     'error'     => $e->getMessage(),
                 ]);

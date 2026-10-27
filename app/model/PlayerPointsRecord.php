@@ -65,6 +65,7 @@ class PlayerPointsRecord extends Model
         'admin_id',
         'admin_name',
         'admin_ip',
+        'created_at',
     ];
 
     protected $casts = [
