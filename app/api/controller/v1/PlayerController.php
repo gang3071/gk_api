@@ -242,6 +242,45 @@ class PlayerController
         $todayGameBetAmount = (float) bcadd((string)$todayGameBetAmount, (string)$todayMachineBetAmount, 2);
         $yesterdayGameBetAmount = (float) bcadd((string)$yesterdayGameBetAmount, (string)$yesterdayMachineBetAmount, 2);
 
+        // 本周/本月打码量区间（与 Leaderboard 口径一致：周一08:00 ~ 下周一08:00、每月1号08:00 ~ 下月1号08:00）
+        // 归属按「业务日」走：凌晨08:00前仍算前一天，周/月跟着该业务日所属周期
+        $bizDate = $now->gte($today8am) ? $today8am->copy() : $yesterday8am->copy();
+        $weekStart = $bizDate->copy()->startOfWeek()->setTime(8, 0, 0);
+        $weekEnd = $weekStart->copy()->addWeek();
+        $monthStart = $bizDate->copy()->startOfMonth()->setTime(8, 0, 0);
+        $monthEnd = $monthStart->copy()->addMonth();
+
+        // 本周电子游戏打码量
+        $weekGameBetAmount = PlayGameRecord::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $weekStart->toDateTimeString())
+            ->where('created_at', '<', $weekEnd->toDateTimeString())
+            ->sum('bet');
+
+        // 本月电子游戏打码量
+        $monthGameBetAmount = PlayGameRecord::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $monthStart->toDateTimeString())
+            ->where('created_at', '<', $monthEnd->toDateTimeString())
+            ->sum('bet');
+
+        // 本周实体机台打码量
+        $weekMachineBetAmount = PlayerGameLog::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $weekStart->toDateTimeString())
+            ->where('created_at', '<', $weekEnd->toDateTimeString())
+            ->sum('chip_amount');
+
+        // 本月实体机台打码量
+        $monthMachineBetAmount = PlayerGameLog::query()
+            ->where('player_id', $player->id)
+            ->where('created_at', '>=', $monthStart->toDateTimeString())
+            ->where('created_at', '<', $monthEnd->toDateTimeString())
+            ->sum('chip_amount');
+
+        $weekGameBetAmount = (float) bcadd((string)$weekGameBetAmount, (string)$weekMachineBetAmount, 2);
+        $monthGameBetAmount = (float) bcadd((string)$monthGameBetAmount, (string)$monthMachineBetAmount, 2);
+
         // 反水池待领取总额 & 可领取额度
         $reverseWaterPoolPending = $player->player_extend->pending_cashback_amount ?? 0;
         $minClaimAmount = $vipLevel->min_claim_amount ?? 0;
@@ -361,6 +400,8 @@ class PlayerController
             'valid_lottery_ticket_count' => $validLotteryTicketCount, // 有效摸奖券数量
             'today_game_bet_amount' => $this->formatAmount($todayGameBetAmount), // 当天电子游戏打码量
             'yesterday_game_bet_amount' => $this->formatAmount($yesterdayGameBetAmount), // 昨日电子游戏打码量
+            'week_game_bet_amount' => $this->formatAmount($weekGameBetAmount), // 本周电子游戏打码量（周一08:00起）
+            'month_game_bet_amount' => $this->formatAmount($monthGameBetAmount), // 本月电子游戏打码量（每月1号08:00起）
             'reverse_water_pool_pending' => $this->formatAmount($reverseWaterPoolPending), // 反水池待领取总额
             'reverse_water_pool_claimable' => $this->formatAmount($reverseWaterPoolClaimable), // 反水池可领取额度
             'reverse_water_pool_remaining' => $this->formatAmount($reverseWaterPoolRemaining), // 剩余待领取金额（不足最低额部分）
