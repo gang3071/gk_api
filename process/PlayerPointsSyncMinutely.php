@@ -40,7 +40,7 @@ class PlayerPointsSyncMinutely
             $startTime = microtime(true);
 
             // 调用脏数据同步服务（批量大小100）
-            $count = PlayerPointsService::syncDirtyPlayersToMySQL(100);
+            $count = PlayerPointsService::syncDirtyPlayersToMySQL();
 
             $duration = round((microtime(true) - $startTime) * 1000, 2);
 

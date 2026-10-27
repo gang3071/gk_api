@@ -162,28 +162,21 @@ class PlayerPointsService
                 }
             }
 
-            // 5. 检查每日上限
+            // 5. 原子检查并记录每日上限（Lua 保证检查+累加不可分割，防并发超限）
             $config = config('points_config');
             $dailyLimit = $config['daily_limit'] ?? 0;
             $redis = Redis::connection()->client();
-            $dailyKey = 'gk_api:player_points_daily:' . date('Ymd') . ':' . $playerId;
 
-            if ($dailyLimit > 0) {
-                $todayPoints = floatval($redis->get($dailyKey) ?: 0);
-
-                if ($todayPoints + $totalPointsEarned > $dailyLimit) {
-                    self::log()->info('[积分] 今日积分已达上限', [
-                        'player_id' => $playerId,
-                        'today_points' => $todayPoints,
-                        'daily_limit' => $dailyLimit,
-                    ]);
-
-                    return [
-                        'points_earned' => 0,
-                        'total_points' => 0,
-                        'available_points' => 0,
-                    ];
-                }
+            if ($dailyLimit > 0 && !self::checkAndRecordDailyPoints($playerId, $totalPointsEarned)) {
+                self::log()->info('[积分] 今日积分已达上限', [
+                    'player_id'   => $playerId,
+                    'daily_limit' => $dailyLimit,
+                ]);
+                return [
+                    'points_earned'   => 0,
+                    'total_points'    => 0,
+                    'available_points' => 0,
+                ];
             }
 
             // 6. Redis Lua 原子累加积分
@@ -205,24 +198,11 @@ class PlayerPointsService
             // 8. 标记玩家需要同步到 MySQL
             self::markPlayerAsDirty($playerId);
 
-            // 9. 累加今日积分计数（放在最后，失败不影响玩家利益）
-            try {
-                if ($dailyLimit > 0) {
-                    $redis->incrByFloat($dailyKey, $totalPointsEarned);
-                    $redis->expire($dailyKey, 86400 * 2);
-                }
-            } catch (Exception $e) {
-                self::log()->warning('[积分] 今日计数更新失败（不影响积分累加）', [
-                    'player_id' => $playerId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
             // 10. 累加当日打码积分到 Redis（供 dailySummary 写汇总记录用）
             try {
                 $dailyBettingKey = 'gk_api:player_points_betting_daily:' . $createdAt->toDateString() . ':' . $playerId;
                 $redis->incrByFloat($dailyBettingKey, $totalPointsEarned);
-                $redis->expire($dailyBettingKey, 86400 * 3);
+                $redis->expire($dailyBettingKey, 86400 * 7);
             } catch (Exception $e) {
                 self::log()->warning('[积分] 累加当日打码积分Key失败（不影响积分累加）', [
                     'player_id' => $playerId,
@@ -503,7 +483,7 @@ class PlayerPointsService
     public static function calculatePoints(
         float $betAmount,
         int $vipLevel,
-        string $platform,
+        int $platform,
         int $departmentId
     ): float {
         // 從快取讀取 VIP 等級積分比例，避免高頻打碼時重複查詢資料庫
@@ -1613,7 +1593,7 @@ LUA;
      * @param int $batchSize 每次同步的玩家数量
      * @return int 同步的玩家数
      */
-    public static function syncDirtyPlayersToMySQL(int $batchSize = 100): int
+    public static function syncDirtyPlayersToMySQL(int $batchSize = 500): int
     {
         $redis = Redis::connection()->client();
         $key = 'gk_api:player_points:dirty';
@@ -1789,13 +1769,9 @@ LUA;
     public static function dailySummary(?string $date = null): int
     {
         $date = $date ?? Carbon::yesterday()->toDateString();
-        $startDate = Carbon::parse($date)->startOfDay();
-        $endDate = Carbon::parse($date)->endOfDay();
 
         self::log()->info('[积分汇总] 开始每日汇总', [
             'date' => $date,
-            'start' => $startDate->toDateTimeString(),
-            'end' => $endDate->toDateTimeString(),
         ]);
 
         $count = 0;
@@ -2070,11 +2046,13 @@ LUA;
                 // 获取或创建 MySQL 记录
                 $playerPoints = PlayerPoints::getOrCreate($playerId, $player->department_id ?? 0);
 
-                // 同步数据（Redis Hash 中部分字段可能不存在，用 isset 防御）
-                $playerPoints->total_points = round(floatval($data['total_points'] ?? 0), 4);
-                $playerPoints->available_points = round(floatval($data['available_points'] ?? 0), 4);
-                $playerPoints->frozen_points = round(floatval(isset($data['frozen_points']) ? $data['frozen_points'] : 0), 4);
-                $playerPoints->used_points = round(floatval(isset($data['used_points']) ? $data['used_points'] : 0), 4);
+                // 同步数据时用 max() 保护：Redis Hash 字段缺失时值为 0，
+                // 若直接赋值会把 MySQL 里已有的积分清零。
+                // 只在 Redis 值更大时才覆盖，确保数据只增不减。
+                $playerPoints->total_points     = max($playerPoints->total_points,     round(floatval($data['total_points']     ?? 0), 4));
+                $playerPoints->available_points = max($playerPoints->available_points, round(floatval($data['available_points'] ?? 0), 4));
+                $playerPoints->frozen_points    = round(floatval($data['frozen_points'] ?? $playerPoints->frozen_points), 4);
+                $playerPoints->used_points      = max($playerPoints->used_points,      round(floatval($data['used_points']      ?? 0), 4));
                 $playerPoints->save();
 
                 $count++;
