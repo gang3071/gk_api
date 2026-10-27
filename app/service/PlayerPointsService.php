@@ -2046,13 +2046,23 @@ LUA;
                 // 获取或创建 MySQL 记录
                 $playerPoints = PlayerPoints::getOrCreate($playerId, $player->department_id ?? 0);
 
-                // 同步数据时用 max() 保护：Redis Hash 字段缺失时值为 0，
-                // 若直接赋值会把 MySQL 里已有的积分清零。
-                // 只在 Redis 值更大时才覆盖，确保数据只增不减。
-                $playerPoints->total_points     = max($playerPoints->total_points,     round(floatval($data['total_points']     ?? 0), 4));
-                $playerPoints->available_points = max($playerPoints->available_points, round(floatval($data['available_points'] ?? 0), 4));
-                $playerPoints->frozen_points    = round(floatval($data['frozen_points'] ?? $playerPoints->frozen_points), 4);
-                $playerPoints->used_points      = max($playerPoints->used_points,      round(floatval($data['used_points']      ?? 0), 4));
+                // 同步数据时用 array_key_exists 判断字段是否真实存在于 Redis Hash：
+                // - 字段存在（含值为0）：以 Redis 为准（Redis 是实时源）
+                // - 字段不存在（Hash 部分写入场景）：保留 MySQL 现有值，防止意外清零
+                // 注意：total_points/used_points 只增不减可用 max()，
+                //       available_points/frozen_points 可减少，必须用 isset 判断
+                $playerPoints->total_points     = array_key_exists('total_points',     $data)
+                    ? max($playerPoints->total_points, round(floatval($data['total_points']), 4))
+                    : $playerPoints->total_points;
+                $playerPoints->available_points = array_key_exists('available_points', $data)
+                    ? round(floatval($data['available_points']), 4)
+                    : $playerPoints->available_points;
+                $playerPoints->frozen_points    = array_key_exists('frozen_points',    $data)
+                    ? round(floatval($data['frozen_points']), 4)
+                    : $playerPoints->frozen_points;
+                $playerPoints->used_points      = array_key_exists('used_points',      $data)
+                    ? max($playerPoints->used_points, round(floatval($data['used_points']), 4))
+                    : $playerPoints->used_points;
                 $playerPoints->save();
 
                 $count++;
