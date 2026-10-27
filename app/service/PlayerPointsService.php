@@ -2005,18 +2005,13 @@ LUA;
     {
         $count = 0;
 
-        // ✅ 性能优化：先提取所有玩家ID，批量查询（避免N+1）
+        // 提取有效玩家ID（Hash 存在才算）
         $playerIds = [];
-        $playerDataMap = [];
 
         foreach ($keys as $key) {
             $playerId = (int)str_replace(self::REDIS_KEY_PREFIX, '', $key);
-            if ($playerId > 0) {
-                $data = $redis->hGetAll($key);
-                if (!empty($data)) {
-                    $playerIds[] = $playerId;
-                    $playerDataMap[$playerId] = $data;
-                }
+            if ($playerId > 0 && $redis->exists($key)) {
+                $playerIds[] = $playerId;
             }
         }
 
@@ -2041,28 +2036,21 @@ LUA;
                     continue;
                 }
 
-                $data = $playerDataMap[$playerId];
-
                 // 获取或创建 MySQL 记录
                 $playerPoints = PlayerPoints::getOrCreate($playerId, $player->department_id ?? 0);
 
-                // 同步数据时用 array_key_exists 判断字段是否真实存在于 Redis Hash：
-                // - 字段存在（含值为0）：以 Redis 为准（Redis 是实时源）
-                // - 字段不存在（Hash 部分写入场景）：保留 MySQL 现有值，防止意外清零
-                // 注意：total_points/used_points 只增不减可用 max()，
-                //       available_points/frozen_points 可减少，必须用 isset 判断
-                $playerPoints->total_points     = array_key_exists('total_points',     $data)
-                    ? max($playerPoints->total_points, round(floatval($data['total_points']), 4))
-                    : $playerPoints->total_points;
-                $playerPoints->available_points = array_key_exists('available_points', $data)
-                    ? round(floatval($data['available_points']), 4)
-                    : $playerPoints->available_points;
-                $playerPoints->frozen_points    = array_key_exists('frozen_points',    $data)
-                    ? round(floatval($data['frozen_points']), 4)
-                    : $playerPoints->frozen_points;
-                $playerPoints->used_points      = array_key_exists('used_points',      $data)
-                    ? max($playerPoints->used_points, round(floatval($data['used_points']), 4))
-                    : $playerPoints->used_points;
+                // 用 getPlayerPoints() 实时读取 Redis（而非批量预取的快照）
+                // 原因：批量 hGetAll 是 T1 时刻的快照，save() 在 T3 执行时
+                // 分钟同步可能已在 T2 写入更新数据（如玩家消费积分），
+                // 快照会把已扣的 available_points 还回去，产生 ~1分钟的虚假积分
+                $live = self::getPlayerPoints($playerId);
+
+                // total_points/used_points 只增不减，用 max() 防止快照滞后回退
+                // available_points/frozen_points 可双向变化，直接取实时值
+                $playerPoints->total_points     = max($playerPoints->total_points,  $live['total_points']);
+                $playerPoints->available_points = $live['available_points'];
+                $playerPoints->frozen_points    = $live['frozen_points'];
+                $playerPoints->used_points      = max($playerPoints->used_points,   $live['used_points']);
                 $playerPoints->save();
 
                 $count++;
