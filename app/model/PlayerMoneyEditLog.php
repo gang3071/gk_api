@@ -69,7 +69,7 @@ class PlayerMoneyEditLog extends Model
     const REVERSE_WATER = 19; // 电子游戏反水
     const REVERSE_WATER_POOL = 20; // 反水池反水领取
     const VIP_DAILY_LOGIN_BONUS = 21; // VIP每日登录奖励
-    const LEADERBOARD_GIVE = 19; // 排行榜奖励
+
     protected $table = 'player_money_edit_log';
 
     /**
