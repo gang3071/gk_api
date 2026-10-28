@@ -5,6 +5,7 @@ namespace app\service;
 use app\model\LeaderboardEntry;
 use app\model\Notice;
 use app\model\Player;
+use app\model\PlayerDeliveryRecord;
 use app\model\PlayerMoneyEditLog;
 use support\Db;
 use support\Log;
@@ -324,19 +325,57 @@ class LeaderboardService
             $content = json_decode((string)$notice->content, true) ?: [];
             $entryId = (int)($content['entry_id'] ?? $notice->source_id ?? 0);
             $amount = (float)($content['amount'] ?? 0);
+            $entry = null;
 
             if ($entryId > 0) {
-                $entry = LeaderboardEntry::query()->where('id', $entryId)->first(['prize_amount']);
+                $entry = LeaderboardEntry::query()
+                    ->where('id', $entryId)
+                    ->first(['prize_amount', 'grant_status']);
+
                 if ($entry) {
                     $amount = (float)$entry->prize_amount;
                 }
             }
 
             $status = (int)$notice->status;
+            $claimed = $status === 1;
+
+            if ($entry && (int)$entry->grant_status === LeaderboardEntry::GRANT_STATUS_ISSUED) {
+                $claimed = true;
+
+                // 舊版已自動入帳的通知，補標成已領取
+                if ($status === 0) {
+                    Notice::query()->where('id', $notice->id)->update([
+                        'status'     => 1,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    $status = 1;
+                }
+            }
+
+            if (!$claimed) {
+                $tradeNos = ['LBRN' . $notice->id];
+                if ($entryId > 0) {
+                    $tradeNos[] = 'LBR' . $entryId;
+                }
+
+                $claimed = PlayerDeliveryRecord::query()
+                    ->where('tradeno', 'LBRN' . $notice->id)
+                    ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
+                    ->exists();
+
+                if (!$claimed) {
+                    $claimed = PlayerMoneyEditLog::query()
+                        ->whereIn('tradeno', $tradeNos)
+                        ->withTrashed()
+                        ->exists();
+                }
+            }
+
             $list[] = [
                 'notice_id'        => (int)$notice->id,
                 'status'           => $status,
-                'claimable'        => $status === 0,
+                'claimable'        => !$claimed,
                 'amount'           => $amount,
                 'rank'             => (int)($content['rank'] ?? 0),
                 'leaderboard_name' => (string)($content['leaderboard_name'] ?? ''),
@@ -394,12 +433,22 @@ class LeaderboardService
         $tradeNo = 'LBRN' . $notice->id;
         $ts = date('Y-m-d H:i:s');
 
-        $existingLog = PlayerMoneyEditLog::query()
+        $existingLog = PlayerDeliveryRecord::query()
             ->where('tradeno', $tradeNo)
+            ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
+            ->exists();
+
+        $legacyTradeNos = [$tradeNo];
+        if ($entryId > 0) {
+            $legacyTradeNos[] = 'LBR' . $entryId;
+        }
+
+        $legacyLog = PlayerMoneyEditLog::query()
+            ->whereIn('tradeno', $legacyTradeNos)
             ->withTrashed()
             ->exists();
 
-        if ($existingLog) {
+        if ($existingLog || $legacyLog) {
             self::markRewardClaimed($notice->id, $entryId, $ts);
             return [
                 'notice_id'       => (int)$notice->id,
@@ -464,30 +513,27 @@ class LeaderboardService
         }
 
         try {
-            $log = new PlayerMoneyEditLog();
-            $log->player_id = $player->id;
-            $log->department_id = $player->department_id;
-            $log->type = PlayerMoneyEditLog::TYPE_INCREASE;
-            $log->action = PlayerMoneyEditLog::LEADERBOARD_GIVE;
-            $log->tradeno = $tradeNo;
-            $log->currency = $player->currency ?: 'TWD';
-            $log->money = $amount;
-            $log->origin_money = $before;
-            $log->after_money = $after;
-            $log->inmoney = $amount;
-            $log->subsidy_money = 0;
-            $log->bet_multiple = 0;
-            $log->bet_num = 0;
-            $log->user_id = (int)($content['admin_id'] ?? 0);
-            $log->user_name = (string)($content['admin_name'] ?? '');
-            $log->remark = sprintf(
+            $delivery = new PlayerDeliveryRecord();
+            $delivery->player_id = $player->id;
+            $delivery->department_id = $player->department_id;
+            $delivery->type = PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD;
+            $delivery->source = 'leaderboard_reward';
+            $delivery->target = $entryId > 0 ? 'leaderboard_entry' : 'notice';
+            $delivery->target_id = $entryId > 0 ? $entryId : $notice->id;
+            $delivery->amount = $amount;
+            $delivery->amount_before = $before;
+            $delivery->amount_after = $after;
+            $delivery->tradeno = $tradeNo;
+            $delivery->user_id = (int)($content['admin_id'] ?? 0);
+            $delivery->user_name = (string)($content['admin_name'] ?? '');
+            $delivery->remark = (string)($content['text'] ?? sprintf(
                 '%s 第%d名',
                 $content['leaderboard_name'] ?? '',
                 (int)($content['rank'] ?? 0)
-            );
-            $log->created_at = $ts;
-            $log->updated_at = $ts;
-            $log->save();
+            ));
+            $delivery->created_at = $ts;
+            $delivery->updated_at = $ts;
+            $delivery->save();
         } catch (\Throwable $e) {
             $rolledBack = false;
             try {

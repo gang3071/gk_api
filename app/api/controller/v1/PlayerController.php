@@ -4440,6 +4440,7 @@ class PlayerController
                 PlayerDeliveryRecord::TYPE_REVERSE_WATER_POOL,
                 PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS,
                 PlayerDeliveryRecord::TYPE_ACTIVITY_GIVE,
+                PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD,
             ])
             ->orderBy('id', 'desc');
 
@@ -4456,6 +4457,7 @@ class PlayerController
                 PlayerDeliveryRecord::TYPE_REVERSE_WATER_POOL => trans('reverse_water_pool', [], 'message'),
                 PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS => trans('vip_daily_login_bonus', [], 'message'),
                 PlayerDeliveryRecord::TYPE_ACTIVITY_GIVE => trans('activity_give', [], 'message'),
+                PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD => trans('leaderboard_reward', [], 'message'),
                 default => trans('other', [], 'message'),
             };
 
