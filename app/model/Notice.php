@@ -63,6 +63,7 @@ class Notice extends Model
     const TYPE_VIP_BIRTHDAY_BONUS = 24; // VIP生日礼金通知
     const TYPE_SERVICE_CALL = 25; // 设备服务铃呼叫
     const TYPE_DISH_ORDER = 26; // 餐點訂單
+    const TYPE_LEADERBOARD_REWARD = 27; // 排行榜獎勵待領取
 
     const RECEIVER_PLAYER = 1; // 玩家
     const RECEIVER_ADMIN = 2; // 总站

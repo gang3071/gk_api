@@ -107,6 +107,44 @@ class LeaderboardController
     }
 
     /**
+     * 我的排行榜獎勵列表
+     *
+     * @return Response
+     */
+    public function myRewards(): Response
+    {
+        $player = checkPlayer();
+
+        return jsonSuccessResponse('success', [
+            'list' => LeaderboardService::myRewards($player),
+        ]);
+    }
+
+    /**
+     * 領取排行榜獎勵
+     *
+     * @param Request $request
+     * @return Response
+     */
+    public function claim(Request $request): Response
+    {
+        $player = checkPlayer();
+        $noticeId = (int)($request->all()['notice_id'] ?? 0);
+
+        if ($noticeId <= 0) {
+            return jsonFailResponse(trans('notice_id', [], 'message'));
+        }
+
+        try {
+            $result = LeaderboardService::claimReward($player, $noticeId);
+
+            return jsonSuccessResponse('success', $result);
+        } catch (\Throwable $e) {
+            return jsonFailResponse($e->getMessage());
+        }
+    }
+
+    /**
      * VIP 排行（總榜，週榜 + 月榜）
      *
      * @param Request $request

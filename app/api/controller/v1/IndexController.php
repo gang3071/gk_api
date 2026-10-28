@@ -848,20 +848,28 @@ class IndexController
                 'has_receive' => $hasReceive,
             ];
         }
-        // 更新为已读状态
+        // 更新为已读状态（排行榜奖励保留未读，需玩家手动领取）
         Notice::where('status', 0)
             ->where('receiver', Notice::RECEIVER_PLAYER)
             ->where('is_private', 1)
             ->where('player_id', $player->id)
+            ->where('type', '!=', Notice::TYPE_LEADERBOARD_REWARD)
             ->whereNull('deleted_at')
             ->update([
                 'status' => 1
             ]);
-        
+
+        $unreadCount = Notice::where('status', 0)
+            ->where('receiver', Notice::RECEIVER_PLAYER)
+            ->where('is_private', 1)
+            ->where('player_id', $player->id)
+            ->whereNull('deleted_at')
+            ->count('*');
+
         // 发送邮件数量
         sendSocketMessage('player-' . $player->id, [
             'msg_type' => 'player_notice_num',
-            'notice_num' => 0,
+            'notice_num' => $unreadCount,
         ]);
         
         return jsonSuccessResponse('success', $list);
@@ -893,6 +901,11 @@ class IndexController
 
         if (empty($notice)) {
             return jsonFailResponse(trans('notice_not_found', [], 'message'));
+        }
+
+        if ($notice->type == Notice::TYPE_LEADERBOARD_REWARD) {
+            // 排行榜獎勵需透過 /leaderboard/claim 領取，標記已讀不處理
+            return jsonSuccessResponse('success');
         }
 
         // 处理礼金发放（未读状态才处理）

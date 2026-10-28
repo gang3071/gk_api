@@ -2,7 +2,13 @@
 
 namespace app\service;
 
+use app\model\LeaderboardEntry;
+use app\model\Notice;
+use app\model\Player;
+use app\model\PlayerDeliveryRecord;
+use app\model\PlayerMoneyEditLog;
 use support\Db;
+use support\Log;
 
 /**
  * 排行榜服務（玩家端，唯讀）
@@ -22,6 +28,9 @@ class LeaderboardService
 
     /** VIP 總榜：取前 N 名 */
     const VIP_TOP = 10;
+
+    /** VIP 排行榜開關（目前不做，保留程式） */
+    const VIP_ENABLED = false;
 
     /** VIP 總榜代碼（由 gk_admin 結算寫入） */
     const VIP_CODE_WEEKLY = 'vip_weekly';
@@ -184,6 +193,23 @@ class LeaderboardService
      */
     public static function vipRanking(int $departmentId): array
     {
+        if (!self::VIP_ENABLED) {
+            return [
+                'weekly'  => [
+                    'period_key' => null,
+                    'start_at'   => null,
+                    'end_at'     => null,
+                    'list'       => [],
+                ],
+                'monthly' => [
+                    'period_key' => null,
+                    'start_at'   => null,
+                    'end_at'     => null,
+                    'list'       => [],
+                ],
+            ];
+        }
+
         return [
             'weekly'  => self::vipBoard(self::VIP_CODE_WEEKLY),
             'monthly' => self::vipBoard(self::VIP_CODE_MONTHLY),
@@ -295,6 +321,314 @@ class LeaderboardService
         }
 
         return $result;
+    }
+
+    /**
+     * 我的排行榜獎勵（待領取＋已領取）
+     *
+     * @param Player $player
+     * @return array
+     */
+    public static function myRewards(Player $player): array
+    {
+        $notices = Notice::query()
+            ->where('player_id', $player->id)
+            ->where('type', Notice::TYPE_LEADERBOARD_REWARD)
+            ->where('receiver', Notice::RECEIVER_PLAYER)
+            ->whereNull('deleted_at')
+            ->orderBy('id', 'desc')
+            ->limit(50)
+            ->get();
+
+        $list = [];
+        foreach ($notices as $notice) {
+            $content = json_decode((string)$notice->content, true) ?: [];
+            $entryId = (int)($content['entry_id'] ?? $notice->source_id ?? 0);
+            $amount = (float)($content['amount'] ?? 0);
+            $entry = null;
+
+            if ($entryId > 0) {
+                $entry = LeaderboardEntry::query()
+                    ->where('id', $entryId)
+                    ->first(['prize_amount', 'grant_status']);
+
+                if ($entry) {
+                    $amount = (float)$entry->prize_amount;
+                }
+            }
+
+            $status = (int)$notice->status;
+            $claimed = $status === 1;
+
+            if ($entry && (int)$entry->grant_status === LeaderboardEntry::GRANT_STATUS_ISSUED) {
+                $claimed = true;
+
+                // 舊版已自動入帳的通知，補標成已領取
+                if ($status === 0) {
+                    Notice::query()->where('id', $notice->id)->update([
+                        'status'     => 1,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    $status = 1;
+                }
+            }
+
+            if (!$claimed) {
+                $tradeNos = ['LBRN' . $notice->id];
+                if ($entryId > 0) {
+                    $tradeNos[] = 'LBR' . $entryId;
+                }
+
+                $claimed = PlayerDeliveryRecord::query()
+                    ->where('tradeno', 'LBRN' . $notice->id)
+                    ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
+                    ->exists();
+
+                if (!$claimed) {
+                    $claimed = PlayerMoneyEditLog::query()
+                        ->whereIn('tradeno', $tradeNos)
+                        ->withTrashed()
+                        ->exists();
+                }
+            }
+
+            $list[] = [
+                'notice_id'        => (int)$notice->id,
+                'status'           => $status,
+                'claimable'        => !$claimed,
+                'amount'           => $amount,
+                'rank'             => (int)($content['rank'] ?? 0),
+                'leaderboard_name' => (string)($content['leaderboard_name'] ?? ''),
+                'text'             => (string)($content['text'] ?? $notice->content),
+                'created_at'       => (string)$notice->created_at,
+            ];
+        }
+
+        return $list;
+    }
+
+    /**
+     * 領取排行榜獎勵
+     *
+     * 由玩家點擊領取時呼叫；通知 status=0 代表尚未領取。
+     *
+     * @param Player $player
+     * @param int $noticeId
+     * @return array
+     */
+    public static function claimReward(Player $player, int $noticeId): array
+    {
+        $notice = Notice::query()
+            ->where('id', $noticeId)
+            ->where('player_id', $player->id)
+            ->where('type', Notice::TYPE_LEADERBOARD_REWARD)
+            ->where('receiver', Notice::RECEIVER_PLAYER)
+            ->whereNull('deleted_at')
+            ->first();
+
+        if (!$notice) {
+            throw new \RuntimeException('排行榜獎勵不存在');
+        }
+
+        $content = json_decode((string)$notice->content, true) ?: [];
+        $entryId = (int)($content['entry_id'] ?? $notice->source_id ?? 0);
+        $amount = (float)($content['amount'] ?? 0);
+
+        $entry = null;
+        if ($entryId > 0) {
+            $entry = LeaderboardEntry::query()
+                ->where('id', $entryId)
+                ->where('player_id', $player->id)
+                ->first();
+
+            if ($entry) {
+                $amount = (float)$entry->prize_amount;
+            }
+        }
+
+        if ($amount <= 0) {
+            throw new \RuntimeException('排行榜獎勵金額錯誤');
+        }
+
+        $tradeNo = 'LBRN' . $notice->id;
+        $ts = date('Y-m-d H:i:s');
+
+        $existingLog = PlayerDeliveryRecord::query()
+            ->where('tradeno', $tradeNo)
+            ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
+            ->exists();
+
+        $legacyTradeNos = [$tradeNo];
+        if ($entryId > 0) {
+            $legacyTradeNos[] = 'LBR' . $entryId;
+        }
+
+        $legacyLog = PlayerMoneyEditLog::query()
+            ->whereIn('tradeno', $legacyTradeNos)
+            ->withTrashed()
+            ->exists();
+
+        if ($existingLog || $legacyLog) {
+            self::markRewardClaimed($notice->id, $entryId, $ts);
+            return [
+                'notice_id'       => (int)$notice->id,
+                'amount'          => $amount,
+                'balance'         => WalletService::getBalance($player->id),
+                'already_claimed' => true,
+            ];
+        }
+
+        $claimed = Notice::query()
+            ->where('id', $notice->id)
+            ->where('status', 0)
+            ->update([
+                'status'     => 1,
+                'updated_at' => $ts,
+            ]);
+
+        if ($claimed === 0) {
+            return [
+                'notice_id'       => (int)$notice->id,
+                'amount'          => $amount,
+                'balance'         => WalletService::getBalance($player->id),
+                'already_claimed' => true,
+            ];
+        }
+
+        if ($entry) {
+            $entryClaimed = LeaderboardEntry::query()
+                ->where('id', $entry->id)
+                ->whereIn('grant_status', [
+                    LeaderboardEntry::GRANT_STATUS_UNISSUED,
+                    LeaderboardEntry::GRANT_STATUS_CLAIMABLE,
+                ])
+                ->update([
+                    'grant_status' => LeaderboardEntry::GRANT_STATUS_ISSUED,
+                    'granted_at'   => $ts,
+                    'updated_at'   => $ts,
+                ]);
+
+            if ($entryClaimed === 0) {
+                Notice::query()->where('id', $notice->id)->update([
+                    'status'     => 1,
+                    'updated_at' => $ts,
+                ]);
+
+                return [
+                    'notice_id'       => (int)$notice->id,
+                    'amount'          => $amount,
+                    'balance'         => WalletService::getBalance($player->id),
+                    'already_claimed' => true,
+                ];
+            }
+        }
+
+        try {
+            $before = WalletService::getBalance($player->id);
+            $result = WalletService::atomicIncrement($player->id, $amount);
+            $after = (float)($result['balance'] ?? bcadd((string)$before, (string)$amount, 2));
+        } catch (\Throwable $e) {
+            self::revertRewardClaim($notice->id, $entryId, $ts);
+            throw $e;
+        }
+
+        try {
+            $delivery = new PlayerDeliveryRecord();
+            $delivery->player_id = $player->id;
+            $delivery->department_id = $player->department_id;
+            $delivery->type = PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD;
+            $delivery->source = 'leaderboard_reward';
+            $delivery->target = $entryId > 0 ? 'leaderboard_entry' : 'notice';
+            $delivery->target_id = $entryId > 0 ? $entryId : $notice->id;
+            $delivery->amount = $amount;
+            $delivery->amount_before = $before;
+            $delivery->amount_after = $after;
+            $delivery->tradeno = $tradeNo;
+            $delivery->user_id = (int)($content['admin_id'] ?? 0);
+            $delivery->user_name = (string)($content['admin_name'] ?? '');
+            $delivery->remark = (string)($content['text'] ?? sprintf(
+                '%s 第%d名',
+                $content['leaderboard_name'] ?? '',
+                (int)($content['rank'] ?? 0)
+            ));
+            $delivery->created_at = $ts;
+            $delivery->updated_at = $ts;
+            $delivery->save();
+        } catch (\Throwable $e) {
+            $rolledBack = false;
+            try {
+                $rollbackResult = WalletService::atomicDecrement($player->id, $amount);
+                $rolledBack = (bool)($rollbackResult['ok'] ?? false);
+            } catch (\Throwable $rollbackError) {
+                Log::error('[排行榜領取] 退款失敗，需人工核對', [
+                    'notice_id' => $notice->id,
+                    'player_id' => $player->id,
+                    'amount'    => $amount,
+                    'error'     => $rollbackError->getMessage(),
+                ]);
+            }
+
+            if ($rolledBack) {
+                self::revertRewardClaim($notice->id, $entryId, $ts);
+            }
+
+            throw $e;
+        }
+
+        return [
+            'notice_id'       => (int)$notice->id,
+            'amount'          => $amount,
+            'balance'         => $after,
+            'already_claimed' => false,
+        ];
+    }
+
+    /**
+     * 補標記領取狀態
+     *
+     * @param int $noticeId
+     * @param int $entryId
+     * @param string $ts
+     * @return void
+     */
+    private static function markRewardClaimed(int $noticeId, int $entryId, string $ts): void
+    {
+        Notice::query()->where('id', $noticeId)->update([
+            'status'     => 1,
+            'updated_at' => $ts,
+        ]);
+
+        if ($entryId > 0) {
+            LeaderboardEntry::query()->where('id', $entryId)->update([
+                'grant_status' => LeaderboardEntry::GRANT_STATUS_ISSUED,
+                'granted_at'   => $ts,
+                'updated_at'   => $ts,
+            ]);
+        }
+    }
+
+    /**
+     * 還原領取狀態（錢包或帳務失敗時）
+     *
+     * @param int $noticeId
+     * @param int $entryId
+     * @param string $ts
+     * @return void
+     */
+    private static function revertRewardClaim(int $noticeId, int $entryId, string $ts): void
+    {
+        Notice::query()->where('id', $noticeId)->update([
+            'status'     => 0,
+            'updated_at' => $ts,
+        ]);
+
+        if ($entryId > 0) {
+            LeaderboardEntry::query()->where('id', $entryId)->update([
+                'grant_status' => LeaderboardEntry::GRANT_STATUS_CLAIMABLE,
+                'granted_at'   => null,
+                'updated_at'   => $ts,
+            ]);
+        }
     }
 
     // ========================================

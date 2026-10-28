@@ -434,8 +434,12 @@ Route::group('/api', function () {
         Route::post('/leaderboard/golden-weekly', [\app\api\controller\v1\LeaderboardController::class, 'goldenWeekly']);
         // 金樽遊戲量月排行（全站）
         Route::post('/leaderboard/golden-monthly', [\app\api\controller\v1\LeaderboardController::class, 'goldenMonthly']);
-        // VIP 排行（分渠道）
+        // VIP 排行（總榜）
         Route::post('/leaderboard/vip-ranking', [\app\api\controller\v1\LeaderboardController::class, 'vipRanking']);
+        // 我的排行榜獎勵（待領取＋已領取）
+        Route::post('/leaderboard/my-rewards', [\app\api\controller\v1\LeaderboardController::class, 'myRewards']);
+        // 領取排行榜獎勵
+        Route::post('/leaderboard/claim', [\app\api\controller\v1\LeaderboardController::class, 'claim']);
         // 排行榜獎勵規則（門檻、名次贈分）
         Route::post('/leaderboard/rules', [\app\api\controller\v1\LeaderboardController::class, 'rules']);
     });
