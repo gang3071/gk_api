@@ -393,6 +393,11 @@ class IndexController
             return apiFailResponse(trans('notice_not_found', [], 'message'));
         }
 
+        if ($notice->type == Notice::TYPE_LEADERBOARD_REWARD) {
+            // 排行榜獎勵需透過 /leaderboard/claim 領取，標記已讀不處理
+            return apiSuccessResponse('success');
+        }
+
         // 处理礼金发放（未读状态才处理）
         if ($notice->status == 0) {
             if ($notice->type == Notice::TYPE_VIP_BIRTHDAY_BONUS) {

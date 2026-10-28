@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int rank 名次
  * @property float score 分數（遊戲量，元）
  * @property float prize_amount 可領獎勵金額（元；沒獎=0）
- * @property int grant_status 發放狀態：0=未發 1=已發
+ * @property int grant_status 發放狀態：0=未發放 1=已領取 2=待領取
  * @property string granted_at 發放時間
  * @property string created_at 建立時間
  * @property string updated_at 更新時間
@@ -26,7 +26,8 @@ class LeaderboardEntry extends Model
     use HasDateTimeFormatter;
 
     const GRANT_STATUS_UNISSUED = 0;  // 未發放
-    const GRANT_STATUS_ISSUED = 1;  // 已發放
+    const GRANT_STATUS_ISSUED = 1;  // 已領取
+    const GRANT_STATUS_CLAIMABLE = 2;  // 待領取
 
     protected $table = 'leaderboard_entry';
 
