@@ -29,6 +29,9 @@ class LeaderboardService
     /** VIP 總榜：取前 N 名 */
     const VIP_TOP = 10;
 
+    /** VIP 排行榜開關（目前不做，保留程式） */
+    const VIP_ENABLED = false;
+
     /** VIP 總榜代碼（由 gk_admin 結算寫入） */
     const VIP_CODE_WEEKLY = 'vip_weekly';
     const VIP_CODE_MONTHLY = 'vip_monthly';
@@ -190,6 +193,23 @@ class LeaderboardService
      */
     public static function vipRanking(int $departmentId): array
     {
+        if (!self::VIP_ENABLED) {
+            return [
+                'weekly'  => [
+                    'period_key' => null,
+                    'start_at'   => null,
+                    'end_at'     => null,
+                    'list'       => [],
+                ],
+                'monthly' => [
+                    'period_key' => null,
+                    'start_at'   => null,
+                    'end_at'     => null,
+                    'list'       => [],
+                ],
+            ];
+        }
+
         return [
             'weekly'  => self::vipBoard(self::VIP_CODE_WEEKLY),
             'monthly' => self::vipBoard(self::VIP_CODE_MONTHLY),
