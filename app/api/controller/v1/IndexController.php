@@ -848,20 +848,28 @@ class IndexController
                 'has_receive' => $hasReceive,
             ];
         }
-        // 更新为已读状态
+        // 更新为已读状态（排行榜奖励保留未读，需玩家手动领取）
         Notice::where('status', 0)
             ->where('receiver', Notice::RECEIVER_PLAYER)
             ->where('is_private', 1)
             ->where('player_id', $player->id)
+            ->where('type', '!=', Notice::TYPE_LEADERBOARD_REWARD)
             ->whereNull('deleted_at')
             ->update([
                 'status' => 1
             ]);
-        
+
+        $unreadCount = Notice::where('status', 0)
+            ->where('receiver', Notice::RECEIVER_PLAYER)
+            ->where('is_private', 1)
+            ->where('player_id', $player->id)
+            ->whereNull('deleted_at')
+            ->count('*');
+
         // 发送邮件数量
         sendSocketMessage('player-' . $player->id, [
             'msg_type' => 'player_notice_num',
-            'notice_num' => 0,
+            'notice_num' => $unreadCount,
         ]);
         
         return jsonSuccessResponse('success', $list);
@@ -893,6 +901,11 @@ class IndexController
 
         if (empty($notice)) {
             return jsonFailResponse(trans('notice_not_found', [], 'message'));
+        }
+
+        if ($notice->type == Notice::TYPE_LEADERBOARD_REWARD) {
+            // 排行榜獎勵需透過 /leaderboard/claim 領取，標記已讀不處理
+            return jsonSuccessResponse('success');
         }
 
         // 处理礼金发放（未读状态才处理）
@@ -1137,6 +1150,10 @@ class IndexController
         }
         /** @var SystemSetting $systemSetting */
         $systemSetting = SystemSetting::where('feature', 'activity_open')->first();
+        // 排行榜开关（渠道后台系统配置，按渠道维度）
+        $leaderboardSwitch = SystemSetting::where('feature', 'leaderboard_switch')
+            ->where('department_id', $channel['department_id'] ?? 0)
+            ->value('status');
 
         // 获取总后台配置（大屏彩金Domain和TURN中继IP）
         $jackpotScreenDomain = '';
@@ -1206,6 +1223,7 @@ class IndexController
             'discussion_group_status' => (($channel['discussion_group_status'] ?? 0) == 1 || $channel['discussion_group_status'] == true),
             'ranking_status' => (($channel['ranking_status'] ?? 0) == 1 || $channel['ranking_status'] == true),
             'activity_open' => $systemSetting->status ?? 0,
+            'leaderboard_switch' => (int)($leaderboardSwitch ?? 1),
             'lottery_status' => (($channel['lottery_status'] ?? 0) == 1 || $channel['lottery_status'] == true),
             'lottery_ticket_enabled' => (($channel['lottery_ticket_enabled'] ?? 0) == 1),
             'status_machine' => (($channel['status_machine'] ?? 0) == 1 || $channel['status_machine'] == true),

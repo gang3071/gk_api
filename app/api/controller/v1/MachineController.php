@@ -28,6 +28,7 @@ use app\model\PlayerPlatformCash;
 use app\model\PlayerRechargeRecord;
 use app\model\PlayHistory;
 use app\model\SystemSetting;
+use app\model\VipLevel;
 use app\service\ActivityServices;
 use app\service\machine\Jackpot;
 use app\service\machine\MachineClient;
@@ -637,6 +638,10 @@ class MachineController
                     ['plc_open_1', 'plc_open_10', 'plc_open_times', 'reward_switch'])) {
                 return jsonFailResponse(trans('no_open_point', [], 'message'));
             }
+            // VIP等级限制：玩家首次进入机台时校验
+            if ($machine->gaming_user_id == 0 && in_array($action, ['plc_open_1', 'plc_open_10', 'plc_open_times'])) {
+                $this->checkMachineVipLevel($player, $machine);
+            }
             /** @var Player $gaming_player */
             $gaming_player = Player::find($machine->gaming_user_id);
             if ($services->reward_status == 1 && !in_array($action,
@@ -963,6 +968,26 @@ class MachineController
         ];
     }
     
+    /**
+     * 校验玩家VIP等级是否满足机台最低要求
+     * @throws Exception
+     */
+    private function checkMachineVipLevel(Player $player, Machine $machine): void
+    {
+        if ($machine->min_vip_level_id <= 0) {
+            return;
+        }
+        $minLevel = VipLevel::find($machine->min_vip_level_id);
+        if (!$minLevel) {
+            return;
+        }
+        $playerLevel = $player->vip_level_id > 0 ? VipLevel::find($player->vip_level_id) : null;
+        $playerSort = $playerLevel ? (int)$playerLevel->sort : 0;
+        if ($playerSort < (int)$minLevel->sort) {
+            throw new Exception(trans('machine_vip_level_not_enough', ['{vip}' => $minLevel->name], 'message'));
+        }
+    }
+
     #[RateLimiter(limit: 5)]
     /**
      * 开分赠点（优化版：业务校验 + 调用 gk_work）
@@ -1117,6 +1142,10 @@ class MachineController
             //机台锁定
             if ($services->has_lock == 1 && $action != 'pressure_score') {
                 return jsonFailResponse(trans('machine_has_lock', [], 'message'), []);
+            }
+            // VIP等级限制：玩家首次进入机台时校验
+            if ($machine->gaming_user_id == 0 && in_array($action, ['open_1', 'open_10', 'plc_open_times'])) {
+                $this->checkMachineVipLevel($player, $machine);
             }
             switch ($action) {
                 case 'open_1':
@@ -1435,6 +1464,10 @@ class MachineController
             [$player, $machine, $data, $action, $service] = $this->checkAction($request, GameType::TYPE_FISH);
             if ($machine->gaming_user_id != 0 && $machine->gaming_user_id != $player->id) {
                 return jsonFailResponse(trans('machine_is_using_msg1', [], 'message'), [], 101);
+            }
+            // VIP等级限制：玩家首次进入机台时校验
+            if ($machine->gaming_user_id == 0 && $action === 'open_point') {
+                $this->checkMachineVipLevel($player, $machine);
             }
             switch ($action) {
                 case 'up': // 上
