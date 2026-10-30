@@ -268,6 +268,8 @@ class MachineController
             'lastPlayTime' => $machineServices->last_play_time ?? null,
             // ✅ 机台配置
             'pending_minutes' => $pendingMinutes ?? 0, // 机台闲置自动进入保留的时间（分钟）
+            // ✅ 小松线下版 Slot 上分配置（其他机台为 null）
+            'open_config' => self::songOfflineOpenConfig($machine),
         ]);
     }
 
@@ -544,5 +546,34 @@ class MachineController
             Log::error('[MachineOperation] Error', ['machine_id' => $machineId, 'action' => $action ?? '', 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString(),]);
             return apiFailResponse($e->getMessage() ?: trans('system_error', [], 'message'));
         }
+    }
+
+    /**
+     * 小松线下版 Slot 上分配置
+     * 根据机台 odds_x:odds_y 查 config/machine.php，非该类型机台返回 null
+     *
+     * @return array{min_player_amount:int,machine_score:int,max_times:int}|null
+     */
+    public static function songOfflineOpenConfig(Machine $machine): ?array
+    {
+        if ($machine->machine_source != Machine::MACHINE_SOURCE_OFFLINE
+            || $machine->type != GameType::TYPE_SLOT
+            || $machine->control_type != Machine::CONTROL_TYPE_SONG) {
+            return null;
+        }
+
+        $ratio   = $machine->odds_x . ':' . $machine->odds_y;
+        $options = config('machine.song_offline.open_options', []);
+        $opt     = $options[$ratio] ?? null;
+
+        if (!$opt) {
+            return null;
+        }
+
+        return [
+            'min_player_amount' => $opt['min_player_amount'], // 每次上分最低游戏点
+            'machine_score'     => $opt['machine_score'],     // 机台每次开分积分
+            'max_times'         => config('machine.song_offline.max_open_times', 255), // 单次最多上分次数
+        ];
     }
 }

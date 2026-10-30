@@ -2,6 +2,7 @@
 
 namespace app\api\controller\web;
 
+use app\api\controller\web\MachineController;
 use app\exception\PlayerCheckException;
 use app\model\Channel;
 use app\model\GamePlatform;
@@ -653,6 +654,7 @@ class PlayerController
             }
 
             $machineInfo['online_status'] = $onlineMap[$value->id] ?? 'offline';
+            $machineInfo['open_config']   = MachineController::songOfflineOpenConfig($value);
             $list[] = $machineInfo;
         }
 
