@@ -243,6 +243,8 @@ class MachineController
             'code' => $machine->code,
             'name' => $machine->machineLabel->name ?? $machine->name,
             'type' => $machine->type,
+            'control_type' => $machine->control_type,
+            'machine_source' => $machine->machine_source,
             'pictureUrl' => $machine->picture_url,
             'point' => $machine->machineLabel->point ?? 0,
             'turn' => $machine->machineLabel->turn ?? 0,

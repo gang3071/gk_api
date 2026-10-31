@@ -623,6 +623,8 @@ class PlayerController
             $machineInfo['code'] = $value->code;
             $machineInfo['picture_url'] = $value->picture_url;
             $machineInfo['type'] = $value->type;
+            $machineInfo['control_type'] = $value->control_type;
+            $machineInfo['machine_source'] = $value->machine_source;
             $machineInfo['odds_x'] = $value->odds_x;
             $machineInfo['odds_y'] = $value->odds_y;
 
