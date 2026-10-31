@@ -1280,17 +1280,27 @@ function checkMachineOpenAny(Machine $machine, int $money, int $giftScore): floa
         throw new Exception(trans('machine_odds_error', [], 'message'));
     }
 
-    // ✅ 小淞线下Slot特殊逻辑：验证换算后机台分数是OPEN_UNIT的倍数
-    // 原因：gk_work每次发送固定300分的开分指令（SongOfflineSlot::OPEN_UNIT=300）
+    // 小淞线下Slot特殊逻辑：验证玩家金额是 min_player_amount（上分单位）的整数倍
+    // gk_work 的 getOpenUnit() 从 config('machine.song_offline.open_options') 动态取得 min_player_amount：
+    // 3:1 比值 = 300，其余比值 = 100。校验须与 gk_work 保持一致，不可硬编码。
     if ($machine->machine_source == Machine::MACHINE_SOURCE_OFFLINE
         && $machine->control_type == Machine::CONTROL_TYPE_SONG
         && $machine->type == GameType::TYPE_SLOT) {
 
-        $openUnit = 300;  // 固定300分为单位（与SongOfflineSlot::OPEN_UNIT一致）
-        $totalMachineScore = (int) floor(($money + $giftScore) * $machine->odds_y / $machine->odds_x);
-
-        if ($totalMachineScore % $openUnit != 0) {
-            throw new Exception('充值金额（含赠送）换算后机台分数必须是' . $openUnit . '的倍数，当前机台分：' . $totalMachineScore);
+        $openUnit = null;
+        foreach (config('machine.song_offline.open_options', []) as $opt) {
+            if ((int)$opt['odds_x'] === (int)$machine->odds_x
+                && (int)$opt['odds_y'] === (int)$machine->odds_y) {
+                $openUnit = $opt['min_player_amount'];
+                break;
+            }
+        }
+        if ($openUnit === null) {
+            throw new Exception("機台比值({$machine->odds_x}:{$machine->odds_y})未在設定中找到對應的上分單位");
+        }
+        $totalAmount = $money + $giftScore;
+        if ($totalAmount <= 0 || $totalAmount % $openUnit !== 0) {
+            throw new Exception('充值金额（含赠送）必须是' . $openUnit . '的整数倍，当前：' . $totalAmount);
         }
     }
 

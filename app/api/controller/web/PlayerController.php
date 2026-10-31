@@ -2,6 +2,7 @@
 
 namespace app\api\controller\web;
 
+use app\api\controller\web\MachineController;
 use app\exception\PlayerCheckException;
 use app\model\Channel;
 use app\model\GamePlatform;
@@ -622,6 +623,8 @@ class PlayerController
             $machineInfo['code'] = $value->code;
             $machineInfo['picture_url'] = $value->picture_url;
             $machineInfo['type'] = $value->type;
+            $machineInfo['control_type'] = $value->control_type;
+            $machineInfo['machine_source'] = $value->machine_source;
             $machineInfo['odds_x'] = $value->odds_x;
             $machineInfo['odds_y'] = $value->odds_y;
 
@@ -653,6 +656,7 @@ class PlayerController
             }
 
             $machineInfo['online_status'] = $onlineMap[$value->id] ?? 'offline';
+            $machineInfo['open_config']   = MachineController::songOfflineOpenConfig($value) ?? MachineController::meiOpenConfig($value);
             $list[] = $machineInfo;
         }
 
