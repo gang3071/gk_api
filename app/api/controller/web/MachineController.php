@@ -270,8 +270,8 @@ class MachineController
             'lastPlayTime' => $machineServices->last_play_time ?? null,
             // ✅ 机台配置
             'pending_minutes' => $pendingMinutes ?? 0, // 机台闲置自动进入保留的时间（分钟）
-            // ✅ 小松线下版 Slot 上分配置（其他机台为 null）
-            'open_config' => self::songOfflineOpenConfig($machine),
+            // ✅ 线下 Slot 上分配置（小松线下 / 双美；其他机台为 null）
+            'open_config' => self::songOfflineOpenConfig($machine) ?? self::meiOpenConfig($machine),
         ]);
     }
 
@@ -576,6 +576,51 @@ class MachineController
             'min_player_amount' => $opt['min_player_amount'], // 每次上分最低游戏点
             'machine_score'     => $opt['machine_score'],     // 机台每次开分积分
             'max_times'         => config('machine.song_offline.max_open_times', 255), // 单次最多上分次数
+        ];
+    }
+
+    /**
+     * 雙美（MEI）Slot 上分配置（依比值自動計算，無需獨立配置表）
+     *
+     * min_player_amount = lcm(baseUnit, 100)
+     *   baseUnit = odds_x / gcd(odds_x, odds_y)
+     *   lcm 確保：① min_player_amount × odds_y / odds_x 為整數（不產生小數分）
+     *             ② 最小單位 ≥ 100（至少 1 元），例如 3:1 → baseUnit=3 → lcm(3,100)=300
+     * machine_score = min_player_amount × odds_y / odds_x
+     *
+     * @return array{min_player_amount:int,machine_score:int}|null
+     */
+    public static function meiOpenConfig(Machine $machine): ?array
+    {
+        if ($machine->type != GameType::TYPE_SLOT
+            || $machine->control_type != Machine::CONTROL_TYPE_MEI) {
+            return null;
+        }
+
+        $oddsX = (int)$machine->odds_x;
+        $oddsY = (int)$machine->odds_y;
+        if ($oddsX <= 0 || $oddsY <= 0) {
+            return null;
+        }
+
+        // gcd(odds_x, odds_y)
+        [$a, $b] = [$oddsX, $oddsY];
+        while ($b !== 0) {
+            [$a, $b] = [$b, $a % $b];
+        }
+        $baseUnit = intdiv($oddsX, $a); // odds_x / gcd
+
+        // lcm(baseUnit, 100) = baseUnit × 100 / gcd(baseUnit, 100)
+        [$c, $d] = [$baseUnit, 100];
+        while ($d !== 0) {
+            [$c, $d] = [$d, $c % $d];
+        }
+        $minPlayerAmount = intdiv($baseUnit * 100, $c);
+        $machineScore    = intdiv($minPlayerAmount * $oddsY, $oddsX);
+
+        return [
+            'min_player_amount' => $minPlayerAmount,
+            'machine_score'     => $machineScore,
         ];
     }
 }

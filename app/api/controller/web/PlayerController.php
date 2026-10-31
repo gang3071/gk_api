@@ -656,7 +656,7 @@ class PlayerController
             }
 
             $machineInfo['online_status'] = $onlineMap[$value->id] ?? 'offline';
-            $machineInfo['open_config']   = MachineController::songOfflineOpenConfig($value);
+            $machineInfo['open_config']   = MachineController::songOfflineOpenConfig($value) ?? MachineController::meiOpenConfig($value);
             $list[] = $machineInfo;
         }
 
