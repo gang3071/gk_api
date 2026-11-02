@@ -84,10 +84,11 @@ class VoucherService
             $isTotalLimitReached = $claimedTotal >= $totalLimit;
 
             $experienceBetCheckEnabled = $storeAdmin?->experience_bet_check_enabled ?? false;
+            $betThreshold = $expConfig['bet_threshold'] ?? 20000;
 
             $betCheckPassed = true;
-            if ($experienceBetCheckEnabled && $claimedTotal > 0) {
-                $betCheckPassed = $yesterdayBetAmount >= 10000;
+            if ($experienceBetCheckEnabled) {
+                $betCheckPassed = $yesterdayBetAmount >= $betThreshold;
             }
 
             if ($isNewUser && !$isDailyLimitReached && !$isTotalLimitReached && $betCheckPassed) {
