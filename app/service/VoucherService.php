@@ -63,7 +63,7 @@ class VoucherService
         if (!empty($expConfig['enabled']) && ($storeAdmin?->experience_voucher_enabled ?? true)) {
             $dailyLimit = $expConfig['daily_limit'] ?? 1;
             $totalLimit = $expConfig['total_limit'] ?? 5;
-            $registerAfter = $expConfig['register_after'] ?? '2026-01-01 00:00:00';
+            $registerAfter = $expConfig['register_after'] ?? '2026-07-01 00:00:00';
 
             $claimedToday = TicketRecord::query()
                 ->where('player_id', $player->id)

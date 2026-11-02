@@ -813,7 +813,7 @@ class TicketController
                 $score = $expConfig['score'] ?? 1000;
                 $dailyLimit = $expConfig['daily_limit'] ?? 1;
                 $totalLimit = $expConfig['total_limit'] ?? 6;
-                $registerAfter = $expConfig['register_after'] ?? '2026-01-01 00:00:00';
+                $registerAfter = $expConfig['register_after'] ?? '2026-07-01 00:00:00';
 
                 $isNewUser = $player->created_at >= $registerAfter;
                 $isDailyLimitReached = $claimedExperienceCount >= $dailyLimit;
@@ -1025,7 +1025,7 @@ class TicketController
             }
 
             // 检查是否是新用户
-            $registerAfter = $expConfig['register_after'] ?? '2026-01-01 00:00:00';
+            $registerAfter = $expConfig['register_after'] ?? '2026-07-01 00:00:00';
             if ($player->created_at < $registerAfter) {
                 return jsonFailResponse(trans('voucher_experience_not_new_user', [], 'message'));
             }
