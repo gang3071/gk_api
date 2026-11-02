@@ -462,6 +462,8 @@ Route::group('/chuzhi',function(){
     Route::post('/player-info', [\app\api\controller\v1\PlayerController::class, 'playerInfo']);
     // 呼叫服务铃
     Route::post('/call-service', [\app\api\controller\v1\DeviceServiceController::class, 'callService']);
+    // 广告(轮播图,跑马灯)，无需玩家验证
+    Route::post('/home-page-ads', [\app\api\controller\v1\PlayerController::class, 'chuzhiHomePageAds']);
 
     // ========== 票据相关接口 ==========
     // 获取体验券/福利券信息

@@ -2548,7 +2548,37 @@ class PlayerController
                     ->where('status', 1)->value('content') ?? '',
         ]);
     }
-    
+
+    #[RateLimiter(limit: 5)]
+    /**
+     * 储值机广告(轮播图,跑马灯)，无需玩家验证，设备验证后可直接调用
+     * @param Request $request
+     * @return Response
+     * @throws Exception
+     */
+    public function chuzhiHomePageAds(Request $request): Response
+    {
+        $data = $request->post();
+        $adPosition = $data['ad_position'] ?? 1;
+        if (!in_array($adPosition, [1, 2, 3, 4])) {
+            return jsonFailResponse(trans('ad_position_invalid', [], 'message'));
+        }
+
+        $slider = Slider::where('status', 1)
+            ->where('department_id', \request()->department_id)
+            ->where('ad_position', $adPosition)
+            ->whereNull('deleted_at')
+            ->orderBy('sort', 'desc')
+            ->get();
+
+        return jsonSuccessResponse('success', [
+            'slider_list' => $slider,
+            'marquee' => SystemSetting::where('feature', 'marquee')
+                    ->where('department_id', \request()->department_id)
+                    ->where('status', 1)->value('content') ?? '',
+        ]);
+    }
+
     #[RateLimiter(limit: 5)]
     /**
      * 正在游戏的机台
