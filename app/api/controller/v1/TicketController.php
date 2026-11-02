@@ -819,10 +819,11 @@ class TicketController
                 $isDailyLimitReached = $claimedExperienceCount >= $dailyLimit;
                 $isTotalLimitReached = $claimedExperienceTotal >= $totalLimit;
 
-                // 打码判定：首次领取免检 或 开关关闭免检
+                // 打码判定：所有张次均需验证（含第一张），开关关闭时免检
+                $betThreshold = $expConfig['bet_threshold'] ?? 20000;
                 $betCheckPassed = true;
-                if ($experienceBetCheckEnabled && $claimedExperienceTotal > 0) {
-                    $betCheckPassed = $yesterdayBetAmount >= 20000;
+                if ($experienceBetCheckEnabled) {
+                    $betCheckPassed = $yesterdayBetAmount >= $betThreshold;
                 }
 
                 $canPrint = $isNewUser && !$isDailyLimitReached && !$isTotalLimitReached && $betCheckPassed;
@@ -1049,21 +1050,21 @@ class TicketController
                 return jsonFailResponse(trans('voucher_experience_total_limit', ['{limit}' => $totalLimit], 'message'));
             }
 
-            // 体验券打码判定逻辑
-            if ($totalCount > 0) {
-                $storeAdmin = \app\model\AdminUser::query()->find($player->store_admin_id);
+            // 体验券打码判定逻辑（所有张次均需验证，含第一张）
+            $storeAdmin = \app\model\AdminUser::query()->find($player->store_admin_id);
 
-                if ($storeAdmin && $storeAdmin->experience_bet_check_enabled) {
-                    $yesterdayStatDate = $isAfter8am ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d', strtotime('-2 days'));
-                    $yesterdayBetAmount = $this->getPlayerBetAmount($player->id, $yesterdayStart, $yesterdayEnd, $yesterdayStatDate);
+            if ($storeAdmin && $storeAdmin->experience_bet_check_enabled) {
+                $betThreshold = $expConfig['bet_threshold'] ?? 20000;
+                $yesterdayStatDate = $isAfter8am ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d', strtotime('-2 days'));
+                $yesterdayBetAmount = $this->getPlayerBetAmount($player->id, $yesterdayStart, $yesterdayEnd, $yesterdayStatDate);
 
-                    if ($yesterdayBetAmount < 20000) {
-                        Log::info('体验券打码判定失败', [
-                            'player_id' => $player->id,
-                            'yesterday_bet_amount' => $yesterdayBetAmount,
-                        ]);
-                        return jsonFailResponse(trans('voucher_experience_bet_insufficient', [], 'message'));
-                    }
+                if ($yesterdayBetAmount < $betThreshold) {
+                    Log::info('体验券打码判定失败', [
+                        'player_id' => $player->id,
+                        'yesterday_bet_amount' => $yesterdayBetAmount,
+                        'required_bet_amount' => $betThreshold,
+                    ]);
+                    return jsonFailResponse(trans('voucher_experience_bet_insufficient', [], 'message'));
                 }
             }
 
