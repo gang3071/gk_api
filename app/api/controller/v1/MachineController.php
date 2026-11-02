@@ -218,45 +218,12 @@ class MachineController
                     'turn_used_point' => rtrim(rtrim(number_format($item['turn_used_point'], 3, '.', ''), '0'), '.'),
                 ];
             }
-            $historyMachine = PlayerGameRecord::query()
-                ->with([
-                    'machine:id,label_id,type,odds_x,odds_y',
-                    'machine.machineLabel:id,name,picture_url,point,score,turn'
-                ])
-                ->with([
-                    'machine:id,label_id,type,odds_x,odds_y',
-                    'machine.machineLabel:id,name,picture_url,point,score,turn,courtyard,correct_rate'
-                ])
-                ->selectRaw('max(id) as id,machine_id')
-                ->where('player_id', $player->id)
-                ->where('type', $gameType->type)
-                ->orderBy('id', 'desc')
-                ->groupBy('machine_id')
-                ->limit($limit)
-                ->get()->toArray();
-            $recentMachines = [];
-            foreach ($historyMachine as $item) {
-                if (is_null($item['machine'])) {
-                    continue;
-                }
-                $recentMachines[] = [
-                    'id' => $item['machine']['label_id'],
-                    'type' => $item['machine']['type'],
-                    'name' => $lang != 'zh-CN' ? ($labelExtendList[$item['machine']['label_id']]['name'] ?? '') : ($item['machine']['machine_label']['name'] ?? ''),
-                    'picture_url' => $lang != 'zh-CN' ? ($labelExtendList[$item['machine']['label_id']]['picture_url'] ?? '') : ($item['machine']['machine_label']['picture_url'] ?? ''),
-                    'point' => $item['machine']['machine_label']['point'] ?? '',
-                    'score' => $item['machine']['machine_label']['score'] ?? '',
-                    'turn' => $item['machine']['machine_label']['turn'] ?? '',
-                    'odds_x' => $item['machine']['odds_x'],
-                    'odds_y' => $item['machine']['odds_y'],
-                ];
-            }
             return jsonSuccessResponse('success', [
                 'machine_category' => $machineCategory,
                 'machines' => $data,
                 'machine_marquee' => SystemSetting::query()->where('feature', 'marquee')->where('department_id',
                         \request()->department_id)->where('status', 1)->value('content') ?? '',
-                'recent_machines' => $recentMachines,
+                'recent_machines' => [],
             ]);
         }
         
