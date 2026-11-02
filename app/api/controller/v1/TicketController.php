@@ -1007,6 +1007,12 @@ class TicketController
             return jsonFailResponse(trans('voucher_activity_ended', [], 'message'));
         }
 
+        // Bug1修复：防并发重复出票，覆盖计数查询+写入全流程
+        $lockKey = "voucher:lock:player:{$player->id}";
+        if (!\support\Redis::set($lockKey, 1, 'EX', 10, 'NX')) {
+            return jsonFailResponse(trans('operation_busy', [], 'message'));
+        }
+        try {
         // 时间区间：以每天08:00:00作为分界点
         $timeRanges = $this->get8amTimeRanges();
         ['now' => $now, 'todayStart' => $todayStart, 'todayEnd' => $todayEnd, 'yesterdayStart' => $yesterdayStart, 'yesterdayEnd' => $yesterdayEnd, 'isAfter8am' => $isAfter8am] = $timeRanges;
@@ -1039,7 +1045,7 @@ class TicketController
             }
 
             // 检查总领取次数
-            $totalLimit = $expConfig['total_limit'] ?? 6;
+            $totalLimit = $expConfig['total_limit'] ?? 5;
             $totalCount = TicketRecord::query()
                 ->where('player_id', $player->id)
                 ->where('ticket_type', TicketRecord::TYPE_EXPERIENCE)
@@ -1051,8 +1057,6 @@ class TicketController
             }
 
             // 体验券打码判定逻辑（所有张次均需验证，含第一张）
-            $storeAdmin = \app\model\AdminUser::query()->find($player->store_admin_id);
-
             if ($storeAdmin && $storeAdmin->experience_bet_check_enabled) {
                 $betThreshold = $expConfig['bet_threshold'] ?? 20000;
                 $yesterdayStatDate = $isAfter8am ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d', strtotime('-2 days'));
@@ -1242,6 +1246,9 @@ class TicketController
                 'trace' => $e->getTraceAsString(),
             ]);
             return jsonFailResponse(trans('voucher_claim_failed', ['{message}' => $e->getMessage()], 'message'));
+        }
+        } finally {
+            \support\Redis::del($lockKey);
         }
     }
 
