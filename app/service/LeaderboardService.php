@@ -115,7 +115,7 @@ class LeaderboardService
                 'rank'      => (int)$r->rank,
                 'player_id' => (int)$r->player_id,
                 'name'      => (string)$r->player_name,
-                'score'     => (string)$r->score,
+                'score'     => (string)self::scoreInt($r->score),
             ];
         }
 
@@ -174,7 +174,7 @@ class LeaderboardService
                 'name'       => (string)$r->player_name,
                 'store_id'   => (int)$r->store_admin_id,
                 'store_name' => (string)($r->store_name ?? ''),
-                'score'      => (string)$r->score,
+                'score'      => (string)self::scoreInt($r->score),
                 'prize'      => (string)$r->prize_amount,
             ];
         }
@@ -254,7 +254,7 @@ class LeaderboardService
 
         $list = [];
         foreach ($rows as $r) {
-            $score = (string)$r->score;
+            $score = (string)self::scoreInt($r->score);
             $list[] = [
                 'rank'           => (int)$r->rank,
                 'player_id'      => (int)$r->player_id,
@@ -277,17 +277,25 @@ class LeaderboardService
     }
 
     /**
-     * 分數顯示文字（整數不帶小數，其餘保留兩位）
+     * 分數取整數（四捨五入）
+     *
+     * @param mixed $score
+     * @return int
+     */
+    private static function scoreInt($score): int
+    {
+        return (int)round((float)$score);
+    }
+
+    /**
+     * 分數顯示文字（整數，千分位）
      *
      * @param string $score
      * @return string
      */
     private static function scoreText(string $score): string
     {
-        $value = (float)$score;
-        $decimals = (floor($value) == $value) ? 0 : 2;
-
-        return number_format($value, $decimals);
+        return number_format(self::scoreInt($score));
     }
 
     /**
