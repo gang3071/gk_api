@@ -836,7 +836,7 @@ class TicketController
                 } elseif ($isTotalLimitReached) {
                     $condition = trans('voucher_condition_total_used_up', ['{used}' => $claimedExperienceTotal, '{total}' => $totalLimit], 'message');
                 } elseif (!$betCheckPassed) {
-                    $condition = trans('voucher_condition_bet_insufficient', [], 'message');
+                    $condition = trans('voucher_condition_bet_insufficient', ['{amount}' => number_format($betThreshold)], 'message');
                 } else {
                     $condition = trans('voucher_condition_available', [], 'message');
                 }
@@ -1064,7 +1064,7 @@ class TicketController
                         'yesterday_bet_amount' => $yesterdayBetAmount,
                         'required_bet_amount' => $betThreshold,
                     ]);
-                    return jsonFailResponse(trans('voucher_experience_bet_insufficient', [], 'message'));
+                    return jsonFailResponse(trans('voucher_experience_bet_insufficient', ['{amount}' => number_format($betThreshold)], 'message'));
                 }
             }
 
