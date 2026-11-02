@@ -87,7 +87,7 @@ class VoucherService
             $betThreshold = $expConfig['bet_threshold'] ?? 20000;
 
             $betCheckPassed = true;
-            if ($experienceBetCheckEnabled) {
+            if ($experienceBetCheckEnabled && $claimedTotal > 0) {
                 $betCheckPassed = $yesterdayBetAmount >= $betThreshold;
             }
 

@@ -819,10 +819,10 @@ class TicketController
                 $isDailyLimitReached = $claimedExperienceCount >= $dailyLimit;
                 $isTotalLimitReached = $claimedExperienceTotal >= $totalLimit;
 
-                // 打码判定：所有张次均需验证（含第一张），开关关闭时免检
+                // 打码判定：第一张免检，第二张起需验证昨日打码
                 $betThreshold = $expConfig['bet_threshold'] ?? 20000;
                 $betCheckPassed = true;
-                if ($experienceBetCheckEnabled) {
+                if ($experienceBetCheckEnabled && $claimedExperienceTotal > 0) {
                     $betCheckPassed = $yesterdayBetAmount >= $betThreshold;
                 }
 
@@ -1056,8 +1056,8 @@ class TicketController
                 return jsonFailResponse(trans('voucher_experience_total_limit', ['{limit}' => $totalLimit], 'message'));
             }
 
-            // 体验券打码判定逻辑（所有张次均需验证，含第一张）
-            if ($storeAdmin && $storeAdmin->experience_bet_check_enabled) {
+            // 体验券打码判定逻辑：第一张免检，第二张起验证昨日打码
+            if ($storeAdmin && $storeAdmin->experience_bet_check_enabled && $totalCount > 0) {
                 $betThreshold = $expConfig['bet_threshold'] ?? 20000;
                 $yesterdayStatDate = $isAfter8am ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d', strtotime('-2 days'));
                 $yesterdayBetAmount = $this->getPlayerBetAmount($player->id, $yesterdayStart, $yesterdayEnd, $yesterdayStatDate);
