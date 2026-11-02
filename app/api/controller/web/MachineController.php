@@ -597,11 +597,22 @@ class MachineController
             return null;
         }
 
-        $oddsX = (int)$machine->odds_x;
-        $oddsY = (int)$machine->odds_y;
-        if ($oddsX <= 0 || $oddsY <= 0) {
+        if ($machine->odds_x <= 0 || $machine->odds_y <= 0) {
             return null;
         }
+
+        // 将浮点比值等比放大为整数，避免 (int)2.5 = 2 的截断错误
+        // 例：2.5:1 → scale=10 → 25:10 → gcd=5 → 5:2
+        $scale = 1;
+        while (fmod(round($machine->odds_x * $scale, 9), 1) > 1e-9
+            || fmod(round($machine->odds_y * $scale, 9), 1) > 1e-9) {
+            $scale *= 10;
+            if ($scale > 1000000) {
+                break;
+            }
+        }
+        $oddsX = (int)round($machine->odds_x * $scale);
+        $oddsY = (int)round($machine->odds_y * $scale);
 
         // gcd(odds_x, odds_y)
         [$a, $b] = [$oddsX, $oddsY];
