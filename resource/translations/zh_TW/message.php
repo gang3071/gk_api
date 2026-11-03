@@ -681,4 +681,6 @@ return [
     'daily_login_bonus_already_received' => '今日登錄獎勵已領取',
     'daily_login_bonus_claim_success' => '登錄獎勵領取成功',
     'machine_vip_level_not_enough' => '該機台需要{vip}或以上等級才能使用',
+    'high_setting_vip_no_play_num' => '您的VIP等級沒有高設定機台可玩數量，無法遊玩高設定機台',
+    'high_setting_play_num_exceeded' => '已超出高設定機台可遊玩數量（最多{num}台）',
 ];

@@ -675,4 +675,6 @@ return [
     'daily_login_bonus_already_received' => "Today's login bonus already claimed",
     'daily_login_bonus_claim_success' => 'Login bonus claimed successfully',
     'machine_vip_level_not_enough' => 'This machine requires {vip} or above to use',
+    'high_setting_vip_no_play_num' => 'Your VIP level has no high-setting machine play quota, cannot play high-setting machines',
+    'high_setting_play_num_exceeded' => 'High-setting machine play limit exceeded (max {num})',
 ];

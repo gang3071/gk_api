@@ -672,4 +672,6 @@ return [
     'daily_login_bonus_already_received' => '本日のログインボーナスは受け取り済みです',
     'daily_login_bonus_claim_success' => 'ログインボーナスを受け取りました',
     'machine_vip_level_not_enough' => 'この台は{vip}以上のVIPレベルが必要です',
+    'high_setting_vip_no_play_num' => 'VIPレベルに高設定機台のプレイ数が設定されていないため、高設定機台はプレイできません',
+    'high_setting_play_num_exceeded' => '高設定機台のプレイ可能数を超えています（最大{num}台）',
 ];
