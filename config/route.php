@@ -33,6 +33,8 @@ Route::group('/api', function () {
         Route::post('/auth/logout', [\app\api\controller\web\IndexController::class, 'authLogout']);
         // 個人資料
         Route::post('/me/profile', [\app\api\controller\web\PlayerController::class, 'profile']);
+        // 积分转赠
+        Route::post('/me/points/transfer', [\app\api\controller\web\PlayerController::class, 'transferPoints']);
         // 錢包點數
         Route::post('/me/wallet', [\app\api\controller\web\PlayerController::class, 'wallet']);
         // 劵匣

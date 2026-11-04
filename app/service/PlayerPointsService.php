@@ -1477,6 +1477,164 @@ LUA;
     }
 
     /**
+     * 积分转赠（原子双向操作）
+     *
+     * 在单一事务中扣除发送方积分、增加接收方积分，并各写一条记录：
+     * - 发送方：TYPE_TRANSFER_OUT，points 为负
+     * - 接收方：TYPE_TRANSFER_IN，points 为正，同步累加 total_points
+     *
+     * 防死锁：按 player_id 升序加锁，保证两个方向的并发转赠不会互相等待。
+     *
+     * @param int    $fromPlayerId     发送方玩家ID
+     * @param int    $toPlayerId       接收方玩家ID
+     * @param float  $points           转赠积分数
+     * @param string $fromPlayerName   发送方名称（写入备注）
+     * @param string $fromPlayerAccount 发送方账号（写入备注）
+     * @param string $toPlayerName     接收方名称（写入备注）
+     * @param string $toPlayerAccount  接收方账号（写入备注）
+     * @return array ['from_available' => float, 'to_available' => float]
+     * @throws Exception
+     */
+    public static function transferPoints(
+        int    $fromPlayerId,
+        int    $toPlayerId,
+        float  $points,
+        string $fromPlayerName,
+        string $fromPlayerAccount,
+        string $toPlayerName,
+        string $toPlayerAccount
+    ): array {
+        if ($points <= 0) {
+            throw new Exception('转赠积分必须大于0');
+        }
+        $points = round($points, 4);
+
+        // 确保接收方积分记录存在（在事务外预创建，避免事务内创建引发死锁）
+        $toPlayerInfo = self::getPlayerInfoCached($toPlayerId);
+        if (!$toPlayerInfo) {
+            throw new Exception('接收方玩家不存在');
+        }
+        $fromPlayerInfo = self::getPlayerInfoCached($fromPlayerId);
+        if (!$fromPlayerInfo) {
+            throw new Exception('发送方玩家不存在');
+        }
+        PlayerPoints::getOrCreate($toPlayerId, $toPlayerInfo['department_id']);
+        PlayerPoints::getOrCreate($fromPlayerId, $fromPlayerInfo['department_id']);
+
+        Db::beginTransaction();
+        try {
+            // 防死锁：按 player_id 升序加锁，同时读取数据（lockForUpdate 读取当前已提交行）
+            if ($fromPlayerId < $toPlayerId) {
+                $fromPoints = PlayerPoints::where('player_id', $fromPlayerId)->lockForUpdate()->first();
+                $toPoints   = PlayerPoints::where('player_id', $toPlayerId)->lockForUpdate()->first();
+            } else {
+                $toPoints   = PlayerPoints::where('player_id', $toPlayerId)->lockForUpdate()->first();
+                $fromPoints = PlayerPoints::where('player_id', $fromPlayerId)->lockForUpdate()->first();
+            }
+
+            if (!$fromPoints) {
+                throw new Exception('发送方积分记录不存在');
+            }
+            if (!$toPoints) {
+                throw new Exception('接收方积分记录不存在');
+            }
+            if ((float)$fromPoints->available_points < $points) {
+                throw new Exception('可用积分不足');
+            }
+
+            $fromBefore = (float)$fromPoints->available_points;
+            $toBefore   = (float)$toPoints->available_points;
+
+            $pointsStr = number_format($points, 4, '.', '');
+
+            // 扣除发送方
+            PlayerPoints::where('id', $fromPoints->id)->update([
+                'available_points' => Db::raw('available_points - ' . $pointsStr),
+                'used_points'      => Db::raw('used_points + ' . $pointsStr),
+                'version'          => $fromPoints->version + 1,
+                'updated_at'       => date('Y-m-d H:i:s'),
+            ]);
+
+            // 增加接收方（total_points 同步累加，视为新入账）
+            PlayerPoints::where('id', $toPoints->id)->update([
+                'available_points' => Db::raw('available_points + ' . $pointsStr),
+                'total_points'     => Db::raw('total_points + ' . $pointsStr),
+                'version'          => $toPoints->version + 1,
+                'updated_at'       => date('Y-m-d H:i:s'),
+            ]);
+
+            // 转出记录
+            PlayerPointsRecord::create([
+                'player_id'     => $fromPlayerId,
+                'department_id' => $fromPoints->department_id,
+                'type'          => PlayerPointsRecord::TYPE_TRANSFER_OUT,
+                'source'        => PlayerPointsRecord::SOURCE_TRANSFER,
+                'points'        => -$points,
+                'points_before' => $fromBefore,
+                'points_after'  => $fromBefore - $points,
+                'remark'        => "转赠给 {$toPlayerName}({$toPlayerAccount}) {$points}积分",
+            ]);
+
+            // 转入记录
+            PlayerPointsRecord::create([
+                'player_id'     => $toPlayerId,
+                'department_id' => $toPoints->department_id,
+                'type'          => PlayerPointsRecord::TYPE_TRANSFER_IN,
+                'source'        => PlayerPointsRecord::SOURCE_TRANSFER,
+                'points'        => $points,
+                'points_before' => $toBefore,
+                'points_after'  => $toBefore + $points,
+                'remark'        => "{$fromPlayerName}({$fromPlayerAccount}) 转赠 {$points}积分",
+            ]);
+
+            Db::commit();
+
+        } catch (Exception $e) {
+            Db::rollBack();
+            self::log()->error('[积分转赠] 失败', [
+                'from' => $fromPlayerId,
+                'to'   => $toPlayerId,
+                'pts'  => $points,
+                'err'  => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+
+        // 事务提交后更新 Redis（失败不影响数据一致性，下次读时从 MySQL 加载）
+        try {
+            self::deductPointsFromRedis($fromPlayerId, $points);
+
+            $redis  = Redis::connection()->client();
+            $toKey  = self::REDIS_KEY_PREFIX . $toPlayerId;
+            if ($redis->exists($toKey)) {
+                $ttl = config('points_config.redis_ttl', 86400 * 365);
+                $redis->hIncrByFloat($toKey, 'available_points', $points);
+                $redis->hIncrByFloat($toKey, 'total_points', $points);
+                $redis->hSet($toKey, 'last_update', time());
+                $redis->expire($toKey, $ttl);
+            }
+        } catch (Exception $e) {
+            self::log()->warning('[积分转赠] Redis更新失败（不影响数据一致性）', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        self::log()->info('[积分转赠] 成功', [
+            'from' => $fromPlayerId,
+            'to'   => $toPlayerId,
+            'pts'  => $points,
+        ]);
+
+        $fromNew = self::getPlayerPoints($fromPlayerId)['available_points'];
+        $toNew   = self::getPlayerPoints($toPlayerId)['available_points'];
+
+        return [
+            'from_available' => $fromNew,
+            'to_available'   => $toNew,
+        ];
+    }
+
+    /**
      * @deprecated 已被 checkAndRecordDailyPoints() 替代（原子操作）
      */
     public static function checkDailyLimit(int $playerId, float $newPoints): bool

@@ -21,6 +21,7 @@ use app\model\SystemSetting;
 use app\model\VipLevel;
 use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
+use app\service\PlayerPointsService;
 use app\service\VipRetainService;
 use app\service\WalletService;
 use Carbon\Carbon;
@@ -718,6 +719,73 @@ class PlayerController
      *
      * @return array 平台ID数组
      */
+    /**
+     * 积分转赠
+     *
+     * 客户端输入目标玩家账号或 UUID 及转赠数量，将自己的可用积分转给对方。
+     * 要求目标玩家与当前玩家属于同一渠道（department_id 相同）。
+     *
+     * @return Response
+     */
+    public function transferPoints(): Response
+    {
+        $player = checkPlayer();
+
+        $account = (string)(Request::input('account', ''));
+        $uuid    = (string)(Request::input('uuid', ''));
+        $points  = (float)(Request::input('points', 0));
+
+        if (empty($account) && empty($uuid)) {
+            return jsonFailResponse(trans('points_transfer_target_required', [], 'message'));
+        }
+        if ($points <= 0 || floor($points) != $points) {
+            return jsonFailResponse(trans('points_transfer_amount_invalid', [], 'message'));
+        }
+
+        if (empty($player->store_admin_id)) {
+            return jsonFailResponse(trans('points_transfer_failed', [], 'message'));
+        }
+
+        // 查找目标玩家（必须属于同一门店）
+        $query = Player::query()->where('store_admin_id', $player->store_admin_id);
+        if (!empty($uuid)) {
+            $query->where('uuid', $uuid);
+        } else {
+            $query->where('account', $account);
+        }
+        $target = $query->first();
+
+        if (!$target) {
+            return jsonFailResponse(trans('points_transfer_target_not_found', [], 'message'));
+        }
+        if ($target->id === $player->id) {
+            return jsonFailResponse(trans('points_transfer_to_self', [], 'message'));
+        }
+
+        try {
+            PlayerPointsService::transferPoints(
+                fromPlayerId:      $player->id,
+                toPlayerId:        $target->id,
+                points:            $points,
+                fromPlayerName:    $player->name ?? $player->account ?? '',
+                fromPlayerAccount: $player->account ?? '',
+                toPlayerName:      $target->name ?? $target->account ?? '',
+                toPlayerAccount:   $target->account ?? ''
+            );
+        } catch (Exception $e) {
+            $msg = $e->getMessage();
+            if ($msg === '可用积分不足') {
+                return jsonFailResponse(trans('points_transfer_insufficient', [], 'message'));
+            }
+            return jsonFailResponse(trans('points_transfer_failed', [], 'message'));
+        }
+
+        $newBalance = PlayerPointsService::getPlayerPoints($player->id)['available_points'];
+        return jsonSuccessResponse(trans('points_transfer_success', [], 'message'), [
+            'available_points' => (float)$newBalance,
+        ]);
+    }
+
     private function getExcludedPlatformIds(): array
     {
         // 从配置文件读取排除的平台代码

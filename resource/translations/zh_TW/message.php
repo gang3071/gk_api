@@ -628,6 +628,13 @@ return [
     'order_id' => '訂單ID',
     'dish_cancel_not_allowed' => '訂單已進入製作，無法取消',
     'points_not_enough' => '積分不足',
+    'points_transfer_target_required' => '請輸入對方帳號或UUID',
+    'points_transfer_amount_invalid' => '轉贈積分必須為正整數',
+    'points_transfer_target_not_found' => '收款玩家不存在',
+    'points_transfer_to_self' => '不能轉贈給自己',
+    'points_transfer_insufficient' => '可用積分不足',
+    'points_transfer_success' => '積分轉贈成功',
+    'points_transfer_failed' => '積分轉贈失敗',
     'store_not_found' => '未找到門店',
 
     // 劵匣

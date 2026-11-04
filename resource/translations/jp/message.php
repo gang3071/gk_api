@@ -631,6 +631,13 @@ return [
     'order_id' => '注文ID',
     'dish_cancel_not_allowed' => '注文が調理中でキャンセルできません',
     'points_not_enough' => 'ポイント不足です',
+    'points_transfer_target_required' => '相手のアカウントまたはUUIDを入力してください',
+    'points_transfer_amount_invalid' => '送付ポイントは正の整数である必要があります',
+    'points_transfer_target_not_found' => '受取プレイヤーが見つかりません',
+    'points_transfer_to_self' => '自分自身にポイントを送ることはできません',
+    'points_transfer_insufficient' => '利用可能なポイントが不足しています',
+    'points_transfer_success' => 'ポイント送付が完了しました',
+    'points_transfer_failed' => 'ポイント送付に失敗しました',
 
     // 体験券/福利券
     'voucher_invalid_ticket_type' => '無効な券種類です',
