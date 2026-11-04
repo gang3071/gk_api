@@ -786,10 +786,10 @@ class PlayerController
                 fromPlayerId:      $player->id,
                 toPlayerId:        $target->id,
                 points:            $amount,
-                fromPlayerName:    $player->name ?? $player->account ?? '',
-                fromPlayerAccount: $player->account ?? '',
-                toPlayerName:      $target->name ?? $target->account ?? '',
-                toPlayerAccount:   $target->account ?? ''
+                fromPlayerName:    $player->name ?? $player->phone ?? '',
+                fromPlayerAccount: $player->phone ?? $player->account ?? '',
+                toPlayerName:      $target->name ?? $target->phone ?? '',
+                toPlayerAccount:   $target->phone ?? $target->account ?? ''
             );
         } catch (Exception $e) {
             $this->releaseIdempotent($requestId);
