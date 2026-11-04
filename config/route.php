@@ -425,6 +425,9 @@ Route::group('/api', function () {
         // 店家更新訂單狀態（出餐）
         Route::post('/dish-admin/update-status', [\app\api\controller\v1\DishAdminController::class, 'updateStatus']);
 
+        // 积分转赠
+        Route::post('/points-transfer', [\app\api\controller\web\PlayerController::class, 'transferPoints']);
+
         // ========== 排行榜 ==========
         // 排行榜整頁（各店週排行 + 金樽週/月 + VIP 排行）
         Route::post('/leaderboard/overview', [\app\api\controller\v1\LeaderboardController::class, 'overview']);
