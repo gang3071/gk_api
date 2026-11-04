@@ -846,7 +846,7 @@ class PlayerController
             return jsonSuccessResponse('success', ['list' => []]);
         }
 
-        $limit = min(20, max(1, (int)$request->input('limit', 6)));
+        $limit = min(50, max(1, (int)$request->input('limit', 25)));
 
         $base = Player::query()
             ->where('store_admin_id', $player->store_admin_id)
