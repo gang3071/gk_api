@@ -272,6 +272,7 @@ class PlayerController
                 'retainRemainingDays' => $retainRemainingDays, // 剩余保级天数（按天向上取整，已到期为 0）
             ],
             'machine' => $machine,
+            'machine_play_num' => (int)($player->machine_play_num ?? 1),
             'settings' => [
                 'pending_minutes'      => (int) ($pendingMinutes ?? 0),
                 'gift_keeping_minutes' => (int) ($giftKeepingMinutes ?? 0),
