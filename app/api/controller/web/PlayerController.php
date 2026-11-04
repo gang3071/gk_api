@@ -833,11 +833,12 @@ class PlayerController
     {
         $player = checkPlayer();
 
-        // 兼容 q (文档规范) 和 keyword (旧参数)
+        // 兼容 q（文档规范）和 keyword（旧参数）
         $q   = trim((string)($request->input('q') ?? $request->input('keyword', '')));
         $uid = trim((string)($request->input('uid') ?? $request->input('uuid', '')));
 
-        if (strlen($q) < 2 && empty($uid)) {
+        // uid 精确匹配无长度限制；关键词搜索至少 4 个字符，避免短词命中海量记录
+        if (empty($uid) && strlen($q) < 4) {
             return jsonSuccessResponse('success', ['list' => []]);
         }
 
@@ -847,39 +848,32 @@ class PlayerController
 
         $limit = min(20, max(1, (int)$request->input('limit', 6)));
 
-        $query = Player::query()
+        $base = Player::query()
             ->where('store_admin_id', $player->store_admin_id)
             ->where('id', '!=', $player->id)
             ->where('status', Player::STATUS_ENABLE)
             ->select(['id', 'uuid', 'account', 'phone', 'name', 'avatar']);
 
         if (!empty($uid)) {
-            $query->where('uuid', $uid);
+            // UID 精确匹配（来自搜索结果的 uid 字段）
+            $base->where('uuid', $uid);
+        } elseif (ctype_digit($q)) {
+            // 纯数字 → 手机号前缀搜索（可走索引，不跨字段，结果精准）
+            $base->where('phone', 'like', $q . '%');
         } else {
-            $query->where(function ($q2) use ($q) {
-                $q2->where('phone', 'like', '%' . $q . '%')
-                   ->orWhere('account', 'like', '%' . $q . '%')
-                   ->orWhere('uuid', 'like', '%' . $q . '%')
-                   ->orWhere('name', 'like', '%' . $q . '%');
+            // 账号或昵称前缀搜索（前缀 LIKE 可走 B-Tree 索引）
+            $base->where(function ($q2) use ($q) {
+                $q2->where('account', 'like', $q . '%')
+                   ->orWhere('name', 'like', $q . '%');
             });
         }
 
-        // 多取一些供 PHP 侧按相关度排序后截断
-        $rows = $query->limit($limit * 3)->get();
-
-        // 相关度排序：精确 0 > 前缀 1 > 包含 2，再按昵称
-        $keyword = $q;
-        $rows = $rows->sortBy(function ($p) use ($keyword) {
-            foreach ([$p->phone, $p->account, $p->uuid] as $field) {
-                if ($field === $keyword) return '0' . ($p->name ?? '');
-                if (str_starts_with((string)$field, $keyword)) return '1' . ($p->name ?? '');
-            }
-            return '2' . ($p->name ?? '');
-        })->take($limit)->values();
+        $rows = $base->limit($limit)->get();
 
         $list = $rows->map(function ($p) {
             $phone = (string)($p->phone ?? '');
             if (strlen($phone) > 6) {
+                // 脱敏：保留前3位和后3位，中间替换为 *
                 $phone = substr($phone, 0, 3) . str_repeat('*', strlen($phone) - 6) . substr($phone, -3);
             }
             return [
