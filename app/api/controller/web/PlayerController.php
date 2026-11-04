@@ -855,17 +855,14 @@ class PlayerController
             ->select(['id', 'uuid', 'account', 'phone', 'name', 'avatar']);
 
         if (!empty($uid)) {
-            // UID 精确匹配（来自搜索结果的 uid 字段）
+            // uid 参数：精确匹配（来自搜索结果的 uid 字段，二次确认用）
             $base->where('uuid', $uid);
         } elseif (ctype_digit($q)) {
-            // 纯数字 → 手机号前缀搜索（可走索引，不跨字段，结果精准）
+            // 纯数字 → 手机号前缀搜索
             $base->where('phone', 'like', $q . '%');
         } else {
-            // 账号或昵称前缀搜索（前缀 LIKE 可走 B-Tree 索引）
-            $base->where(function ($q2) use ($q) {
-                $q2->where('account', 'like', $q . '%')
-                   ->orWhere('name', 'like', $q . '%');
-            });
+            // 含字母/混合 → UUID 前缀搜索
+            $base->where('uuid', 'like', $q . '%');
         }
 
         $rows = $base->limit($limit)->get();
