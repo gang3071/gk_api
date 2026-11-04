@@ -858,11 +858,11 @@ class PlayerController
             // uid 参数：精确匹配（来自搜索结果的 uid 字段，二次确认用）
             $base->where('uuid', $uid);
         } elseif (ctype_digit($q)) {
-            // 纯数字 → 手机号前缀搜索
-            $base->where('phone', 'like', $q . '%');
-        } else {
-            // 含字母/混合 → UUID 前缀搜索
+            // 纯数字 → uuid 前缀搜索（uuid 为纯数字）
             $base->where('uuid', 'like', $q . '%');
+        } else {
+            // 含字母/混合 → phone 前缀搜索（phone 字段当账号使用，含字母数字）
+            $base->where('phone', 'like', $q . '%');
         }
 
         $rows = $base->limit($limit)->get();
