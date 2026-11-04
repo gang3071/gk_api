@@ -857,12 +857,14 @@ class PlayerController
         if (!empty($uid)) {
             // uid 参数：精确匹配（来自搜索结果的 uid 字段，二次确认用）
             $base->where('uuid', $uid);
-        } elseif (ctype_digit($q)) {
-            // 纯数字 → uuid 前缀搜索（uuid 为纯数字）
-            $base->where('uuid', 'like', $q . '%');
         } else {
-            // 含字母/混合 → phone 前缀搜索（phone 字段当账号使用，含字母数字）
-            $base->where('phone', 'like', $q . '%');
+            // 同时搜索 uuid 和 phone 前缀
+            // - 纯数字：可能命中 uuid（纯数字ID）或 phone（真实手机号）
+            // - 含字母：只会命中 phone（含字母的账号），uuid 不含字母自然跳过
+            $base->where(function ($q2) use ($q) {
+                $q2->where('uuid', 'like', $q . '%')
+                   ->orWhere('phone', 'like', $q . '%');
+            });
         }
 
         $rows = $base->limit($limit)->get();
