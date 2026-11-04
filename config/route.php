@@ -35,6 +35,8 @@ Route::group('/api', function () {
         Route::post('/me/profile', [\app\api\controller\web\PlayerController::class, 'profile']);
         // 积分转赠
         Route::post('/me/points/transfer', [\app\api\controller\web\PlayerController::class, 'transferPoints']);
+        // 积分转赠目标玩家搜索（联想）
+        Route::post('/me/points/transfer/search', [\app\api\controller\web\PlayerController::class, 'searchTransferTarget']);
         // 錢包點數
         Route::post('/me/wallet', [\app\api\controller\web\PlayerController::class, 'wallet']);
         // 劵匣
@@ -427,6 +429,8 @@ Route::group('/api', function () {
 
         // 积分转赠
         Route::post('/points-transfer', [\app\api\controller\web\PlayerController::class, 'transferPoints']);
+        // 积分转赠目标玩家搜索（联想）
+        Route::post('/points-transfer/search', [\app\api\controller\web\PlayerController::class, 'searchTransferTarget']);
 
         // ========== 排行榜 ==========
         // 排行榜整頁（各店週排行 + 金樽週/月 + VIP 排行）

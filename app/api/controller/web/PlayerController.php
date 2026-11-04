@@ -805,6 +805,56 @@ class PlayerController
         return $response;
     }
 
+    /**
+     * 积分转赠目标玩家联想搜索
+     *
+     * 在同一门店内，根据账号（模糊）或 UUID（精确）查找可转赠对象。
+     * 结果排除自身，最多返回 10 条。
+     *
+     * @param Request $request
+     * @return Response
+     */
+    public function searchTransferTarget(Request $request): Response
+    {
+        $player  = checkPlayer();
+        $keyword = trim((string)$request->input('keyword', ''));
+        $uuid    = trim((string)$request->input('uuid', ''));
+
+        if (empty($keyword) && empty($uuid)) {
+            return jsonSuccessResponse('success', []);
+        }
+
+        if (empty($player->store_admin_id)) {
+            return jsonSuccessResponse('success', []);
+        }
+
+        $query = Player::query()
+            ->where('store_admin_id', $player->store_admin_id)
+            ->where('id', '!=', $player->id)
+            ->where('status', Player::STATUS_NORMAL)
+            ->select(['uuid', 'account', 'name', 'avatar']);
+
+        if (!empty($uuid)) {
+            $query->where('uuid', $uuid);
+        } else {
+            $query->where(function ($q) use ($keyword) {
+                $q->where('account', 'like', $keyword . '%')
+                  ->orWhere('name', 'like', $keyword . '%');
+            });
+        }
+
+        $results = $query->limit(10)->get()->map(function ($p) {
+            return [
+                'uuid'    => $p->uuid,
+                'account' => $p->account,
+                'name'    => $p->name ?? '',
+                'avatar'  => $p->avatar ?? '',
+            ];
+        });
+
+        return jsonSuccessResponse('success', $results);
+    }
+
     private function getExcludedPlatformIds(): array
     {
         // 从配置文件读取排除的平台代码
