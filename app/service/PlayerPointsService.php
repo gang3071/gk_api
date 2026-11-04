@@ -1563,8 +1563,10 @@ LUA;
                 'updated_at'       => date('Y-m-d H:i:s'),
             ]);
 
-            // 转出记录
-            PlayerPointsRecord::create([
+            $recordCreatedAt = date('Y-m-d H:i:s');
+
+            // 转出记录（保留 ID 供控制器返回 transferId）
+            $fromRecord = PlayerPointsRecord::create([
                 'player_id'     => $fromPlayerId,
                 'department_id' => $fromPoints->department_id,
                 'type'          => PlayerPointsRecord::TYPE_TRANSFER_OUT,
@@ -1573,6 +1575,7 @@ LUA;
                 'points_before' => $fromBefore,
                 'points_after'  => $fromBefore - $points,
                 'remark'        => "转赠给 {$toPlayerName}({$toPlayerAccount}) {$points}积分",
+                'created_at'    => $recordCreatedAt,
             ]);
 
             // 转入记录
@@ -1585,6 +1588,7 @@ LUA;
                 'points_before' => $toBefore,
                 'points_after'  => $toBefore + $points,
                 'remark'        => "{$fromPlayerName}({$fromPlayerAccount}) 转赠 {$points}积分",
+                'created_at'    => $recordCreatedAt,
             ]);
 
             Db::commit();
@@ -1629,6 +1633,8 @@ LUA;
         $toNew   = self::getPlayerPoints($toPlayerId)['available_points'];
 
         return [
+            'from_record_id' => $fromRecord->id,
+            'created_at'     => $recordCreatedAt,
             'from_available' => $fromNew,
             'to_available'   => $toNew,
         ];
