@@ -226,14 +226,45 @@ class DishController
 
         // 查詢設備（從 DeviceCpuID header）
         $deviceCpuId = $request->header('DeviceCpuID', '');
+        $device   = null;
         $deviceId = 0;
         if (!empty($deviceCpuId)) {
-            $device = AdminDevice::where('device_no', $deviceCpuId)->first();
+            $device   = AdminDevice::where('device_no', $deviceCpuId)->first();
             $deviceId = $device->id ?? 0;
         }
 
         Db::beginTransaction();
         try {
+            // 事务内锁定菜品行并重新验证每日限额，防止并发超卖
+            foreach ($dishes as $item) {
+                $dishId   = $item['dish_id'] ?? 0;
+                $quantity = max(1, intval($item['quantity'] ?? 1));
+                $dish     = Dish::where('id', $dishId)->lockForUpdate()->first();
+
+                if (!$dish || $dish->daily_limit <= 0) {
+                    continue;
+                }
+                $orderedToday = DishOrderItem::query()
+                    ->where('dish_id', $dishId)
+                    ->whereHas('order', function ($query) use ($player, $today, $tomorrow) {
+                        $query->where('player_id', $player->id)
+                            ->where('created_at', '>=', $today)
+                            ->where('created_at', '<', $tomorrow)
+                            ->where('status', '!=', DishOrder::STATUS_CANCELLED);
+                    })
+                    ->sum('quantity');
+
+                if (bcadd($orderedToday, $quantity, 0) > $dish->daily_limit) {
+                    Db::rollBack();
+                    return jsonFailResponse(trans('dish_daily_limit_exceeded', [], 'message'), [
+                        'dish_id'      => $dishId,
+                        'dish_title'   => $dish->title,
+                        'daily_limit'  => $dish->daily_limit,
+                        'ordered_today' => intval($orderedToday),
+                    ]);
+                }
+            }
+
             $order = new DishOrder();
             $order->order_no = DishOrder::generateOrderNo();
             $order->player_id = $player->id;

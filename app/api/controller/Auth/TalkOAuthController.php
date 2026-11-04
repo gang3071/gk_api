@@ -126,16 +126,16 @@ class TalkOAuthController
             return jsonFailResponse(trans('phone_code_error', [], 'message'));
         }
 
-        !empty($data['avatar']) && $player->avatar = saveAvatar($data['avatar']);
-        !empty($data['nickname']) && $player->name = $data['nickname'];
-        $player->talk_user_id = $data['userUid'];
-        $player->save();
-
-        // 跨店登录校验
+        // 跨店登录校验（在持久化前执行，校验失败不修改玩家数据）
         $deviceCheck = $this->checkDeviceStoreMatch($player);
         if ($deviceCheck !== true) {
             return $deviceCheck;
         }
+
+        !empty($data['avatar']) && $player->avatar = saveAvatar($data['avatar']);
+        !empty($data['nickname']) && $player->name = $data['nickname'];
+        $player->talk_user_id = $data['userUid'];
+        $player->save();
 
         addLoginRecord($player->id);
 

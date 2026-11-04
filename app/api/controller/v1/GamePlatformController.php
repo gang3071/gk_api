@@ -135,7 +135,7 @@ class GamePlatformController
             $list = $list->filter(function ($platform) use ($disabledBaccaratPlatformIds) {
                 // 如果平台在禁用列表中，检查是否包含真人视讯分类
                 if (in_array($platform->id, $disabledBaccaratPlatformIds)) {
-                    $cateIds = json_decode($platform->cate_id, true);
+                    $cateIds = json_decode($platform->cate_id, true) ?? [];
                     // 如果包含真人视讯分类，则过滤掉
                     if (in_array(GameType::CATE_LIVE_VIDEO, $cateIds)) {
                         return false;

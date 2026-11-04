@@ -2,7 +2,6 @@
 
 namespace app\api\controller\web;
 
-use app\api\controller\web\MachineController;
 use app\exception\PlayerCheckException;
 use app\model\Channel;
 use app\model\GamePlatform;
@@ -727,22 +726,37 @@ class PlayerController
      *
      * @return Response
      */
-    public function transferPoints(): Response
+    public function transferPoints(Request $request): Response
     {
         $player = checkPlayer();
 
-        $account = (string)(Request::input('account', ''));
-        $uuid    = (string)(Request::input('uuid', ''));
-        $points  = (float)(Request::input('points', 0));
+        // 幂等性保护：防止网络重试导致重复转赠
+        $requestId = $request->input('request_id') ?? null;
+        $operation = 'points-transfer:' . $player->id;
+        $checkIdempotent = $this->checkIdempotent($requestId, $operation, $player->id);
+        if ($checkIdempotent !== null) {
+            return $checkIdempotent;
+        }
+        if (!$this->reserveIdempotent($requestId, $operation, $player->id)) {
+            $response = $this->checkIdempotent($requestId, $operation, $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        $account = (string)$request->input('account', '');
+        $uuid    = (string)$request->input('uuid', '');
+        $points  = (float)$request->input('points', 0);
 
         if (empty($account) && empty($uuid)) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('points_transfer_target_required', [], 'message'));
         }
         if ($points <= 0 || floor($points) != $points) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('points_transfer_amount_invalid', [], 'message'));
         }
 
         if (empty($player->store_admin_id)) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('points_transfer_failed', [], 'message'));
         }
 
@@ -756,9 +770,11 @@ class PlayerController
         $target = $query->first();
 
         if (!$target) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('points_transfer_target_not_found', [], 'message'));
         }
         if ($target->id === $player->id) {
+            $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('points_transfer_to_self', [], 'message'));
         }
 
@@ -773,6 +789,7 @@ class PlayerController
                 toPlayerAccount:   $target->account ?? ''
             );
         } catch (Exception $e) {
+            $this->releaseIdempotent($requestId);
             $msg = $e->getMessage();
             if ($msg === '可用积分不足') {
                 return jsonFailResponse(trans('points_transfer_insufficient', [], 'message'));
@@ -781,9 +798,11 @@ class PlayerController
         }
 
         $newBalance = PlayerPointsService::getPlayerPoints($player->id)['available_points'];
-        return jsonSuccessResponse(trans('points_transfer_success', [], 'message'), [
+        $response = jsonSuccessResponse(trans('points_transfer_success', [], 'message'), [
             'available_points' => (float)$newBalance,
         ]);
+        $this->saveIdempotent($requestId, $response, $operation, $player->id);
+        return $response;
     }
 
     private function getExcludedPlatformIds(): array

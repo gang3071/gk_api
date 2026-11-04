@@ -7,7 +7,6 @@ use app\model\AdminUser;
 use app\model\Notice;
 use Exception;
 use Respect\Validation\Validator as v;
-use support\Cache;
 use support\Log;
 use support\Request;
 use support\Response;
@@ -71,8 +70,8 @@ class DeviceServiceController
             $lockKey = "service:call:device:{$device->id}";
             $lockTtl = 5; // 5 秒内只能请求一次
 
-            // 尝试获取锁（阻塞模式）
-            $lock = Locker::lock($lockKey, $lockTtl, true);
+            // 尝试获取锁（非阻塞模式，避免占用 Webman worker）
+            $lock = Locker::lock($lockKey, $lockTtl, false);
 
             if (!$lock->acquire()) {
                 // 获取锁失败 = 5 秒内已经请求过
