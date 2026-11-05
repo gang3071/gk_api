@@ -4279,6 +4279,7 @@ class PlayerController
             'home_notice' => '', // 默认空字符串
             'enable_physical_machine' => true, // 默认开启
             'enable_live_baccarat' => true, // 默认开启
+            'enable_points' => true, // 默认开启
             'menu_image' => '', // 默认空字符串
         ];
 
@@ -4324,6 +4325,15 @@ class PlayerController
         );
         $storeEnableBaccarat = $liveBaccaratSetting ? $liveBaccaratSetting->status == 1 : true;
         $settings['enable_live_baccarat'] = (bool)$player->status_baccarat && $storeEnableBaccarat;
+
+        // 获取配置 - 积分开关（店家/代理配置，未配置默认开启）
+        $pointsSetting = StoreSetting::getSetting(
+            'enable_points',
+            $player->department_id,
+            null,
+            $adminUserId
+        );
+        $settings['enable_points'] = $pointsSetting ? $pointsSetting->status == 1 : true;
 
         // 获取配置 - 点菜菜单图片
         $menuImageSetting = StoreSetting::getSetting(
