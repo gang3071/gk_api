@@ -2,8 +2,6 @@
 
 namespace app\queue\redis\fast;
 
-use app\model\Player;
-use app\model\StoreSetting;
 use app\service\PlayerPointsService;
 use Carbon\Carbon;
 use Exception;
@@ -15,7 +13,6 @@ use Webman\RedisQueue\Consumer;
  *
  * 职责：
  * - 接收 gk_work 发送的打码量消息
- * - 门店/代理关闭积分开关时直接跳过不处理
  * - 计算玩家应得积分（根据平台、VIP等级、活动倍数）
  * - 实时累加积分到 Redis（Lua原子操作）
  * - 防止重复消费（batch_id 去重）
@@ -90,17 +87,6 @@ class PlayerPoints implements Consumer
                 return;
             }
 
-            // 门店/代理关闭积分开关时，直接跳过不处理
-            // ⚠️ 必须放在去重检查之前：跳过的消息不占用去重标记，
-            //    若门店后续重新开启积分，重投递的批次仍可正常累加
-            if (!$this->isPointsEnabled($playerId)) {
-                $this->log->info('[积分队列] 门店已关闭积分，跳过处理', [
-                    'player_id' => $playerId,
-                    'batch_id' => $batchId,
-                ]);
-                return;
-            }
-
             // 转换为本地时区（Asia/Shanghai）
             $createdAt = !empty($data['created_at'])
                 ? Carbon::parse($data['created_at'])->setTimezone('Asia/Shanghai')
@@ -151,54 +137,6 @@ class PlayerPoints implements Consumer
 
             // 抛出异常触发重试（webman/redis-queue 会自动重试）
             throw $e;
-        }
-    }
-
-    /**
-     * 检查玩家所属门店/代理是否开启积分
-     *
-     * 配置优先级由 StoreSetting::getSetting 处理（具体代理/店家 > 渠道 > 总配置），未配置默认开启。
-     * 与 PlayerController::getStoreSettings 的 enable_points 判断保持一致：
-     * 优先店家绑定 store_admin_id，其次代理绑定 agent_admin_id。
-     *
-     * @param int $playerId 玩家ID
-     * @return bool true=开启（或检查异常/玩家不存在时放行），false=门店/代理已关闭积分
-     */
-    private function isPointsEnabled(int $playerId): bool
-    {
-        try {
-            $player = Player::query()
-                ->select('id', 'department_id', 'store_admin_id', 'agent_admin_id')
-                ->find($playerId);
-
-            // 玩家不存在时放行，交由后续积分服务统一处理（报错重试）
-            if (!$player) {
-                return true;
-            }
-
-            $adminUserId = null;
-            if (!empty($player->store_admin_id)) {
-                $adminUserId = $player->store_admin_id;
-            } elseif (!empty($player->agent_admin_id)) {
-                $adminUserId = $player->agent_admin_id;
-            }
-
-            $setting = StoreSetting::getSetting(
-                'enable_points',
-                $player->department_id,
-                null,
-                $adminUserId
-            );
-
-            return !$setting || $setting->status == 1;
-
-        } catch (\Throwable $e) {
-            // 检查异常时放行，避免误杀积分（与去重检查同样的容错策略）
-            $this->log->error('[积分队列] 积分开关检查异常，放行消息', [
-                'player_id' => $playerId,
-                'error' => $e->getMessage(),
-            ]);
-            return true;
         }
     }
 
