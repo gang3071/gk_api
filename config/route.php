@@ -33,6 +33,8 @@ Route::group('/api', function () {
         Route::post('/auth/logout', [\app\api\controller\web\IndexController::class, 'authLogout']);
         // 個人資料
         Route::post('/me/profile', [\app\api\controller\web\PlayerController::class, 'profile']);
+        // 门店洗分配置
+        Route::post('/me/wash-point-setting', [\app\api\controller\v1\PlayerController::class, 'getWashPointSetting']);
         // 积分转赠（兼容旧路径）
         Route::post('/me/points/transfer', [\app\api\controller\web\PlayerController::class, 'transferPoints']);
         // 积分转赠（文档规范路径）
