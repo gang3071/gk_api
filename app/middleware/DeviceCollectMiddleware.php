@@ -12,8 +12,9 @@ class DeviceCollectMiddleware implements MiddlewareInterface
 {
     public function process(Request $request, callable $handler): Response
     {
-        // 排除 /api/web 路径（Web 端 API 不需要强制设备验证）
-        if (preg_match('/^\/api\/web\//', $request->path())) {
+        // 排除不需要设备验证的路径
+        $path = $request->path();
+        if (preg_match('/^\/api\/web\//', $path) || preg_match('/^\/external\//', $path)) {
             return $handler($request);
         }
 
