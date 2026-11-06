@@ -805,7 +805,7 @@ class PlayerController
 
         $response = jsonSuccessResponse(trans('points_transfer_success', [], 'message'), [
             'transferId'      => $result['from_record_id'],
-            'availablePoints' => (float)$result['from_available'],
+            'availablePoints' => (int)$result['from_available'],
             'toPlayer'        => [
                 'id'       => $target->id,
                 'uid'      => $target->uuid ?? '',
