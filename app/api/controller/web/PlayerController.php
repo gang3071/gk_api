@@ -36,6 +36,7 @@ use Webman\RateLimiter\Annotation\RateLimiter;
 class PlayerController
 {
     use \support\IdempotentTrait;
+
     /**
      * 個人資料
      * @return Response
@@ -544,6 +545,154 @@ class PlayerController
 
             // 扣减 player_extend 待领取反水金额
             $player->player_extend()->decrement('pending_cashback_amount', $claimableAmount);
+
+            DB::commit();
+
+            $response = apiSuccessResponse('success', [
+                'walletBalance' => $afterGameAmount,
+                'remaining' => self::formatAmount($pendingAmount - $claimableAmount)
+            ]);
+
+            $this->saveIdempotent($requestId, $response, $operation, $player->id);
+
+            return $response;
+        } catch (Exception) {
+            DB::rollBack();
+            $this->releaseIdempotent($requestId);
+
+            return apiFailResponse(trans('system_error', [], 'message'));
+        }
+    }
+
+    /**
+     * 推廣紅利
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function childrenCashback(): Response
+    {
+        $player = checkPlayer();
+        $vipLevel = $player->vipLevel()->first();
+
+        // 如果玩家没有VIP等级，获取所属渠道的最低VIP等级作为默认展示
+        if (empty($vipLevel)) {
+            $vipLevel = VipLevel::query()
+                ->where('department_id', $player->department_id)
+                ->orderBy('sort', 'asc')
+                ->first();
+        }
+
+        $baseWager = $player->player_extend->pending_children_cashback_amount ?? 0;
+        $claimUnit = $vipLevel->min_claim_amount ?? 0;
+        $claimable = 0;
+
+        // 未设置最低领取额则不可领取，否则取最低额的整数倍
+        if ($claimUnit > 0) {
+            $claimable = floor($baseWager / $claimUnit) * $claimUnit;
+        }
+
+        return apiSuccessResponse('success', [
+            'claimUnit' => $claimUnit,
+            'baseWager' => $baseWager,
+            'claimable' => self::formatAmount($claimable)
+        ]);
+    }
+
+    /**
+     * 領取推廣紅利
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException|Exception
+     */
+    public function childrenCashbackClaim(Request $request): Response
+    {
+        $player = checkPlayer();
+        // ---------------------------------------- 冪等性處理 ----------------------------------------
+        $requestId = $request->input('request_id') ?? null;
+        $operation = 'children-cashback-claim:' . $player->id;
+        $checkIdempotent = $this->checkIdempotent($requestId, $operation, $player->id);
+
+        if ($checkIdempotent !== null) {
+            return $checkIdempotent;
+        }
+
+        if (! $this->reserveIdempotent($requestId, $operation, $player->id)) {
+            $response = $this->checkIdempotent($requestId, $operation, $player->id);
+            return $response ?? apiFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ---------------------------------------- 流程檢查 ----------------------------------------
+        $pendingAmount = $player->player_extend->pending_children_cashback_amount ?? 0;
+
+        if ($pendingAmount <= 0) {
+            $response = apiSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, $operation, $player->id);
+
+            return $response;
+        }
+
+        $vipLevel = $player->vipLevel()->first();
+
+        // 如果玩家没有VIP等级，获取所属渠道的最低VIP等级作为默认展示
+        if (empty($vipLevel)) {
+            $vipLevel = VipLevel::query()
+                ->where('department_id', $player->department_id)
+                ->orderBy('sort', 'asc')
+                ->first();
+        }
+
+        $minAmount = $vipLevel->min_claim_amount ?? 0;
+
+        if ($minAmount <= 0) {
+            $this->releaseIdempotent($requestId);
+            return apiFailResponse(trans('reverse_water_min_not_set', [], 'message'));
+        }
+
+        $claimableAmount = floor($pendingAmount / $minAmount) * $minAmount;
+
+        if ($claimableAmount <= 0) {
+            $this->releaseIdempotent($requestId);
+            return apiFailResponse(trans('reverse_water_insufficient', [], 'message'));
+        }
+
+        Db::beginTransaction();
+
+        try {
+            // ---------------------------------------- 更新玩家钱包 ----------------------------------------
+            $beforeGameAmount = WalletService::getBalance($player->id);
+            $incrementResult = WalletService::atomicIncrement($player->id, $claimableAmount);
+            $afterGameAmount = $incrementResult['balance'];
+            // ---------------------------------------- 寫入賬變記錄 ----------------------------------------
+            $playerMoneyEditLog = new PlayerMoneyEditLog;
+            $playerMoneyEditLog->player_id = $player->id;
+            $playerMoneyEditLog->department_id = $player->department_id;
+            $playerMoneyEditLog->type = PlayerMoneyEditLog::TYPE_INCREASE;
+            $playerMoneyEditLog->action = PlayerMoneyEditLog::REVERSE_CHILDREN_CASHBACK;
+            $playerMoneyEditLog->tradeno = date('YmdHis') . rand(10000, 99999);
+            $playerMoneyEditLog->currency = $player->currency;
+            $playerMoneyEditLog->money = $claimableAmount;
+            $playerMoneyEditLog->inmoney = $claimableAmount;
+            $playerMoneyEditLog->remark = '推廣紅利領取';
+            $playerMoneyEditLog->user_id = 0;
+            $playerMoneyEditLog->user_name = trans('system_automatic', [], 'message');
+            $playerMoneyEditLog->save();
+            // ---------------------------------------- 寫入金流明細 ----------------------------------------
+            $playerDeliveryRecord = new PlayerDeliveryRecord;
+            $playerDeliveryRecord->player_id = $player->id;
+            $playerDeliveryRecord->department_id = $player->department_id;
+            $playerDeliveryRecord->target = $playerMoneyEditLog->getTable();
+            $playerDeliveryRecord->target_id = $playerMoneyEditLog->id;
+            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_CHILDREN_CASHBACK;
+            $playerDeliveryRecord->source = 'reverse_children_cashback';
+            $playerDeliveryRecord->amount = $claimableAmount;
+            $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
+            $playerDeliveryRecord->tradeno = $playerMoneyEditLog->tradeno;
+            $playerDeliveryRecord->remark = '推廣紅利領取';
+            $playerDeliveryRecord->save();
+
+            // 扣减 player_extend 待領取推廣紅利
+            $player->player_extend()->decrement('pending_children_cashback_amount', $claimableAmount);
 
             DB::commit();
 

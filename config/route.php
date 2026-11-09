@@ -43,6 +43,10 @@ Route::group('/api', function () {
         Route::post('/me/rebate', [\app\api\controller\web\PlayerController::class, 'rebate']);
         // 領取返水
         Route::post('/me/rebate/claim', [\app\api\controller\web\PlayerController::class, 'rebateClaim']);
+        // 推廣紅利
+        Route::post('/me/children/cashback', [\app\api\controller\web\PlayerController::class, 'childrenCashback']);
+        // 領取推廣紅利
+        Route::post('/me/children/cashback/claim', [\app\api\controller\web\PlayerController::class, 'childrenCashbackClaim']);
         // 我的機台清單
         Route::post('/me/machines', [\app\api\controller\web\PlayerController::class, 'machines']);
         // 查詢單機（通过 ?id=123 或 ?code=M00001 参数查询）
@@ -382,6 +386,10 @@ Route::group('/api', function () {
         Route::post('/claim-daily-login-bonus', [\app\api\controller\v1\PlayerController::class, 'claimDailyLoginBonus']);
         // 彩金中奖记录列表
         Route::post('/lottery-records', [\app\api\controller\v1\PlayerController::class, 'getLotteryRecords']);
+        // 推廣紅利
+        Route::post('/children/cashback', [\app\api\controller\web\PlayerController::class, 'childrenCashback']);
+        // 領取推廣紅利
+        Route::post('/children/cashback/claim', [\app\api\controller\web\PlayerController::class, 'childrenCashbackClaim']);
 
         // ========== 充值满赠相关接口 ==========
         // 获取充值满赠活动列表

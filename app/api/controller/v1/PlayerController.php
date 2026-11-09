@@ -46,6 +46,7 @@ use app\service\payment\EHpayService;
 use app\service\payment\GBpayService;
 use app\service\SmsServicesServices;
 use app\service\VipRetainService;
+use app\service\WalletService;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Support\Arr;
@@ -458,7 +459,7 @@ class PlayerController
             return round($amount, 2);
         }
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 重置密码
@@ -479,25 +480,25 @@ class PlayerController
                 v::stringType()->notEmpty()->alnum()->length(6, 12)->setName(trans('new_password', [], 'message')))
             ->key('re_password', v::stringType()->notEmpty()->alnum()->length(6,
                 12)->equals($data['password'] ?? null)->setName(trans('re_password', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         // 验证短信
         if (!verifySMS($data['country_code'], $data['phone'], $data['code'], PhoneSmsLog::TYPE_CHANGE_PASSWORD)) {
             return jsonFailResponse(trans('phone_code_error', [], 'message'));
         }
-        
+
         /** @var Player $player */
         $player = Player::query()->where(['phone' => $data['phone']])->where('department_id',
             \request()->department_id)->first();
         if (empty($player)) {
             return jsonFailResponse(trans('player_not_fount', [], 'message'));
         }
-        
+
         if ($player->status == Player::STATUS_STOP) {
             return jsonFailResponse(trans('player_stop', [], 'message'));
         }
@@ -505,7 +506,7 @@ class PlayerController
         if (!$player->save()) {
             return jsonFailResponse(trans('password_change_error', [], 'message'));
         }
-        
+
         return jsonSuccessResponse('success', [
             'id' => $player->id,
             'phone' => $player->phone,
@@ -718,7 +719,7 @@ class PlayerController
 
         return $formattedGamePool;
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 游戏记录
@@ -733,13 +734,13 @@ class PlayerController
         $validator = v::key('game_id', v::intVal()->setName(trans('game_id', [], 'message')), false)
             ->key('page', v::intVal()->setName(trans('page', [], 'message')))
             ->key('size', v::intVal()->setName(trans('size', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         $playerGameLog = PlayerGameRecord::query()->where('player_id', $player->id)
             ->where('status', PlayerGameRecord::STATUS_END)
             ->orderBy('updated_at', 'desc')
@@ -776,15 +777,15 @@ class PlayerController
             ->orderBy('sort', 'desc')
             ->select(['id', 'name'])
             ->get()->toArray();
-        
+
         $gameList = Arr::prepend($gameList, ['id' => 0, 'name' => trans('all', [], 'message')]);
-        
+
         return jsonSuccessResponse('success', [
             'list' => $list,
             'game_list' => $gameList
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 编辑玩家名称
@@ -798,7 +799,7 @@ class PlayerController
         $data = $request->all();
         $validator = v::key('player_name', v::stringVal()->length(1, 50)->setName(trans('player_name', [], 'message')),
             false);
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -806,10 +807,10 @@ class PlayerController
         }
         $player->name = $data['player_name'] ?? '';
         $player->save();
-        
+
         return jsonSuccessResponse('success');
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 编辑保存玩家头像
@@ -843,7 +844,7 @@ class PlayerController
             $saveFilename = $uniqueId . '.' . $file->getUploadExtension();
             $savePath = $basePath . $saveFilename;
             $file->move($savePath);
-            
+
             return jsonSuccessResponse('success', [
                 'origin_name' => $uploadName,
                 'save_name' => $saveFilename,
@@ -855,10 +856,10 @@ class PlayerController
                 'extension' => $extension,
             ]);
         }
-        
+
         return jsonFailResponse(trans('image_upload_fail', [], 'message'));
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 玩家发送短信
@@ -876,7 +877,7 @@ class PlayerController
             PhoneSmsLog::TYPE_CHANGE_PAY_PASSWORD,
             PhoneSmsLog::TYPE_CHANGE_PHONE,
         ])->setName(trans('sms_type', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -891,10 +892,10 @@ class PlayerController
         } catch (Exception $e) {
             return jsonFailResponse($e->getMessage());
         }
-        
+
         return jsonSuccessResponse('success');
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 检查验证码
@@ -914,21 +915,21 @@ class PlayerController
                 PhoneSmsLog::TYPE_CHANGE_PAY_PASSWORD,
                 PhoneSmsLog::TYPE_CHANGE_PHONE,
             ])->setName(trans('sms_type', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         // 验证短信
         if (!verifySMS($player->country_code, $player->phone, $data['code'], $data['type'])) {
             return jsonFailResponse(trans('phone_code_error', [], 'message'));
         }
-        
+
         return jsonSuccessResponse('success');
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 绑定新手机号
@@ -949,18 +950,18 @@ class PlayerController
                 PhoneSmsLog::COUNTRY_CODE_CH,
                 PhoneSmsLog::COUNTRY_CODE_TW
             ])->setName(trans('country_code', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         // 验证短信
         if (!verifySMS($data['country_code'], $data['phone'], $data['code'], PhoneSmsLog::TYPE_BIND_NEW_PHONE)) {
             return jsonFailResponse(trans('phone_code_error', [], 'message'));
         }
-        
+
         // 验证手机号是否已注册
         if (Player::where('phone', $data['phone'])->where('department_id', \request()->department_id)->first()) {
             return jsonFailResponse(trans('phone_has_register', [], 'message'));
@@ -968,10 +969,10 @@ class PlayerController
         $player->phone = $data['phone'];
         $player->country_code = $data['country_code'];
         $player->save();
-        
+
         return jsonSuccessResponse('success');
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 修改支付密码
@@ -990,24 +991,24 @@ class PlayerController
                 v::stringType()->notEmpty()->alnum()->length(6, 6)->setName(trans('play_password', [], 'message')))
             ->key('re_play_password', v::stringType()->notEmpty()->alnum()->length(6,
                 6)->equals($data['play_password'] ?? null)->setName(trans('re_play_password', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         // 验证短信
         if (!verifySMS($player->country_code, $player->phone, $data['code'], PhoneSmsLog::TYPE_CHANGE_PAY_PASSWORD)) {
             return jsonFailResponse(trans('phone_code_error', [], 'message'));
         }
-        
+
         $player->play_password = $data['play_password'];
         $player->save();
-        
+
         return jsonSuccessResponse('success');
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 转点
@@ -1024,13 +1025,13 @@ class PlayerController
         $validator = v::key('uuid', v::stringType()->notEmpty()->setName(trans('uuid', [], 'message')))
             ->key('pay_password', v::stringType()->notEmpty()->setName(trans('pay_password', [], 'message')))
             ->key('amount', v::floatVal()->notEmpty()->setName(trans('amount', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         //贈點功能關閉
         if ($player->status_transfer == 0) {
             return jsonFailResponse(trans('present_disabled', [], 'message'));
@@ -1138,8 +1139,8 @@ class PlayerController
 
         return jsonSuccessResponse('success');
     }
-    
-    
+
+
     #[RateLimiter(limit: 5)]
     /**
      * 转点
@@ -1155,13 +1156,13 @@ class PlayerController
         $data = $request->all();
         $validator = v::key('uuid', v::stringType()->notEmpty()->setName(trans('uuid', [], 'message')))
             ->key('amount', v::floatVal()->notEmpty()->setName(trans('amount', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         //贈點功能關閉
         if ($player->status_transfer == 0) {
             return jsonFailResponse(trans('present_disabled', [], 'message'));
@@ -1266,7 +1267,7 @@ class PlayerController
                 $player->recommend_player->player_promoter->children_total_amount -= $amount;
                 $player->push();
             }
-            
+
             //统计线下总营收
             if (!empty($acceptPlayer->recommend_id)) {
                 //不是最上级
@@ -1275,22 +1276,22 @@ class PlayerController
                 $acceptPlayer->recommend_player->player_promoter->children_total_amount += $amount;
                 $acceptPlayer->push();
             }
-            
+
             DB::commit();
         } catch (Exception $e) {
             DB::rollBack();
             Log::error('present', [$e->getTrace()]);
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
-        
+
         queueClient::send('game-depositAmount', [
             'player_id' => $acceptPlayer->id,
             'amount' => $amount
         ]);
-        
+
         return jsonSuccessResponse('success');
     }
-    
+
     /**
      * 洗分（线下代理提现）
      * @param Request $request
@@ -1503,7 +1504,7 @@ class PlayerController
             return jsonFailResponse($e->getMessage() ?? trans('system_error', [], 'message'));
         }
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 玩家账单记录
@@ -1520,13 +1521,13 @@ class PlayerController
         $validator = v::key('bill_type', v::stringVal()->setName(trans('bill_type', [], 'message')), false)
             ->key('page', v::intVal()->setName(trans('page', [], 'message')))
             ->key('size', v::intVal()->setName(trans('size', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         $playerDeliveryRecord = PlayerDeliveryRecord::where('player_id', $player->id)
             ->orderBy('id', 'desc')
             ->forPage($data['page'], $data['size']);
@@ -1705,7 +1706,7 @@ class PlayerController
                     break;
             }
         }
-        
+
         return jsonSuccessResponse('success', [
             'list' => $list,
             'bill_type' => [
@@ -1716,7 +1717,7 @@ class PlayerController
             ]
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 玩家Q-talk充值
@@ -1732,7 +1733,7 @@ class PlayerController
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('money', v::notEmpty()->intVal()->setName(trans('talk_recharge_point', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -1789,7 +1790,7 @@ class PlayerController
             } else {
                 throw new Exception(trans('system_error', [], 'message'));
             }
-            
+
             $rechargeOrder->save();
             DB::commit();
         } catch (Exception $e) {
@@ -1797,7 +1798,7 @@ class PlayerController
             Log::error($e->getMessage());
             return jsonFailResponse($e->getMessage());
         }
-        
+
         return jsonSuccessResponse('success', [
             'tradeno' => $rechargeOrder->tradeno,
             'order_id' => $rechargeOrder->id,
@@ -1807,7 +1808,7 @@ class PlayerController
             'talk_tradeno' => (string)$rechargeOrder->talk_tradeno,
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 获取Q-talk充值订单状态
@@ -1823,7 +1824,7 @@ class PlayerController
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('tradeno', v::stringVal()->notEmpty()->setName(trans('recharge_tradeno', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -1869,7 +1870,7 @@ class PlayerController
                 return jsonFailResponse(trans('system_error', [], 'message'));
             }
         }
-        
+
         return jsonSuccessResponse('success', [
             'tradeno' => $playerRechargeRecord->tradeno,
             'money' => $playerRechargeRecord->money,
@@ -1877,7 +1878,7 @@ class PlayerController
             'status' => PlayerRechargeRecord::STATUS_RECHARGED_SUCCESS,
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 获取玩家头像
@@ -1898,12 +1899,12 @@ class PlayerController
                 'value' => $v,
             ];
         }
-        
+
         return jsonSuccessResponse('success', [
             'avatar_list' => $list
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 修改玩家头像
@@ -1918,7 +1919,7 @@ class PlayerController
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('avatar_id', v::stringVal()->notEmpty()->setName(trans('avatar_id', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -1930,10 +1931,10 @@ class PlayerController
         }
         $player->avatar = $data['avatar_id'];
         $player->save();
-        
+
         return jsonSuccessResponse(trans('change_avatar_success', [], 'message'));
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 玩家提现
@@ -1958,7 +1959,7 @@ class PlayerController
             ->key('bank_id', v::intVal()->setName(trans('withdrawal_bank', [], 'message')))
             ->key('play_password',
                 v::stringType()->notEmpty()->alnum()->length(6, 6)->setName(trans('play_password', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -2053,7 +2054,7 @@ class PlayerController
                     } else {
                         $playerWithdrawRecord->status = PlayerWithdrawRecord::STATUS_FAIL;
                     }
-                    
+
                     $playerWithdrawRecord->save();
                     if ($playerWithdrawRecord->status == PlayerWithdrawRecord::STATUS_SUCCESS) {
                         //寫入金流明細
@@ -2073,7 +2074,7 @@ class PlayerController
                         $playerDeliveryRecord->remark = $playerWithdrawRecord->remark ?? '';
                         $playerDeliveryRecord->save();
                     }
-                    
+
                     DB::commit();
                 } catch (Exception $e) {
                     DB::rollBack();
@@ -2184,7 +2185,7 @@ class PlayerController
                     DB::rollBack();
                     return jsonFailResponse(trans('system_error', [], 'message'));
                 }
-                
+
                 sendSocketMessage('private-admin_group-channel-' . $player->department_id, [
                     'msg_type' => 'player_create_withdraw_order',
                     'id' => $playerWithdrawRecord->id,
@@ -2196,7 +2197,7 @@ class PlayerController
                     'status' => $playerWithdrawRecord->status,
                     'tradeno' => $playerWithdrawRecord->tradeno,
                 ]);
-                
+
                 $notice = new Notice();
                 $notice->department_id = $playerWithdrawRecord->department_id;
                 $notice->player_id = $playerWithdrawRecord->player_id;
@@ -2289,7 +2290,7 @@ class PlayerController
                     DB::rollBack();
                     return jsonFailResponse(trans('system_error', [], 'message'));
                 }
-                
+
                 sendSocketMessage('private-admin_group-channel-' . $player->department_id, [
                     'msg_type' => 'player_create_withdraw_order',
                     'id' => $playerWithdrawRecord->id,
@@ -2301,7 +2302,7 @@ class PlayerController
                     'status' => $playerWithdrawRecord->status,
                     'tradeno' => $playerWithdrawRecord->tradeno,
                 ]);
-                
+
                 $notice = new Notice();
                 $notice->department_id = $playerWithdrawRecord->department_id;
                 $notice->player_id = $playerWithdrawRecord->player_id;
@@ -2320,7 +2321,7 @@ class PlayerController
             return jsonFailResponse(trans($playerWithdrawRecord->type == PlayerWithdrawRecord::TYPE_THIRD ? 'qtalk_withdraw_fail' : 'withdraw_fail',
                 [], 'message'));
         }
-        
+
         return jsonSuccessResponse('success', [
             'tradeno' => $playerWithdrawRecord->tradeno,
             'order_id' => $playerWithdrawRecord->id,
@@ -2330,7 +2331,7 @@ class PlayerController
             'talk_tradeno' => (string)$playerWithdrawRecord->talk_tradeno,
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 收藏机台
@@ -2345,7 +2346,7 @@ class PlayerController
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('machine_id', v::intVal()->notEmpty()->setName(trans('machine_id', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -2360,7 +2361,7 @@ class PlayerController
                 $query->where('status', 1);
             })->where('status', 1);
         })->first();
-        
+
         if (empty($machine)) {
             return jsonFailResponse(trans('machine_not_found', [], 'message'));
         }
@@ -2368,19 +2369,19 @@ class PlayerController
             'player_id' => $player->id,
             'machine_id' => $machine->id,
         ])->first();
-        
+
         if (!empty($favorite)) {
             return jsonFailResponse(trans('machine_has_favorite', [], 'message'));
         }
-        
+
         $playerFavorite = new PlayerFavoriteMachine();
         $playerFavorite->player_id = $player->id;
         $playerFavorite->machine_id = $machine->id;
         $playerFavorite->save();
-        
+
         return jsonSuccessResponse(trans('machine_favorite_success', [], 'message'));
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 取消收藏机台
@@ -2395,13 +2396,13 @@ class PlayerController
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('machine_id', v::intVal()->notEmpty()->setName(trans('machine_id', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         $favorite = PlayerFavoriteMachine::where([
             'player_id' => $player->id,
             'machine_id' => $data['machine_id'],
@@ -2409,12 +2410,12 @@ class PlayerController
         if (empty($favorite)) {
             return jsonFailResponse(trans('machine_favorite_not_found', [], 'message'));
         }
-        
+
         $favorite->delete();
-        
+
         return jsonSuccessResponse(trans('cancel_favorite_machine_success', [], 'message'));
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 玩家收藏列表
@@ -2431,13 +2432,13 @@ class PlayerController
         $validator = v::key('is_free', v::boolVal()->setName(trans('is_free', [], 'message')))
             ->key('page', v::intVal()->setName(trans('page', [], 'message')))
             ->key('size', v::intVal()->setName(trans('size', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         $favoriteMachine = PlayerFavoriteMachine::where('player_id', $player->id)->whereHas('machine',
             function ($query) {
                 $query->whereHas('machineCategory', function ($query) {
@@ -2511,14 +2512,14 @@ class PlayerController
                     ''), '0'), '.'),
             ];
         }
-        
+
         return jsonSuccessResponse(trans('success', [], 'message'), [
             'machines' => $list,
             'machine_marquee' => SystemSetting::where('feature', 'machine_marquee')->where('status',
                     1)->value('content') ?? 0,
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 首页广告(轮播图,跑马灯)
@@ -2589,11 +2590,11 @@ class PlayerController
     function playingMachine(): Response
     {
         $player = checkPlayer();
-        
+
         if (empty($player->channel->status_machine) || empty($player->status_machine)) {
             return jsonFailResponse(trans('platform_no_permission', [], 'message'));
         }
-        
+
         $machinesList = Machine::where('status', 1)
             ->whereHas('machineCategory', function ($query) {
                 $query->whereHas('gameType', function ($query) {
@@ -2682,12 +2683,12 @@ class PlayerController
             $machineInfo['online_status'] = $onlineStatusMap[$item->id] ?? 'offline';
             $list[] = $machineInfo;
         }
-        
+
         return jsonSuccessResponse('success', [
             'playing_machine' => $list
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 添加银行卡
@@ -2730,7 +2731,7 @@ class PlayerController
                 $data['type'])->exists()) {
             return jsonFailResponse(trans('bank_card_has_bind', [], 'message'));
         }
-        
+
         try {
             if (!empty($data['qr_code'])) {
                 $filePath = uploadBase64ToGCS($data['qr_code'], 'qr_code');
@@ -2750,10 +2751,10 @@ class PlayerController
         } catch (Exception $e) {
             return jsonFailResponse($e->getMessage());
         }
-        
+
         return jsonSuccessResponse(trans('add_bank_card_success', [], 'message'));
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 编辑银行卡
@@ -2773,13 +2774,13 @@ class PlayerController
             ->key('wallet_address',
                 v::optional(v::stringType()->length(1, 255)->setName(trans('wallet_address', [], 'message'))))
             ->key('qr_code', v::optional(v::stringType()->setName(trans('qr_code', [], 'message'))));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         /** @var PlayerBank $playerBank */
         $playerBank = PlayerBank::query()->where('id', $data['id'])->where('player_id', $player->id)->first();
         if (!$playerBank) {
@@ -2805,10 +2806,10 @@ class PlayerController
         } catch (Exception $e) {
             return jsonFailResponse($e->getMessage());
         }
-        
+
         return jsonSuccessResponse(trans('edit_bank_card_success', [], 'message'));
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 删除银行卡
@@ -2821,7 +2822,7 @@ class PlayerController
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('id', v::notEmpty()->intVal()->setName(trans('bank_card_id', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -2834,10 +2835,10 @@ class PlayerController
         if (!$playerBank->delete()) {
             return jsonFailResponse(trans('delete_bank_card_fail', [], 'message'));
         }
-        
+
         return jsonSuccessResponse(trans('delete_bank_card_success', [], 'message'));
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 银行卡列表
@@ -2853,7 +2854,7 @@ class PlayerController
         $data = $request->all();
         $validator = v::key('page', v::intVal()->setName(trans('page', [], 'message')))
             ->key('size', v::intVal()->setName(trans('size', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -2871,7 +2872,7 @@ class PlayerController
             'bank_list' => $list,
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 获取提现方式
@@ -2905,14 +2906,14 @@ class PlayerController
                 ->where('status', 1)
                 ->get();
         }
-        
+
         return jsonSuccessResponse('success', [
             'withdrawal_way' => $bankList,
             'currency' => $channel->currency,
             'usdt_rate' => $rate ?? 0
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 获取充值方式
@@ -2927,7 +2928,7 @@ class PlayerController
         checkPlayer();
         $data = $request->all();
         $validator = v::key('amount', v::intVal()->min(0)->setName(trans('recharge_amount', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -2965,7 +2966,7 @@ class PlayerController
             });
         }
         $methodList = $method->get()->toArray() ?? '';
-        
+
         return jsonSuccessResponse('success', [
             'recharge_method' => $methodList,
             'currency' => $currency,
@@ -2973,7 +2974,7 @@ class PlayerController
             'usdt_rate' => bcsub($usdRate, 0.1, 2)
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 玩家充值
@@ -3001,7 +3002,7 @@ class PlayerController
         $data = $request->all();
         $validator = v::key('amount', v::notEmpty()->intVal()->min(0)->setName(trans('recharge_amount', [], 'message')))
             ->key('method_id', v::notEmpty()->intVal()->setName(trans('method_id', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -3022,7 +3023,7 @@ class PlayerController
                     'cancel_time' => date('Y-m-d H:i:s')
                 ]);
         }
-        
+
         $rechargeRecord = PlayerRechargeRecord::query()
             ->where('player_id', $player->id)
             ->where('status', PlayerRechargeRecord::STATUS_WAIT)
@@ -3217,7 +3218,7 @@ class PlayerController
             'min' => $playerRechargeRecord->channel_recharge_setting->min,
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 完成充值
@@ -3265,31 +3266,31 @@ class PlayerController
                 if ($file->getSize() >= 1024 * 1024 * 2) {
                     return jsonFailResponse(trans('image_upload_size_fail', ['{size}' => '2M'], 'message'));
                 }
-                
+
                 // 文件类型验证
                 $extension = strtolower($file->getUploadExtension());
                 $allowedExtensions = ['png', 'jpg', 'jpeg'];
                 if (!in_array($extension, $allowedExtensions)) {
                     return jsonFailResponse(trans('image_upload_type_fail', [], 'message'));
                 }
-                
+
                 $mimeType = $file->getUploadMimeType();
                 $allowedMimes = ['image/jpeg', 'image/jpg', 'image/png'];
                 if (!in_array($mimeType, $allowedMimes)) {
                     return jsonFailResponse(trans('image_upload_type_fail', [], 'message'));
                 }
-                
+
                 try {
                     // 使用 Google Cloud Storage
                     $storage = Filesystem::disk('google_oss');
-                    
+
                     // 生成唯一文件名
                     $saveFilename = time() . '_' . uniqid() . '.' . $extension;
                     $cloudPath = 'certificate/' . date('Ymd') . '/' . $saveFilename;
-                    
+
                     // 读取文件内容
                     $fileContent = file_get_contents($file->getPathname());
-                    
+
                     // 上传到 GCS
                     $result = $storage->put($cloudPath, $fileContent, [
                         'metadata' => [
@@ -3297,7 +3298,7 @@ class PlayerController
                             'cacheControl' => 'public, max-age=31536000', // 缓存1年
                         ]
                     ]);
-                    
+
                     if ($result) {
                         // 获取公开访问 URL
                         $filePath = $storage->url($cloudPath);
@@ -3306,7 +3307,7 @@ class PlayerController
                         Log::error('证书文件上传失败，存储返回 false');
                         $filePath = null;
                     }
-                    
+
                 } catch (Exception $e) {
                     Log::error('证书文件上传异常: ' . $e->getMessage());
                     $filePath = null;
@@ -3314,7 +3315,7 @@ class PlayerController
             } else {
                 $filePath = null;
             }
-            
+
             if (!$filePath) {
                 return jsonFailResponse(trans('failed_to_upload_recharge_voucher', [], 'message'));
             }
@@ -3325,7 +3326,7 @@ class PlayerController
         $rechargeRecord->status = PlayerRechargeRecord::STATUS_RECHARGING;
         $rechargeRecord->certificate = $filePath;
         $rechargeRecord->save();
-        
+
         sendSocketMessage('private-admin_group-channel-' . $player->department_id, [
             'msg_type' => 'player_examine_recharge_order',
             'id' => $rechargeRecord->id,
@@ -3336,7 +3337,7 @@ class PlayerController
             'status' => $rechargeRecord->status,
             'tradeno' => $rechargeRecord->tradeno,
         ]);
-        
+
         $notice = new Notice();
         $notice->department_id = $rechargeRecord->department_id;
         $notice->player_id = $rechargeRecord->player_id;
@@ -3347,10 +3348,10 @@ class PlayerController
         $notice->title = '充值待稽核';
         $notice->content = '充值訂單待稽核，玩家' . (empty($rechargeRecord->player_name) ? $rechargeRecord->player_name : $rechargeRecord->player_phone) . ', 充值遊戲點: ' . $rechargeRecord->point . ' 充值金額: ' . $rechargeRecord->money;
         $notice->save();
-        
+
         return jsonSuccessResponse('success');
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 取消充值
@@ -3391,15 +3392,15 @@ class PlayerController
         try {
             $rechargeRecord->status = PlayerRechargeRecord::STATUS_RECHARGED_CANCEL;
             $rechargeRecord->save();
-            
+
         } catch (Exception $e) {
             Log::error($e->getMessage());
             return jsonFailResponse($e->getMessage());
         }
-        
+
         return jsonSuccessResponse('success');
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 获取充值订单
@@ -3415,7 +3416,7 @@ class PlayerController
         $player = checkPlayer();
         $data = $request->all();
         $validator = v::key('id', v::intVal()->setName(trans('recharge_record_id', [], 'message')), false);
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
@@ -3435,7 +3436,7 @@ class PlayerController
                 'recharge_record' => []
             ]);
         }
-        
+
         return jsonSuccessResponse('success', [
             'recharge_record' => [
                 'id' => $rechargeRecord->id,
@@ -3462,7 +3463,7 @@ class PlayerController
             ]
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 玩家头像
@@ -3476,32 +3477,32 @@ class PlayerController
         $player = checkPlayer();
         $data = $request->post();
         $validator = v::key('avatar', v::notEmpty()->stringVal()->setName(trans('player_avatar', [], 'message')));
-        
+
         try {
             $validator->assert($data);
         } catch (AllOfException $e) {
             return jsonFailResponse(getValidationMessages($e));
         }
-        
+
         try {
             $filePath = uploadBase64ToGCS($data['avatar']);
-            
+
             if (!$filePath) {
                 return jsonFailResponse(trans('failed_to_upload_recharge_voucher', [], 'message'));
             }
             $player->avatar = $filePath;
             $player->save();
-            
+
             return jsonSuccessResponse('success', [
                 'avatar' => $player->avatar
             ]);
-            
+
         } catch (Exception $e) {
             Log::error($e->getMessage());
             return jsonFailResponse($e->getMessage());
         }
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 富豪榜
@@ -3554,7 +3555,7 @@ class PlayerController
             ]
         ]);
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 银行卡绑定检测
@@ -3565,15 +3566,15 @@ class PlayerController
     public function checkBindBankcard(): Response
     {
         $player = checkPlayer();
-        
+
         if (!PlayerBank::query()->where('player_id', $player->id)->where('type',
             ChannelRechargeMethod::TYPE_BANK)->exists()) {
             return jsonFailResponse(trans('bind_bank_card', [], 'message'));
         }
-        
+
         return jsonSuccessResponse('success');
     }
-    
+
     #[RateLimiter(limit: 5)]
     /**
      * 银行卡列表
@@ -3593,13 +3594,13 @@ class PlayerController
             })
             ->select('name', 'pic')
             ->get()->toArray();
-        
+
         return jsonSuccessResponse('success', [
             'bank_list' => $list,
         ]);
     }
-    
-    
+
+
     /**
      * 反水列表
      * @param Request $request
@@ -3610,7 +3611,7 @@ class PlayerController
     public function reverseWaterList(Request $request): Response
     {
         $data = $request->all();
-        
+
         $player = checkPlayer();
         //获取用户
         $level = $player->national_promoter()->first()?->level_list()->first();
@@ -3618,9 +3619,9 @@ class PlayerController
             'name' => $level ? $level->national_level()?->first()->name : '',
             'ratio' => $level->reverse_water ?? 0,
         ];
-        
+
         $reverseWaterModel = PlayerReverseWaterDetail::query()->where('player_id', $player->id);
-        
+
         $total = (clone $reverseWaterModel)->sum('reverse_water');
         $list = (clone $reverseWaterModel)->selectRaw('date,max(level_ratio) as level_ratio,sum(point) as all_point,sum(reverse_water) all_reverse_water')->forPage($data['page'] ?? 1,
             $data['size'] ?? 10)
@@ -3628,9 +3629,9 @@ class PlayerController
             ->groupBy('date')
             ->get()
             ->toArray();
-        
+
         $today = Carbon::today()->format('Y-m-d 00:00:00');
-        
+
         //今日总打码量
         $playGameModel = PlayGameRecord::query()->where('created_at', '>=', $today)->where('player_id', $player->id);
         $todayGameTotal = (clone $playGameModel)->sum('bet');
@@ -3643,7 +3644,7 @@ class PlayerController
             ->sum('chip_amount');
 
         $todayTotal = (float) bcadd((string)$todayGameTotal, (string)$todayMachineTotal, 2);
-        
+
         return jsonSuccessResponse('success', [
             'list' => $list,
             'total' => $total,
@@ -3654,7 +3655,7 @@ class PlayerController
             ]
         ]);
     }
-    
+
     /**
      * 获取反水详情
      * @param Request $request
@@ -3665,17 +3666,17 @@ class PlayerController
     {
         $data = $request->all();
         $player = checkPlayer();
-        
+
         $reverseWaterModel = PlayerReverseWaterDetail::query()
             ->with(['platform:id,name,logo'])
             ->where('player_id', $player->id)
             ->where('date', $data['date'])
             ->get()
             ->toArray();
-        
+
         return jsonSuccessResponse('success', $reverseWaterModel);
     }
-    
+
     /**
      * 领取反水奖励
      * @param Request $request
@@ -3759,7 +3760,7 @@ class PlayerController
             $playerDeliveryRecord->tradeno = '';
             $playerDeliveryRecord->remark = '';
             $playerDeliveryRecord->save();
-            
+
             PlayerReverseWaterDetail::query()
                 ->where('player_id', $player->id)
                 ->where('settled_date', $playerReverseWaterDetail->settled_date)
@@ -3779,7 +3780,7 @@ class PlayerController
             return jsonFailResponse(trans('system_error', [], 'message'));
         }
     }
-    
+
     /**
      * 领取反水（根据VIP最低领取额计算可领取金额，记录账变）
      * @param Request $request
@@ -3906,6 +3907,154 @@ class PlayerController
             DB::rollBack();
             $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('system_error', [], 'message'));
+        }
+    }
+
+    /**
+     * 推廣紅利
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function childrenCashback(): Response
+    {
+        $player = checkPlayer();
+        $vipLevel = $player->vipLevel()->first();
+
+        // 如果玩家没有VIP等级，获取所属渠道的最低VIP等级作为默认展示
+        if (empty($vipLevel)) {
+            $vipLevel = VipLevel::query()
+                ->where('department_id', $player->department_id)
+                ->orderBy('sort', 'asc')
+                ->first();
+        }
+
+        $baseWager = $player->player_extend->pending_children_cashback_amount ?? 0;
+        $claimUnit = $vipLevel->min_claim_amount ?? 0;
+        $claimable = 0;
+
+        // 未设置最低领取额则不可领取，否则取最低额的整数倍
+        if ($claimUnit > 0) {
+            $claimable = floor($baseWager / $claimUnit) * $claimUnit;
+        }
+
+        return apiSuccessResponse('success', [
+            'claimUnit' => $claimUnit,
+            'baseWager' => $baseWager,
+            'claimable' => self::formatAmount($claimable)
+        ]);
+    }
+
+    /**
+     * 領取推廣紅利
+     * @param Request $request
+     * @return Response
+     * @throws PlayerCheckException|Exception
+     */
+    public function childrenCashbackClaim(Request $request): Response
+    {
+        $player = checkPlayer();
+        // ---------------------------------------- 冪等性處理 ----------------------------------------
+        $requestId = $request->input('request_id') ?? null;
+        $operation = 'children-cashback-claim:' . $player->id;
+        $checkIdempotent = $this->checkIdempotent($requestId, $operation, $player->id);
+
+        if ($checkIdempotent !== null) {
+            return $checkIdempotent;
+        }
+
+        if (! $this->reserveIdempotent($requestId, $operation, $player->id)) {
+            $response = $this->checkIdempotent($requestId, $operation, $player->id);
+            return $response ?? apiFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // ---------------------------------------- 流程檢查 ----------------------------------------
+        $pendingAmount = $player->player_extend->pending_children_cashback_amount ?? 0;
+
+        if ($pendingAmount <= 0) {
+            $response = apiSuccessResponse('success');
+            $this->saveIdempotent($requestId, $response, $operation, $player->id);
+
+            return $response;
+        }
+
+        $vipLevel = $player->vipLevel()->first();
+
+        // 如果玩家没有VIP等级，获取所属渠道的最低VIP等级作为默认展示
+        if (empty($vipLevel)) {
+            $vipLevel = VipLevel::query()
+                ->where('department_id', $player->department_id)
+                ->orderBy('sort', 'asc')
+                ->first();
+        }
+
+        $minAmount = $vipLevel->min_claim_amount ?? 0;
+
+        if ($minAmount <= 0) {
+            $this->releaseIdempotent($requestId);
+            return apiFailResponse(trans('reverse_water_min_not_set', [], 'message'));
+        }
+
+        $claimableAmount = floor($pendingAmount / $minAmount) * $minAmount;
+
+        if ($claimableAmount <= 0) {
+            $this->releaseIdempotent($requestId);
+            return apiFailResponse(trans('reverse_water_insufficient', [], 'message'));
+        }
+
+        Db::beginTransaction();
+
+        try {
+            // ---------------------------------------- 更新玩家钱包 ----------------------------------------
+            $beforeGameAmount = WalletService::getBalance($player->id);
+            $incrementResult = WalletService::atomicIncrement($player->id, $claimableAmount);
+            $afterGameAmount = $incrementResult['balance'];
+            // ---------------------------------------- 寫入賬變記錄 ----------------------------------------
+            $playerMoneyEditLog = new PlayerMoneyEditLog;
+            $playerMoneyEditLog->player_id = $player->id;
+            $playerMoneyEditLog->department_id = $player->department_id;
+            $playerMoneyEditLog->type = PlayerMoneyEditLog::TYPE_INCREASE;
+            $playerMoneyEditLog->action = PlayerMoneyEditLog::REVERSE_CHILDREN_CASHBACK;
+            $playerMoneyEditLog->tradeno = date('YmdHis') . rand(10000, 99999);
+            $playerMoneyEditLog->currency = $player->currency;
+            $playerMoneyEditLog->money = $claimableAmount;
+            $playerMoneyEditLog->inmoney = $claimableAmount;
+            $playerMoneyEditLog->remark = '推廣紅利領取';
+            $playerMoneyEditLog->user_id = 0;
+            $playerMoneyEditLog->user_name = trans('system_automatic', [], 'message');
+            $playerMoneyEditLog->save();
+            // ---------------------------------------- 寫入金流明細 ----------------------------------------
+            $playerDeliveryRecord = new PlayerDeliveryRecord;
+            $playerDeliveryRecord->player_id = $player->id;
+            $playerDeliveryRecord->department_id = $player->department_id;
+            $playerDeliveryRecord->target = $playerMoneyEditLog->getTable();
+            $playerDeliveryRecord->target_id = $playerMoneyEditLog->id;
+            $playerDeliveryRecord->type = PlayerDeliveryRecord::TYPE_CHILDREN_CASHBACK;
+            $playerDeliveryRecord->source = 'reverse_children_cashback';
+            $playerDeliveryRecord->amount = $claimableAmount;
+            $playerDeliveryRecord->amount_before = $incrementResult['old'] ?? $beforeGameAmount;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
+            $playerDeliveryRecord->tradeno = $playerMoneyEditLog->tradeno;
+            $playerDeliveryRecord->remark = '推廣紅利領取';
+            $playerDeliveryRecord->save();
+
+            // 扣减 player_extend 待領取推廣紅利
+            $player->player_extend()->decrement('pending_children_cashback_amount', $claimableAmount);
+
+            DB::commit();
+
+            $response = apiSuccessResponse('success', [
+                'walletBalance' => $afterGameAmount,
+                'remaining' => self::formatAmount($pendingAmount - $claimableAmount)
+            ]);
+
+            $this->saveIdempotent($requestId, $response, $operation, $player->id);
+
+            return $response;
+        } catch (Exception) {
+            DB::rollBack();
+            $this->releaseIdempotent($requestId);
+
+            return apiFailResponse(trans('system_error', [], 'message'));
         }
     }
 
@@ -4048,10 +4197,10 @@ class PlayerController
             }
         }
         Cache::set('viewers_num_' . $data['machine_media_push_id'], $viewers);
-        
+
         return jsonSuccessResponse('success', ['viewers_num' => count($viewers)]);
     }
-    
+
     /**
      * 减少观看人数
      * @param Request $request
@@ -4074,7 +4223,7 @@ class PlayerController
             $viewers = array_diff($viewers, [$player->id]);
         }
         Cache::set('viewers_num_' . $data['machine_media_push_id'], $viewers);
-        
+
         return jsonSuccessResponse('success', ['viewers_num' => count($viewers)]);
     }
 
