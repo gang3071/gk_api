@@ -609,6 +609,8 @@ class MachineController
             if ($machine->gaming_user_id == 0 && in_array($action, ['plc_open_1', 'plc_open_10', 'plc_open_times'])) {
                 $this->checkMachineVipLevel($player, $machine);
             }
+            // 高设定限制：普通开分（plc_open_times）时校验（其他动作方法内部直接放行）
+            $this->checkHighSettingMachineLimit($player, $machine, $action);
             /** @var Player $gaming_player */
             $gaming_player = Player::find($machine->gaming_user_id);
             if ($services->reward_status == 1 && !in_array($action,
@@ -955,6 +957,54 @@ class MachineController
         }
     }
 
+    /**
+     * 高设定机台限制校验（参考 gk_admin 后台高设定设置）
+     *
+     * 仅对普通开分（plc_open_times）生效，其他动作直接放行。
+     *
+     * 规则：
+     * 1. 机台为高设定机台（is_high_setting=1）时，玩家 VIP 等级必须配置了高设定机台可玩数量
+     *    （vip_level.high_setting_machine_play_num > 0），否则报错提示
+     * 2. 玩家当前游玩中的高设定机台数量（含本次机台）不能超出 VIP 等级的可玩数量
+     *
+     * @param Player $player
+     * @param Machine $machine
+     * @param string $action 机台动作
+     * @return void
+     * @throws Exception
+     */
+    private function checkHighSettingMachineLimit(Player $player, Machine $machine, string $action): void
+    {
+        // 高设定限制仅对普通开分（plc_open_times）生效
+        if ($action !== 'plc_open_times') {
+            return;
+        }
+        // 非高设定机台不做限制
+        if ((int)$machine->is_high_setting !== 1) {
+            return;
+        }
+        // 1. VIP 等级必须有高设定机台可玩数量
+        $playNum = 0;
+        if ($player->vip_level_id > 0) {
+            $vipLevel = VipLevel::find($player->vip_level_id);
+            $playNum = $vipLevel ? (int)$vipLevel->high_setting_machine_play_num : 0;
+        }
+        if ($playNum <= 0) {
+            throw new Exception(trans('high_setting_vip_no_play_num', [], 'message'));
+        }
+        // 2. 不能超出可游玩数量（当前游玩中的高设定机台 + 本次机台）
+        $playingCount = Machine::query()
+            ->where('gaming_user_id', $player->id)
+            ->where('is_high_setting', 1)
+            ->count();
+        if ((int)$machine->gaming_user_id !== (int)$player->id) {
+            $playingCount += 1;
+        }
+        if ($playingCount > $playNum) {
+            throw new Exception(trans('high_setting_play_num_exceeded', ['{num}' => $playNum], 'message'));
+        }
+    }
+
     #[RateLimiter(limit: 5)]
     /**
      * 开分赠点（优化版：业务校验 + 调用 gk_work）
@@ -1141,6 +1191,8 @@ class MachineController
                         if ($services->auto == 1 && $machine->gaming_user_id == $player->id) {
                             throw new Exception(trans('slot_machine_must_stop_auto', [], 'message'));
                         }
+                        // 高设定限制：普通开分（plc_open_times）时校验（其他动作方法内部直接放行）
+                        $this->checkHighSettingMachineLimit($player, $machine, $action);
                         $money = 100;
                         if ($action == 'open_10') {
                             $money = 1000;
