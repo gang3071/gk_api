@@ -98,7 +98,13 @@ class VipRetainService
         // 先锁玩家行，把同一玩家的结算串行化。
         // 仅锁周期行不够：查不到活跃周期时 lockForUpdate 不加任何锁，
         // 两个并发请求会各自补建出活跃周期。
-        Player::query()->where('id', $player->id)->lockForUpdate()->first();
+        // ⚠️ 拿锁后必须换用最新行继续：并发 handleBet 可能刚升级/改 total_bet_amount，
+        //    沿用旧对象会按旧 vip_level_id 走「周期缺失补建」，给旧等级建出孤儿周期，
+        //    表现就是同一玩家两条进行中周期（start_bet 也是旧 total）。
+        $fresh = Player::query()->where('id', $player->id)->lockForUpdate()->first();
+        if ($fresh) {
+            $player = $fresh;
+        }
 
         // 行锁当前等级的活跃保级周期，防止并发重复结算
         /** @var PlayerVipPeriod|null $period */
