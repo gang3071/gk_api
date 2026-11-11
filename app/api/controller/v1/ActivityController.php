@@ -196,7 +196,7 @@ class ActivityController
             $activityContent = $playerActivityPhaseRecord->activity->activity_content()
                 ->where('lang', $playerActivityPhaseRecord->player->channel->lang)
                 ->first();
-            $content = '活動獎勵待稽核，玩家' . (empty($playerActivityPhaseRecord->player->name) ? $playerActivityPhaseRecord->player->name : $playerActivityPhaseRecord->player->phone);
+            $content = '活動獎勵待稽核，玩家' . (empty($playerActivityPhaseRecord->player->name) ? $playerActivityPhaseRecord->player->phone : $playerActivityPhaseRecord->player->name);
             $content .= ', 在機台: ' . $playerActivityPhaseRecord->machine->code;
             $content .= ' 達成活動: ' . ($activityContent->name ? $activityContent->name : '') . '的獎勵要求';
             $content .= ' 獎勵遊戲點: ' . $playerActivityPhaseRecord->bonus . '.';

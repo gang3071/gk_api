@@ -628,6 +628,13 @@ return [
     'order_id' => '訂單ID',
     'dish_cancel_not_allowed' => '訂單已進入製作，無法取消',
     'points_not_enough' => '積分不足',
+    'points_transfer_target_required' => '請輸入對方帳號或UUID',
+    'points_transfer_amount_invalid' => '轉贈積分必須為正整數',
+    'points_transfer_target_not_found' => '收款玩家不存在',
+    'points_transfer_to_self' => '不能轉贈給自己',
+    'points_transfer_insufficient' => '可用積分不足',
+    'points_transfer_success' => '積分轉贈成功',
+    'points_transfer_failed' => '積分轉贈失敗',
     'store_not_found' => '未找到門店',
 
     // 劵匣
@@ -681,4 +688,6 @@ return [
     'daily_login_bonus_already_received' => '今日登錄獎勵已領取',
     'daily_login_bonus_claim_success' => '登錄獎勵領取成功',
     'machine_vip_level_not_enough' => '該機台需要{vip}或以上等級才能使用',
+    'high_setting_vip_no_play_num' => '您的VIP等級沒有高設定機台可玩數量，無法遊玩高設定機台',
+    'high_setting_play_num_exceeded' => '已超出高設定機台可遊玩數量（最多{num}台）',
 ];

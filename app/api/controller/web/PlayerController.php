@@ -2,7 +2,6 @@
 
 namespace app\api\controller\web;
 
-use app\api\controller\web\MachineController;
 use app\exception\PlayerCheckException;
 use app\model\Channel;
 use app\model\GamePlatform;
@@ -21,6 +20,7 @@ use app\model\SystemSetting;
 use app\model\VipLevel;
 use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
+use app\service\PlayerPointsService;
 use app\service\VipRetainService;
 use app\service\WalletService;
 use Carbon\Carbon;
@@ -867,6 +867,175 @@ class PlayerController
      *
      * @return array 平台ID数组
      */
+    /**
+     * 积分转赠
+     *
+     * 客户端输入目标玩家账号或 UUID 及转赠数量，将自己的可用积分转给对方。
+     * 要求目标玩家与当前玩家属于同一渠道（department_id 相同）。
+     *
+     * @return Response
+     */
+    public function transferPoints(Request $request): Response
+    {
+        $player = checkPlayer();
+
+        // 幂等性保护：防止网络重试导致重复转赠
+        $requestId = $request->input('request_id') ?? null;
+        $operation = 'points-transfer:' . $player->id;
+        $checkIdempotent = $this->checkIdempotent($requestId, $operation, $player->id);
+        if ($checkIdempotent !== null) {
+            return $checkIdempotent;
+        }
+        if (!$this->reserveIdempotent($requestId, $operation, $player->id)) {
+            $response = $this->checkIdempotent($requestId, $operation, $player->id);
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
+        }
+
+        // 兼容文档参数 (toPlayerId/amount) 和旧参数 (account/uuid/points)
+        $toPlayerId = (int)$request->input('toPlayerId', 0);
+        $account    = (string)$request->input('account', '');
+        $uuid       = (string)$request->input('uuid', '');
+        $amount     = (float)($request->input('amount') ?? $request->input('points', 0));
+
+        if ($amount <= 0 || floor($amount) != $amount) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('points_transfer_amount_invalid', [], 'message'));
+        }
+
+        if (empty($player->store_admin_id)) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('points_transfer_failed', [], 'message'));
+        }
+
+        // 查找目标玩家（必须属于同一门店）
+        $query = Player::query()->where('store_admin_id', $player->store_admin_id);
+        if ($toPlayerId > 0) {
+            $query->where('id', $toPlayerId);
+        } elseif (!empty($uuid)) {
+            $query->where('uuid', $uuid);
+        } elseif (!empty($account)) {
+            $query->where('account', $account);
+        } else {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('points_transfer_target_required', [], 'message'));
+        }
+        $target = $query->first();
+
+        if (!$target) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('points_transfer_target_not_found', [], 'message'));
+        }
+        if ($target->id === $player->id) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('points_transfer_to_self', [], 'message'));
+        }
+
+        try {
+            $result = PlayerPointsService::transferPoints(
+                fromPlayerId:      $player->id,
+                toPlayerId:        $target->id,
+                points:            $amount,
+                fromPlayerName:    $player->name ?? $player->phone ?? '',
+                fromPlayerAccount: $player->phone ?? $player->account ?? '',
+                toPlayerName:      $target->name ?? $target->phone ?? '',
+                toPlayerAccount:   $target->phone ?? $target->account ?? ''
+            );
+        } catch (Exception $e) {
+            $this->releaseIdempotent($requestId);
+            $msg = $e->getMessage();
+            if ($msg === '可用积分不足') {
+                return jsonFailResponse(trans('points_transfer_insufficient', [], 'message'));
+            }
+            return jsonFailResponse(trans('points_transfer_failed', [], 'message'));
+        }
+
+        // ISO 8601 UTC 时间格式（客户端规范）
+        $createdAt = \Carbon\Carbon::parse($result['created_at'])->utc()->toIso8601ZuluString();
+
+        $response = jsonSuccessResponse(trans('points_transfer_success', [], 'message'), [
+            'transferId'      => $result['from_record_id'],
+            'availablePoints' => (int)$result['from_available'],
+            'toPlayer'        => [
+                'id'       => $target->id,
+                'uid'      => $target->uuid ?? '',
+                'nickname' => $target->name ?? '',
+            ],
+            'amount'     => (int)$amount,
+            'createdAt'  => $createdAt,
+        ]);
+        $this->saveIdempotent($requestId, $response, $operation, $player->id);
+        return $response;
+    }
+
+    /**
+     * 积分转赠目标玩家联想搜索
+     *
+     * 按手机号、UID 或账号前缀/包含搜索同门店可转赠对象。
+     * 排序：精确匹配 > 前缀 > 包含，再按昵称字母序。
+     * 手机号脱敏：保留前3位和后3位，中间替换为 *。
+     *
+     * @param Request $request
+     * @return Response
+     */
+    #[RateLimiter(limit: 60)]
+    public function searchTransferTarget(Request $request): Response
+    {
+        $player = checkPlayer();
+
+        // 兼容 q（文档规范）和 keyword（旧参数）
+        $q   = trim((string)($request->input('q') ?? $request->input('keyword', '')));
+        $uid = trim((string)($request->input('uid') ?? $request->input('uuid', '')));
+
+        // uid 精确匹配无长度限制；关键词搜索至少 4 个字符，避免短词命中海量记录
+        if (empty($uid) && strlen($q) < 4) {
+            return jsonSuccessResponse('success', ['list' => []]);
+        }
+
+        if (empty($player->store_admin_id)) {
+            return jsonSuccessResponse('success', ['list' => []]);
+        }
+
+        $limit = min(50, max(1, (int)$request->input('limit', 25)));
+
+        $base = Player::query()
+            ->where('store_admin_id', $player->store_admin_id)
+            ->where('id', '!=', $player->id)
+            ->where('status', Player::STATUS_ENABLE)
+            ->select(['id', 'uuid', 'account', 'phone', 'name', 'avatar']);
+
+        if (!empty($uid)) {
+            // uid 参数：精确匹配（来自搜索结果的 uid 字段，二次确认用）
+            $base->where('uuid', $uid);
+        } else {
+            // 同时搜索 uuid 和 phone 前缀
+            // - 纯数字：可能命中 uuid（纯数字ID）或 phone（真实手机号）
+            // - 含字母：只会命中 phone（含字母的账号），uuid 不含字母自然跳过
+            $base->where(function ($q2) use ($q) {
+                $q2->where('uuid', 'like', $q . '%')
+                   ->orWhere('phone', 'like', $q . '%');
+            });
+        }
+
+        $rows = $base->limit($limit)->get();
+
+        $list = $rows->map(function ($p) {
+            $phone = (string)($p->phone ?? '');
+            if (strlen($phone) > 6) {
+                // 脱敏：保留前3位和后3位，中间替换为 *
+                $phone = substr($phone, 0, 3) . str_repeat('*', strlen($phone) - 6) . substr($phone, -3);
+            }
+            return [
+                'id'       => $p->id,
+                'uid'      => $p->uuid ?? '',
+                'nickname' => $p->name ?? '',
+                'phone'    => $phone,
+                'avatar'   => $p->avatar ?? '',
+            ];
+        });
+
+        return jsonSuccessResponse('success', ['list' => $list]);
+    }
+
     private function getExcludedPlatformIds(): array
     {
         // 从配置文件读取排除的平台代码

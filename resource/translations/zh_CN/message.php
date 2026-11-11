@@ -650,6 +650,13 @@ return [
     'order_id' => '订单ID',
     'dish_cancel_not_allowed' => '订单已进入制作，无法取消',
     'points_not_enough' => '积分不足',
+    'points_transfer_target_required' => '请输入对方账号或UUID',
+    'points_transfer_amount_invalid' => '转赠积分必须为正整数',
+    'points_transfer_target_not_found' => '收款玩家不存在',
+    'points_transfer_to_self' => '不能转赠给自己',
+    'points_transfer_insufficient' => '可用积分不足',
+    'points_transfer_success' => '积分转赠成功',
+    'points_transfer_failed' => '积分转赠失败',
 
     // 体验券/福利券
     'voucher_invalid_ticket_type' => '无效的票据类型',
@@ -691,4 +698,6 @@ return [
     'daily_login_bonus_already_received' => '今日登录奖励已领取',
     'daily_login_bonus_claim_success' => '登录奖励领取成功',
     'machine_vip_level_not_enough' => '该机台需要{vip}或以上等级才能使用',
+    'high_setting_vip_no_play_num' => '您的VIP等级没有高设定机台可玩数量，无法游玩高设定机台',
+    'high_setting_play_num_exceeded' => '已超出高设定机台可游玩数量（最多{num}台）',
 ];

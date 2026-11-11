@@ -33,6 +33,16 @@ Route::group('/api', function () {
         Route::post('/auth/logout', [\app\api\controller\web\IndexController::class, 'authLogout']);
         // 個人資料
         Route::post('/me/profile', [\app\api\controller\web\PlayerController::class, 'profile']);
+        // 门店洗分配置
+        Route::post('/me/wash-point-setting', [\app\api\controller\v1\PlayerController::class, 'getWashPointSetting']);
+        // 积分转赠（兼容旧路径）
+        Route::post('/me/points/transfer', [\app\api\controller\web\PlayerController::class, 'transferPoints']);
+        // 积分转赠（文档规范路径）
+        Route::post('/me/points/gift', [\app\api\controller\web\PlayerController::class, 'transferPoints']);
+        // 积分转赠目标玩家搜索（GET，文档规范）
+        Route::get('/players/search', [\app\api\controller\web\PlayerController::class, 'searchTransferTarget']);
+        // 积分转赠目标玩家搜索（POST 兼容旧路径）
+        Route::post('/me/points/transfer/search', [\app\api\controller\web\PlayerController::class, 'searchTransferTarget']);
         // 錢包點數
         Route::post('/me/wallet', [\app\api\controller\web\PlayerController::class, 'wallet']);
         // 劵匣
@@ -430,6 +440,15 @@ Route::group('/api', function () {
         Route::post('/dish-admin/order-detail', [\app\api\controller\v1\DishAdminController::class, 'orderDetail']);
         // 店家更新訂單狀態（出餐）
         Route::post('/dish-admin/update-status', [\app\api\controller\v1\DishAdminController::class, 'updateStatus']);
+
+        // 积分转赠（兼容旧路径）
+        Route::post('/points-transfer', [\app\api\controller\web\PlayerController::class, 'transferPoints']);
+        // 积分转赠（文档规范路径）
+        Route::post('/points/gift', [\app\api\controller\web\PlayerController::class, 'transferPoints']);
+        // 积分转赠目标玩家搜索（GET，文档规范）
+        Route::get('/players/search', [\app\api\controller\web\PlayerController::class, 'searchTransferTarget']);
+        // 积分转赠目标玩家搜索（POST 兼容旧路径）
+        Route::post('/points-transfer/search', [\app\api\controller\web\PlayerController::class, 'searchTransferTarget']);
 
         // ========== 排行榜 ==========
         // 排行榜整頁（各店週排行 + 金樽週/月 + VIP 排行）

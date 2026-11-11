@@ -115,7 +115,7 @@ class LeaderboardService
                 'rank'      => (int)$r->rank,
                 'player_id' => (int)$r->player_id,
                 'name'      => (string)$r->player_name,
-                'score'     => (string)$r->score,
+                'score'     => (string)(int)$r->score,
             ];
         }
 
@@ -174,7 +174,7 @@ class LeaderboardService
                 'name'       => (string)$r->player_name,
                 'store_id'   => (int)$r->store_admin_id,
                 'store_name' => (string)($r->store_name ?? ''),
-                'score'      => (string)$r->score,
+                'score'      => (string)(int)$r->score,
                 'prize'      => (string)$r->prize_amount,
             ];
         }
@@ -254,7 +254,7 @@ class LeaderboardService
 
         $list = [];
         foreach ($rows as $r) {
-            $score = (string)$r->score;
+            $score = (string)(int)$r->score;
             $list[] = [
                 'rank'           => (int)$r->rank,
                 'player_id'      => (int)$r->player_id,

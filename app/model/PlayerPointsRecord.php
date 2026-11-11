@@ -89,6 +89,8 @@ class PlayerPointsRecord extends Model
     const TYPE_ADMIN_ADJUST = 4;     // 后台调整
     const TYPE_ACTIVITY = 5;         // 活动奖励
     const TYPE_REFUND = 6;           // 订单退款
+    const TYPE_TRANSFER_OUT = 11;    // 积分转赠（送出）
+    const TYPE_TRANSFER_IN = 12;     // 积分转赠（收入）
 
     // 来源常量
     const SOURCE_BETTING_SUMMARY = 'betting_summary'; // 打码汇总
@@ -97,6 +99,7 @@ class PlayerPointsRecord extends Model
     const SOURCE_ADMIN = 'admin';                     // 后台
     const SOURCE_ACTIVITY = 'activity';               // 活动
     const SOURCE_REFUND = 'refund';                   // 退款
+    const SOURCE_TRANSFER = 'transfer';               // 转赠
 
     // 汇总周期常量
     const PERIOD_DAILY = 'daily';      // 每日
@@ -113,6 +116,8 @@ class PlayerPointsRecord extends Model
         self::TYPE_ADMIN_ADJUST => '后台调整',
         self::TYPE_ACTIVITY => '活动奖励',
         self::TYPE_REFUND => '订单退款',
+        self::TYPE_TRANSFER_OUT => '积分转赠（送出）',
+        self::TYPE_TRANSFER_IN => '积分转赠（收入）',
     ];
 
     /**
