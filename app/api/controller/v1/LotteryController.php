@@ -193,6 +193,7 @@ class LotteryController
                 'id' => $item->id,
                 'player_name' => $playerNameWithStore,
                 'lottery_name' => $item->lottery_name,
+                'machine_code' => $item->machine_code ?? '',
                 'amount' => $item->amount,
                 'created_at' => date('Y-m-d H:i:s', strtotime($item->created_at)),
                 'uuid' => $item->uuid,

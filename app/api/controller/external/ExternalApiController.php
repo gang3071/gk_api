@@ -668,7 +668,7 @@ class ExternalApiController
             }
 
             // 2. 获取最新中奖记录（每个彩池取4条）
-            $recordsQuery = PlayerLotteryRecord::with(['player', 'lottery', 'channel'])
+            $recordsQuery = PlayerLotteryRecord::with(['player.storeAdmin', 'lottery', 'channel'])
                 ->where('status', PlayerLotteryRecord::STATUS_COMPLETE);
 
             // 根据type过滤中奖记录
@@ -711,7 +711,8 @@ class ExternalApiController
                     'lottery_id' => $lotteryId,
                     'lottery_name' => $firstRecord->lottery_name,
                     'records' => $records->map(function (PlayerLotteryRecord $record) {
-                        return [
+                        $isMachine = $record->source == PlayerLotteryRecord::SOURCE_MACHINE;
+                        $item = [
                             'id' => $record->id,
                             'player_id' => $record->player_id,
                             'player_name' => $record->player_name,
@@ -723,9 +724,15 @@ class ExternalApiController
                             'lottery_type' => $record->lottery_type,
                             'lottery_multiple' => $record->lottery_multiple,
                             'source' => $record->source,
-                            'source_text' => $record->source == PlayerLotteryRecord::SOURCE_MACHINE ? '实体机台' : '电子游戏',
+                            'source_text' => $isMachine ? '实体机台' : '电子游戏',
+                            'store_name' => $record->player?->storeAdmin?->nickname ?? '',
                             'created_at' => $record->created_at,
                         ];
+                        if ($isMachine) {
+                            $item['machine_code'] = $record->machine_code ?? '';
+                            $item['machine_name'] = $record->machine_name ?? '';
+                        }
+                        return $item;
                     })->toArray()
                 ];
             }

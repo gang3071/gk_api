@@ -175,6 +175,7 @@ class LotteryController
                 'lottery_id' => $item->lottery_id,
                 'lottery_name' => $item->lottery_name,
                 'game_type' => $item->game_type,
+                'machine_code' => $item->machine_code ?? '',
                 'amount' => $item->amount,
                 'created_at' => date('Y-m-d H:i:s', strtotime($item->created_at)),
                 'uuid' => $item->uuid,
