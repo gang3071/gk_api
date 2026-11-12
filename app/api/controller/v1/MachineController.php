@@ -632,7 +632,7 @@ class MachineController
                             return $existingResponse;
                         }
                         if (!$this->reserveIdempotent($requestId, 'jackpot_action_' . $action, $player->id)) {
-                            return jsonFailResponse('请求正在处理中，请稍后');
+                            return jsonFailResponse(trans('request_processing', [], 'message'));
                         }
                     }
 
@@ -804,7 +804,7 @@ class MachineController
                             return $existingResponse;
                         }
                         if (!$this->reserveIdempotent($requestId, 'jackpot_action_' . $action, $player->id)) {
-                            return jsonFailResponse('请求正在处理中，请稍后');
+                            return jsonFailResponse(trans('request_processing', [], 'message'));
                         }
                     }
 
@@ -975,8 +975,8 @@ class MachineController
      */
     private function checkHighSettingMachineLimit(Player $player, Machine $machine, string $action): void
     {
-        // 高设定限制仅对普通开分（plc_open_times）生效
-        if ($action !== 'plc_open_times') {
+        // 高设定限制对所有开分 action 生效
+        if (!in_array($action, ['plc_open_1', 'plc_open_10', 'plc_open_times', 'open_1', 'open_10'])) {
             return;
         }
         // 非高设定机台不做限制
@@ -1179,7 +1179,7 @@ class MachineController
                             return $existingResponse;
                         }
                         if (!$this->reserveIdempotent($requestId, 'slot_action_' . $action, $player->id)) {
-                            return jsonFailResponse('请求正在处理中，请稍后');
+                            return jsonFailResponse(trans('request_processing', [], 'message'));
                         }
                     }
 
@@ -1205,7 +1205,7 @@ class MachineController
                                     'machine_id' => $machine->id,
                                     'requested_amount' => $money,
                                 ]);
-                                throw new Exception(trans('open_amount_too_large', [], 'message') . '（单次最多10万元）');
+                                throw new Exception(trans('open_amount_too_large', [], 'message'));
                             }
                         }
                         if ($money <= 0) {
@@ -1250,7 +1250,7 @@ class MachineController
                             return $existingResponse;
                         }
                         if (!$this->reserveIdempotent($requestId, 'slot_action_' . $action, $player->id)) {
-                            return jsonFailResponse('请求正在处理中，请稍后');
+                            return jsonFailResponse(trans('request_processing', [], 'message'));
                         }
                     }
 
@@ -1514,7 +1514,7 @@ class MachineController
                             return $existingResponse;
                         }
                         if (!$this->reserveIdempotent($requestId, 'fish_action_open_point', $player->id)) {
-                            return jsonFailResponse('请求正在处理中，请稍后');
+                            return jsonFailResponse(trans('request_processing', [], 'message'));
                         }
                     }
 
@@ -1553,7 +1553,7 @@ class MachineController
                             return $existingResponse;
                         }
                         if (!$this->reserveIdempotent($requestId, 'fish_action_wash_point', $player->id)) {
-                            return jsonFailResponse('请求正在处理中，请稍后');
+                            return jsonFailResponse(trans('request_processing', [], 'message'));
                         }
                     }
 

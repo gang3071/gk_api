@@ -30,6 +30,7 @@ return [
     'machine_is_opening' => '抽選中は操作不要',
     'machine_turn_out_limit_not_yet' => '転送制限にまだ達していません',
     'machine_open_amount_error' => 'ポイント数が間違っています',
+    'open_amount_too_large' => '1回のチャージ金額は10万円を超えられません',
     'machine_open_present_msg1' => 'ギフト開封を実行するには、少なくとも 10 秒の間隔が必要です',
     'system_error' => 'システムエラー',
     'request_processing' => 'リクエスト処理中です。しばらくしてからもう一度お試しください',

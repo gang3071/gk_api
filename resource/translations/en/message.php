@@ -30,6 +30,7 @@ return [
     'machine_is_opening' => 'No operation required during lottery draw',
     'machine_turn_out_limit_not_yet' => 'The transfer limit has not yet been reached',
     'machine_open_amount_error' => 'Wrong amount of points',
+    'open_amount_too_large' => 'Single top-up amount cannot exceed 100,000',
     'machine_open_present_msg1' => 'An interval of at least 10 seconds is required to execute the gift opening',
     'system_error' => 'System error',
     'request_processing' => 'Request is being processed, please try again later',

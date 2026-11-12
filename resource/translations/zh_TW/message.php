@@ -30,6 +30,7 @@ return [
     'machine_is_opening' => '開獎中不允需操作',
     'machine_turn_out_limit_not_yet' => '尚未達到下轉限制',
     'machine_open_amount_error' => '開分金額錯誤',
+    'open_amount_too_large' => '單次上分金額不能超過10萬元',
     'machine_open_present_msg1' => '執行開贈需間隔至少10秒',
     'system_error' => '系統錯誤',
     'request_processing' => '請求正在處理中，請稍後再試',

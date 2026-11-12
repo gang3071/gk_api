@@ -52,6 +52,7 @@ class IndexController
      * 登录接口
      * @param Request $request
      * @return Response
+     * @throws PushException
      */
     public function login(Request $request): Response
     {
@@ -118,6 +119,7 @@ class IndexController
 
         addLoginRecord($player->id);
         PlayerPointsService::addDailyLoginPoints($player->id);
+        $this->recordDeviceCurrentPlayer($player->id);
 
         $tokenPayload = [
             'id' => $player->id,
@@ -155,6 +157,7 @@ class IndexController
      * 密码登录
      * @param array $data 登录参数
      * @return Response
+     * @throws PushException
      */
     protected function passLogin(array $data): Response
     {
@@ -189,6 +192,7 @@ class IndexController
 
         addLoginRecord($player->id);
         PlayerPointsService::addDailyLoginPoints($player->id);
+        $this->recordDeviceCurrentPlayer($player->id);
 
         $tokenPayload = [
             'id' => $player->id,
@@ -251,6 +255,7 @@ class IndexController
 
             addLoginRecord($player->id);
             PlayerPointsService::addDailyLoginPoints($player->id);
+            $this->recordDeviceCurrentPlayer($player->id);
             return jsonSuccessResponse('success', [
                 'token' => JwtToken::generateToken([
                     'id' => $player->id,
@@ -384,6 +389,7 @@ class IndexController
                     return $deviceCheck;
                 }
                 addLoginRecord($player->id);
+                $this->recordDeviceCurrentPlayer($player->id);
             }
             DB::commit();
         } catch (\Exception $e) {
@@ -456,7 +462,56 @@ class IndexController
 
         return true;
     }
-    
+
+    /**
+     * 登录成功后将当前玩家ID写入设备记录
+     * 仅当请求头携带 DeviceCpuID 且设备存在时执行，失败不影响登录流程
+     */
+    private function recordDeviceCurrentPlayer(int $playerId): void
+    {
+        $deviceCpuId = request()->header('DeviceCpuID', '');
+        if (empty($deviceCpuId)) {
+            return;
+        }
+
+        try {
+            AdminDevice::query()
+                ->where('device_no', $deviceCpuId)
+                ->update(['current_player_id' => $playerId]);
+        } catch (\Throwable $e) {
+            \support\Log::error('[Login] 更新设备当前玩家ID失败', [
+                'device_no' => $deviceCpuId,
+                'player_id' => $playerId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * 登出时清除设备的当前玩家ID
+     * 仅清除该玩家自己占用的设备记录，防止伪造 DeviceCpuID 清空他人设备
+     */
+    private function clearDeviceCurrentPlayer(Player $player): void
+    {
+        $deviceCpuId = request()->header('DeviceCpuID', '');
+        if (empty($deviceCpuId)) {
+            return;
+        }
+
+        try {
+            AdminDevice::query()
+                ->where('device_no', $deviceCpuId)
+                ->where('current_player_id', $player->id)
+                ->update(['current_player_id' => 0]);
+        } catch (\Throwable $e) {
+            \support\Log::error('[Logout] 清除设备玩家ID失败', [
+                'device_no' => $deviceCpuId,
+                'player_id' => $player->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     #[RateLimiter(limit: 5)]
     /**
      * 注册接口
@@ -656,11 +711,12 @@ class IndexController
      */
     public function logout(): Response
     {
-        checkPlayer();
+        $player = checkPlayer();
         if (JwtToken::clear(getDeviceType() === 'CHUZHI' ? 'CHUZHI' : 'V1')) {
+            $this->clearDeviceCurrentPlayer($player);
             return jsonSuccessResponse('success');
         }
-        
+
         return jsonFailResponse(trans('logout_failed', [], 'message'));
     }
     
