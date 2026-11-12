@@ -4630,6 +4630,7 @@ class PlayerController
                 PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS,
                 PlayerDeliveryRecord::TYPE_ACTIVITY_GIVE,
                 PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD,
+                PlayerDeliveryRecord::TYPE_CHILDREN_CASHBACK,
             ])
             ->orderBy('id', 'desc');
 
@@ -4647,6 +4648,7 @@ class PlayerController
                 PlayerDeliveryRecord::TYPE_VIP_DAILY_LOGIN_BONUS => trans('vip_daily_login_bonus', [], 'message'),
                 PlayerDeliveryRecord::TYPE_ACTIVITY_GIVE => trans('activity_give', [], 'message'),
                 PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD => trans('leaderboard_reward', [], 'message'),
+                PlayerDeliveryRecord::TYPE_CHILDREN_CASHBACK => trans('children_cashback', [], 'message'),
                 default => trans('other', [], 'message'),
             };
 
