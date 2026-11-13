@@ -41,8 +41,8 @@ class AddSteelBallPointsGiftToStoreSetting extends AbstractMigration
             ");
 
             if (!$exists) {
-                // num=1 表示每颗球赠1积分（比例），status=0 默认关闭
-                $values[] = "({$departmentId}, {$adminUserId}, 'steel_ball_points_gift', 1, 0, '{$now}', '{$now}')";
+                // num=100 表示每次下珠赠送固定100积分，status=0 默认关闭
+                $values[] = "({$departmentId}, {$adminUserId}, 'steel_ball_points_gift', 100, 0, '{$now}', '{$now}')";
                 $count++;
             }
         }
