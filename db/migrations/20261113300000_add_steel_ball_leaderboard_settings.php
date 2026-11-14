@@ -59,22 +59,6 @@ class AddSteelBallLeaderboardSettings extends AbstractMigration
                 ],
             ],
         ],
-        [
-            'feature' => 'leaderboard_steel_ball_store_monthly',
-            'content' => [
-                'code'        => 'steel_ball_store_monthly',
-                'name'        => '各店鋼珠月排行',
-                'period_type' => 2,
-                'scope_type'  => 3,
-                'threshold'   => 0,
-                'automatic'   => 0,
-                'prizes'      => [
-                    ['rank' => 1, 'amount' => 8888],
-                    ['rank' => 2, 'amount' => 5888],
-                    ['rank' => 3, 'amount' => 2888],
-                ],
-            ],
-        ],
     ];
 
     public function up(): void

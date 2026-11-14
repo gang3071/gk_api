@@ -45,11 +45,14 @@ class LeaderboardService
     public static function overview(int $departmentId): array
     {
         return [
-            'store_weekly'   => self::storeWeekly($departmentId),
-            'store_monthly'  => self::storeMonthly($departmentId),
-            'golden_weekly'  => self::goldenWeekly(),
-            'golden_monthly' => self::goldenMonthly(),
-            'vip_ranking'    => self::vipRanking($departmentId),
+            'store_weekly'              => self::storeWeekly($departmentId),
+            'store_monthly'             => self::storeMonthly($departmentId),
+            'golden_weekly'             => self::goldenWeekly(),
+            'golden_monthly'            => self::goldenMonthly(),
+            'steel_ball_store_weekly'   => self::steelBallStoreWeekly($departmentId),
+            'steel_ball_global_weekly'  => self::steelBallGlobalWeekly(),
+            'steel_ball_global_monthly' => self::steelBallGlobalMonthly(),
+            'vip_ranking'               => self::vipRanking($departmentId),
         ];
     }
 
@@ -140,6 +143,37 @@ class LeaderboardService
     public static function goldenMonthly(): array
     {
         return self::golden('golden_monthly');
+    }
+
+    /**
+     * 鋼珠各店週排行（分渠道）
+     *
+     * @param int $departmentId
+     * @return array
+     */
+    public static function steelBallStoreWeekly(int $departmentId): array
+    {
+        return self::store('steel_ball_store_weekly', $departmentId);
+    }
+
+    /**
+     * 鋼珠金樽週排行（全站）
+     *
+     * @return array
+     */
+    public static function steelBallGlobalWeekly(): array
+    {
+        return self::golden('steel_ball_global_weekly');
+    }
+
+    /**
+     * 鋼珠金樽月排行（全站）
+     *
+     * @return array
+     */
+    public static function steelBallGlobalMonthly(): array
+    {
+        return self::golden('steel_ball_global_monthly');
     }
 
     /**

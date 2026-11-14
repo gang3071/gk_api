@@ -33,8 +33,9 @@ class LeaderboardController
         $data = LeaderboardService::overview($departmentId);
 
         if ($storeId > 0) {
-            $data['store_weekly'] = self::filterStore($data['store_weekly'], $storeId);
-            $data['store_monthly'] = self::filterStore($data['store_monthly'], $storeId);
+            $data['store_weekly']            = self::filterStore($data['store_weekly'], $storeId);
+            $data['store_monthly']           = self::filterStore($data['store_monthly'], $storeId);
+            $data['steel_ball_store_weekly'] = self::filterStore($data['steel_ball_store_weekly'], $storeId);
         }
 
         return jsonSuccessResponse('success', $data);
@@ -103,6 +104,49 @@ class LeaderboardController
     {
         return jsonSuccessResponse('success', [
             'list' => LeaderboardService::goldenMonthly(),
+        ]);
+    }
+
+    /**
+     * 鋼珠各店週排行（分渠道）
+     *
+     * @param Request $request
+     * @return Response
+     */
+    public function steelBallStoreWeekly(Request $request): Response
+    {
+        $departmentId = (int)$request->department_id;
+        $storeId = self::resolveStoreId($request);
+
+        $list = LeaderboardService::steelBallStoreWeekly($departmentId);
+        if ($storeId > 0) {
+            $list = self::filterStore($list, $storeId);
+        }
+
+        return jsonSuccessResponse('success', ['list' => $list]);
+    }
+
+    /**
+     * 鋼珠金樽週排行（全站）
+     *
+     * @return Response
+     */
+    public function steelBallGlobalWeekly(): Response
+    {
+        return jsonSuccessResponse('success', [
+            'list' => LeaderboardService::steelBallGlobalWeekly(),
+        ]);
+    }
+
+    /**
+     * 鋼珠金樽月排行（全站）
+     *
+     * @return Response
+     */
+    public function steelBallGlobalMonthly(): Response
+    {
+        return jsonSuccessResponse('success', [
+            'list' => LeaderboardService::steelBallGlobalMonthly(),
         ]);
     }
 

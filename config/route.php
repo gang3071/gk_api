@@ -88,6 +88,32 @@ Route::group('/api', function () {
         // 彩金中奖记录
         Route::post('/lottery-record-list', [\app\api\controller\web\LotteryController::class, 'lotteryRecordList']);
 
+        // ========== 排行榜 ==========
+        // 排行榜整頁（各店週排行 + 金樽週/月 + 鋼珠榜 + VIP 排行）
+        Route::post('/leaderboard/overview', [\app\api\controller\v1\LeaderboardController::class, 'overview']);
+        // 各店週排行（分渠道）
+        Route::post('/leaderboard/store-weekly', [\app\api\controller\v1\LeaderboardController::class, 'storeWeekly']);
+        // 各店月排行（分渠道）
+        Route::post('/leaderboard/store-monthly', [\app\api\controller\v1\LeaderboardController::class, 'storeMonthly']);
+        // 金樽遊戲量週排行（全站）
+        Route::post('/leaderboard/golden-weekly', [\app\api\controller\v1\LeaderboardController::class, 'goldenWeekly']);
+        // 金樽遊戲量月排行（全站）
+        Route::post('/leaderboard/golden-monthly', [\app\api\controller\v1\LeaderboardController::class, 'goldenMonthly']);
+        // 鋼珠各店週排行（分渠道）
+        Route::post('/leaderboard/steel-ball-store-weekly', [\app\api\controller\v1\LeaderboardController::class, 'steelBallStoreWeekly']);
+        // 鋼珠金樽週排行（全站）
+        Route::post('/leaderboard/steel-ball-global-weekly', [\app\api\controller\v1\LeaderboardController::class, 'steelBallGlobalWeekly']);
+        // 鋼珠金樽月排行（全站）
+        Route::post('/leaderboard/steel-ball-global-monthly', [\app\api\controller\v1\LeaderboardController::class, 'steelBallGlobalMonthly']);
+        // VIP 排行（總榜）
+        Route::post('/leaderboard/vip-ranking', [\app\api\controller\v1\LeaderboardController::class, 'vipRanking']);
+        // 我的排行榜獎勵（待領取＋已領取）
+        Route::post('/leaderboard/my-rewards', [\app\api\controller\v1\LeaderboardController::class, 'myRewards']);
+        // 領取排行榜獎勵
+        Route::post('/leaderboard/claim', [\app\api\controller\v1\LeaderboardController::class, 'claim']);
+        // 排行榜獎勵規則（門檻、名次贈分）
+        Route::post('/leaderboard/rules', [\app\api\controller\v1\LeaderboardController::class, 'rules']);
+
         // ========== 點餐系統 ==========
         // 菜品分類列表
         Route::post('/dish/category-list', [\app\api\controller\v1\DishController::class, 'categoryList']);
@@ -453,6 +479,12 @@ Route::group('/api', function () {
         Route::post('/leaderboard/golden-weekly', [\app\api\controller\v1\LeaderboardController::class, 'goldenWeekly']);
         // 金樽遊戲量月排行（全站）
         Route::post('/leaderboard/golden-monthly', [\app\api\controller\v1\LeaderboardController::class, 'goldenMonthly']);
+        // 鋼珠各店週排行（分渠道）
+        Route::post('/leaderboard/steel-ball-store-weekly', [\app\api\controller\v1\LeaderboardController::class, 'steelBallStoreWeekly']);
+        // 鋼珠金樽週排行（全站）
+        Route::post('/leaderboard/steel-ball-global-weekly', [\app\api\controller\v1\LeaderboardController::class, 'steelBallGlobalWeekly']);
+        // 鋼珠金樽月排行（全站）
+        Route::post('/leaderboard/steel-ball-global-monthly', [\app\api\controller\v1\LeaderboardController::class, 'steelBallGlobalMonthly']);
         // VIP 排行（總榜）
         Route::post('/leaderboard/vip-ranking', [\app\api\controller\v1\LeaderboardController::class, 'vipRanking']);
         // 我的排行榜獎勵（待領取＋已領取）
