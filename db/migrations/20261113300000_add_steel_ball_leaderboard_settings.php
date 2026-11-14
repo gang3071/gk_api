@@ -68,21 +68,19 @@ class AddSteelBallLeaderboardSettings extends AbstractMigration
         $count = 0;
 
         foreach ($this->settings as $item) {
+            $feature = addslashes($item['feature']);
             $exists = $this->fetchRow(
-                "SELECT id FROM {$table} WHERE feature = ? AND department_id = 0 LIMIT 1",
-                [$item['feature']]
+                "SELECT id FROM {$table} WHERE feature = '{$feature}' AND department_id = 0 LIMIT 1"
             );
             if ($exists) {
                 continue;
             }
 
-            $content = json_encode($item['content'], JSON_UNESCAPED_UNICODE);
-            $feature = $item['feature'];
+            $content = addslashes(json_encode($item['content'], JSON_UNESCAPED_UNICODE));
 
             $this->execute(
                 "INSERT INTO {$table} (department_id, feature, content, status, created_at, updated_at)
-                 VALUES (0, '{$feature}', ?, 0, '{$now}', '{$now}')",
-                [$content]
+                 VALUES (0, '{$feature}', '{$content}', 0, '{$now}', '{$now}')"
             );
             $count++;
         }
