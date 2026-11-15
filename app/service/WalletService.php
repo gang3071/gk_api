@@ -3,6 +3,7 @@
 namespace app\service;
 
 use app\model\PlayerPlatformCash;
+use app\support\WalletLogger;
 use support\Log;
 use support\Redis;
 
@@ -71,7 +72,12 @@ class WalletService
                 }
             }
 
-            // 缓存未命中或强制刷新，从数据库读取
+            // forceRefresh=true：只读 DB 供调试/核查，不回写 Redis
+            if ($forceRefresh) {
+                return round(self::getBalanceFromDB($playerId, $platformId), 2);
+            }
+
+            // 缓存未命中：从数据库加载并写入 Redis（冷启动/首次访问）
             $balance = self::getBalanceFromDB($playerId, $platformId);  // 数据库返回"元"
 
             // 🔧 更新缓存：元 → 分（× 100）
@@ -333,13 +339,13 @@ class WalletService
      * @return float 扣款后的新余额
      * @throws \Exception
      */
-    public static function deduct(int $playerId, float $amount, int $platformId = 1): float
+    public static function deduct(int $playerId, float $amount, int $platformId = 1, string $reason = '', array $extra = []): float
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be positive');
         }
 
-        return self::atomicDeduct($playerId, $amount);
+        return self::atomicDeduct($playerId, $amount, $reason, $extra);
     }
 
     /**
@@ -350,7 +356,7 @@ class WalletService
      * @return float 新余额
      * @throws \Exception
      */
-    private static function atomicDeduct(int $playerId, float $amount): float
+    private static function atomicDeduct(int $playerId, float $amount, string $reason = '', array $extra = []): float
     {
         $cacheKey = self::getCacheKey($playerId);
 
@@ -358,8 +364,14 @@ class WalletService
         $amountInCents = (int)round($amount * 100);
 
         try {
+            // Cold-start protection: if key doesn't exist, load from DB
+            if (!Redis::exists($cacheKey)) {
+                $dbBalance = self::getBalanceFromDB($playerId, 1);
+                Redis::set($cacheKey, (int)round($dbBalance * 100));
+            }
+
             // 使用整数化的 LUA_ATOMIC_DECREMENT 脚本
-            $result = \support\Redis::eval(self::LUA_ATOMIC_DECREMENT, 1, $cacheKey, $amountInCents, self::CACHE_TTL);
+            $result = \support\Redis::eval(self::LUA_ATOMIC_DECREMENT, 1, $cacheKey, $amountInCents);
 
             // 解析返回的 JSON
             $balanceData = json_decode($result, true);
@@ -371,9 +383,12 @@ class WalletService
             if ($balanceData['ok'] === 0) {
                 $error = $balanceData['error'] ?? 'unknown_error';
                 if ($error === 'key_not_found') {
+                    WalletLogger::log($playerId, WalletLogger::OP_DEDUCT, $reason, $amount, 0, 0, false, array_merge($extra, ['error_code' => 'key_not_found']));
                     throw new \Exception(trans('wallet_not_found', [], 'message'));
                 }
                 if ($error === 'insufficient_balance') {
+                    $currentBalance = round(($balanceData['balance'] ?? 0) / 100, 2);
+                    WalletLogger::log($playerId, WalletLogger::OP_DEDUCT, $reason, $amount, $currentBalance, $currentBalance, false, array_merge($extra, ['error_code' => 'insufficient_balance']));
                     throw new \Exception(trans('game_amount_insufficient', [], 'message'));
                 }
                 throw new \Exception("Atomic decrement failed: {$error}");
@@ -382,6 +397,8 @@ class WalletService
             // 🔧 整数化改造：分 ÷ 100 → 元
             $oldBalance = round($balanceData['old'] / 100, 2);
             $newBalance = round($balanceData['balance'] / 100, 2);
+
+            WalletLogger::log($playerId, WalletLogger::OP_DEDUCT, $reason, $amount, $oldBalance, $newBalance, true, $extra);
 
             // 异步更新数据库并触发爆机检测
             self::asyncUpdateDB($playerId, $newBalance, $oldBalance);
@@ -406,13 +423,13 @@ class WalletService
      * @return float 加款后的新余额
      * @throws \Exception
      */
-    public static function add(int $playerId, float $amount, int $platformId = 1): float
+    public static function add(int $playerId, float $amount, int $platformId = 1, string $reason = '', array $extra = []): float
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be positive');
         }
 
-        return self::atomicAdd($playerId, $amount);
+        return self::atomicAdd($playerId, $amount, $reason, $extra);
     }
 
     /**
@@ -423,7 +440,7 @@ class WalletService
      * @return float 新余额
      * @throws \Exception
      */
-    private static function atomicAdd(int $playerId, float $amount): float
+    private static function atomicAdd(int $playerId, float $amount, string $reason = '', array $extra = []): float
     {
         $cacheKey = self::getCacheKey($playerId);
 
@@ -431,8 +448,14 @@ class WalletService
         $amountInCents = (int)round($amount * 100);
 
         try {
+            // Cold-start protection: if key doesn't exist, load from DB
+            if (!Redis::exists($cacheKey)) {
+                $dbBalance = self::getBalanceFromDB($playerId, 1);
+                Redis::set($cacheKey, (int)round($dbBalance * 100));
+            }
+
             // 使用整数化的 LUA_ATOMIC_INCREMENT 脚本
-            $result = \support\Redis::eval(self::LUA_ATOMIC_INCREMENT, 1, $cacheKey, $amountInCents, self::CACHE_TTL);
+            $result = \support\Redis::eval(self::LUA_ATOMIC_INCREMENT, 1, $cacheKey, $amountInCents);
 
             // 解析返回的 JSON
             $balanceData = json_decode($result, true);
@@ -450,6 +473,8 @@ class WalletService
             $oldBalance = round($balanceData['old'] / 100, 2);
             $newBalance = round($balanceData['balance'] / 100, 2);
 
+            WalletLogger::log($playerId, WalletLogger::OP_ADD, $reason, $amount, $oldBalance, $newBalance, true, $extra);
+
             // 异步更新数据库并触发爆机检测
             self::asyncUpdateDB($playerId, $newBalance, $oldBalance);
 
@@ -460,6 +485,7 @@ class WalletService
                 'amount' => $amount,
                 'error' => $e->getMessage(),
             ]);
+            WalletLogger::log($playerId, WalletLogger::OP_ADD, $reason, $amount, 0, 0, false, array_merge($extra, ['error_code' => 'exception']));
             throw $e;
         }
     }
@@ -476,8 +502,10 @@ class WalletService
     {
         try {
             // 只更新 player_platform_cash 表（player 表没有 money 字段）
+            // ⚠️ 必须加 platform_id 过滤，否则会覆盖该玩家在其他平台的余额
             \support\Db::table('player_platform_cash')
                 ->where('player_id', $playerId)
+                ->where('platform_id', 1)
                 ->update(['money' => $newBalance]);
 
             // ⚠️ 不在这里触发爆机检测，避免嵌套事务冲突
@@ -959,7 +987,7 @@ LUA;
      * @param int $ttl Redis 缓存过期时间（秒），默认 3600
      * @return array ['ok' => 1, 'balance' => 新余额（元）, 'old' => 旧余额（元）, 'new' => 新余额（元）]
      */
-    public static function atomicIncrement(int $playerId, float $amount, int $ttl = 0): array
+    public static function atomicIncrement(int $playerId, float $amount, int $ttl = 0, string $reason = '', array $extra = []): array
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be greater than 0');
@@ -967,6 +995,12 @@ LUA;
 
         try {
             $cacheKey = self::getCacheKey($playerId);
+
+            // Cold-start protection: if key doesn't exist, load from DB
+            if (!Redis::exists($cacheKey)) {
+                $dbBalance = self::getBalanceFromDB($playerId, 1);
+                Redis::set($cacheKey, (int)round($dbBalance * 100));
+            }
 
             // 🔧 转换为"分"（整数）
             $amountInCents = (int)round($amount * 100);
@@ -976,8 +1010,7 @@ LUA;
                 self::LUA_ATOMIC_INCREMENT,
                 1,  // KEYS 数量
                 $cacheKey,         // KEYS[1]
-                $amountInCents,    // ARGV[1]（分）
-                $ttl               // ARGV[2]
+                $amountInCents     // ARGV[1]（分）
             );
 
             $result = json_decode($resultJson, true);
@@ -1000,6 +1033,9 @@ LUA;
                 'new_balance' => $result['balance'],
             ]);
 
+            WalletLogger::log($playerId, WalletLogger::OP_ATOMIC_INCREMENT, $reason, $amount,
+                $result['old'] ?? 0, $result['balance'] ?? 0, true, $extra);
+
             return $result;
 
         } catch (\Throwable $e) {
@@ -1008,6 +1044,7 @@ LUA;
                 'amount' => $amount,
                 'error' => $e->getMessage(),
             ]);
+            WalletLogger::log($playerId, WalletLogger::OP_ATOMIC_INCREMENT, $reason, $amount, 0, 0, false, array_merge($extra, ['error_code' => 'exception']));
             throw $e;
         }
     }
@@ -1037,7 +1074,7 @@ LUA;
      * @param int $ttl Redis 缓存过期时间（秒），默认 3600
      * @return array ['ok' => 1, 'balance' => 新余额（元）] 或 ['ok' => 0, 'error' => 'insufficient_balance', 'balance' => 当前余额（元）]
      */
-    public static function atomicDecrement(int $playerId, float $amount, int $ttl = 0): array
+    public static function atomicDecrement(int $playerId, float $amount, int $ttl = 0, string $reason = '', array $extra = []): array
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be greater than 0');
@@ -1045,6 +1082,12 @@ LUA;
 
         try {
             $cacheKey = self::getCacheKey($playerId);
+
+            // Cold-start protection: if key doesn't exist, load from DB
+            if (!Redis::exists($cacheKey)) {
+                $dbBalance = self::getBalanceFromDB($playerId, 1);
+                Redis::set($cacheKey, (int)round($dbBalance * 100));
+            }
 
             // 🔧 转换为"分"（整数）
             $amountInCents = (int)round($amount * 100);
@@ -1054,8 +1097,7 @@ LUA;
                 self::LUA_ATOMIC_DECREMENT,
                 1,  // KEYS 数量
                 $cacheKey,         // KEYS[1]
-                $amountInCents,    // ARGV[1]（分）
-                $ttl               // ARGV[2]
+                $amountInCents     // ARGV[1]（分）
             );
 
             $result = json_decode($resultJson, true);
@@ -1078,12 +1120,16 @@ LUA;
                     'old_balance' => $result['old'] ?? 0,
                     'new_balance' => $result['balance'],
                 ]);
+                WalletLogger::log($playerId, WalletLogger::OP_ATOMIC_DECREMENT, $reason, $amount,
+                    $result['old'] ?? 0, $result['balance'] ?? 0, true, $extra);
             } else {
                 Log::warning('WalletService: Atomic decrement failed - insufficient balance', [
                     'player_id' => $playerId,
                     'amount' => $amount,
                     'current_balance' => $result['balance'],
                 ]);
+                WalletLogger::log($playerId, WalletLogger::OP_ATOMIC_DECREMENT, $reason, $amount,
+                    $result['balance'] ?? 0, $result['balance'] ?? 0, false, array_merge($extra, ['error_code' => 'insufficient_balance']));
             }
 
             return $result;
@@ -1094,6 +1140,7 @@ LUA;
                 'amount' => $amount,
                 'error' => $e->getMessage(),
             ]);
+            WalletLogger::log($playerId, WalletLogger::OP_ATOMIC_DECREMENT, $reason, $amount, 0, 0, false, array_merge($extra, ['error_code' => 'exception']));
             throw $e;
         }
     }
