@@ -2,6 +2,7 @@
 
 namespace app\service\game;
 
+use app\exception\GameException;
 use app\model\Game;
 use app\model\GameExtend;
 use app\model\GamePlatform;
@@ -11,7 +12,6 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayGameRecord;
-use app\exception\GameException;
 use app\wallet\controller\game\KTGameController;
 use app\wallet\controller\game\MtGameController;
 use app\wallet\controller\game\O8GameController;
@@ -356,8 +356,7 @@ class KTServiceInterface extends GameServiceFactory implements GameServiceInterf
         $record = PlayGameRecord::query()->where('order_no', $data['MainTxID'])->first();
 
         $player = $this->player;
-        /** @var PlayerPlatformCash $machineWallet */
-        $machineWallet = $player->machine_wallet()->lockForUpdate()->first();
+
         if (!$record) {
             $this->error = KTGameController::API_CODE_OTHER_ERROR;
             return $player->machine_wallet->money;
@@ -373,13 +372,15 @@ class KTServiceInterface extends GameServiceFactory implements GameServiceInterf
 
         $money = array_sum(array_column($originData, 'Win'));
 
+        // ✅ 从 Redis 读取余额（结算前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+        $afterGameAmount = $beforeGameAmount;  // 默认没有派彩
+
         //有金额则为赢
         if ($money > 0) {
-            $beforeGameAmount = $machineWallet->money;
-            //处理用户金额记录
-            // 更新玩家统计
-            $machineWallet->money = bcadd($machineWallet->money, $money, 2);
-            $machineWallet->save();
+            // ✅ 使用 WalletService 原子加款
+            $afterGameAmount = \app\service\WalletService::add($player->id, $money);
+
             //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
             $playerDeliveryRecord = new PlayerDeliveryRecord;
             $playerDeliveryRecord->player_id = $player->id;
@@ -391,7 +392,7 @@ class KTServiceInterface extends GameServiceFactory implements GameServiceInterf
             $playerDeliveryRecord->source = 'player_bet_settlement';
             $playerDeliveryRecord->amount = $money;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = $record->order_no ?? '';
             $playerDeliveryRecord->remark = $target->remark ?? '';
             $playerDeliveryRecord->user_id = 0;
@@ -409,7 +410,7 @@ class KTServiceInterface extends GameServiceFactory implements GameServiceInterf
         //彩金记录
         Client::send('game-lottery', ['player_id' => $player->id, 'bet' => $record->bet, 'play_game_record_id' => $record->id]);
 
-        return $machineWallet->money;
+        return $afterGameAmount;
     }
 
     /**
@@ -461,9 +462,10 @@ class KTServiceInterface extends GameServiceFactory implements GameServiceInterf
         /** @var PlayGameRecord $record */
         $record = PlayGameRecord::query()->create($insert);
 
-        $beforeGameAmount = $machineWallet->money;
-        $machineWallet->money = bcsub($machineWallet->money, $bet, 2);
-        $machineWallet->save();
+        // ✅ 从 Redis 读取余额（送礼前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+        // ✅ 使用 WalletService 原子扣款
+        $afterGameAmount = \app\service\WalletService::deduct($player->id, $bet);
 
         //todo 语言文件后续处理
         //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
@@ -477,7 +479,7 @@ class KTServiceInterface extends GameServiceFactory implements GameServiceInterf
         $playerDeliveryRecord->source = 'player_gift';
         $playerDeliveryRecord->amount = $bet;
         $playerDeliveryRecord->amount_before = $beforeGameAmount;
-        $playerDeliveryRecord->amount_after = $machineWallet->money;
+        $playerDeliveryRecord->amount_after = $afterGameAmount;
         $playerDeliveryRecord->tradeno = $record->order_no;
         $playerDeliveryRecord->remark = '';
         $playerDeliveryRecord->user_id = 0;
@@ -486,7 +488,7 @@ class KTServiceInterface extends GameServiceFactory implements GameServiceInterf
 
         return [
             'MerchantOrderNumber' => $record->id,
-            'Balance'             => $machineWallet->money,
+            'Balance'             => $afterGameAmount,
             'SyncTime'            => date('Y-m-d H:i:s'),
         ];
     }

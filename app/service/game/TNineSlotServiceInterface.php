@@ -2,6 +2,7 @@
 
 namespace app\service\game;
 
+use app\exception\GameException;
 use app\model\Game;
 use app\model\GameExtend;
 use app\model\GamePlatform;
@@ -11,7 +12,6 @@ use app\model\PlayerDeliveryRecord;
 use app\model\PlayerGamePlatform;
 use app\model\PlayerPlatformCash;
 use app\model\PlayGameRecord;
-use app\exception\GameException;
 use app\wallet\controller\game\MtGameController;
 use app\wallet\controller\game\O8GameController;
 use app\wallet\controller\game\RsgLiveGameController;
@@ -20,9 +20,6 @@ use app\wallet\controller\game\TNineGameController;
 use app\wallet\controller\game\TNineSlotGameController;
 use Carbon\Carbon;
 use Exception;
-use Firebase\JWT\JWT;
-use Firebase\JWT\Key;
-use support\Cache;
 use support\Log;
 use Webman\RedisQueue\Client;
 use WebmanTech\LaravelHttpClient\Facades\Http;
@@ -344,7 +341,7 @@ class TNineSlotServiceInterface extends GameServiceFactory implements GameServic
 
         /** @var Player $player */
         $player = $this->player;
-        $machineWallet = $player->machine_wallet()->lockForUpdate()->first();
+
         if (!$record) {
             $this->error = TNineGameController::API_CODE_ERROR;
             return $player->machine_wallet->money;
@@ -352,13 +349,15 @@ class TNineSlotServiceInterface extends GameServiceFactory implements GameServic
 
 
         $money = $data['winlose'];
-        $beforeGameAmount = $machineWallet->money;
+        // ✅ 从 Redis 读取余额（结算前）
+        $beforeGameAmount = \app\service\WalletService::getBalance($player->id);
+        $afterGameAmount = $beforeGameAmount;  // 默认没有派彩
+
         //有金额则为赢
         if ($money > 0) {
-            //处理用户金额记录
-            // 更新玩家统计
-            $machineWallet->money = bcadd($machineWallet->money, $money, 2);
-            $machineWallet->save();
+            // ✅ 使用 WalletService 原子加款
+            $afterGameAmount = \app\service\WalletService::add($player->id, $money);
+
             //用户交易记录  现在单一钱包没有转账的说法 暂不记录转账记录
             $playerDeliveryRecord = new PlayerDeliveryRecord;
             $playerDeliveryRecord->player_id = $player->id;
@@ -370,7 +369,7 @@ class TNineSlotServiceInterface extends GameServiceFactory implements GameServic
             $playerDeliveryRecord->source = 'player_bet_settlement';
             $playerDeliveryRecord->amount = $money;
             $playerDeliveryRecord->amount_before = $beforeGameAmount;
-            $playerDeliveryRecord->amount_after = $machineWallet->money;
+            $playerDeliveryRecord->amount_after = $afterGameAmount;
             $playerDeliveryRecord->tradeno = $record->order_no ?? '';
             $playerDeliveryRecord->remark = $target->remark ?? '';
             $playerDeliveryRecord->user_id = 0;
@@ -403,7 +402,7 @@ class TNineSlotServiceInterface extends GameServiceFactory implements GameServic
 
 
         $return = [
-            'afterBalance' => $machineWallet->money,
+            'afterBalance' => $afterGameAmount,
             'beforeBalance' => $beforeGameAmount,
         ];
 
