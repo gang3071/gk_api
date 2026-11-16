@@ -10,10 +10,11 @@ final class AddStoreFinanceReportMenu extends AbstractMigration
     public function up(): void
     {
         $parentMenu = $this->query("SELECT id FROM `admin_menus` WHERE `name` = 'report_center' AND `type` = 3 ORDER BY id DESC LIMIT 1")->fetch();
+        $pid = !empty($parentMenu['id']) ? (int) $parentMenu['id'] : 0;
 
         $this->execute("
             INSERT INTO `admin_menus` (`name`, `icon`, `url`, `plugin`, `pid`, `sort`, `type`, `status`, `open`, `created_at`, `updated_at`)
-            VALUES ('store_finance_report', 'far fa-circle', 'ex-admin/addons-webman-controller-AgentStoreProfitReportController/finance', '', {$parentMenu['id']}, 25, 3, 1, 0, NOW(), NOW())
+            VALUES ('store_finance_report', 'far fa-circle', 'ex-admin/addons-webman-controller-AgentStoreProfitReportController/finance', '', {$pid}, 25, 3, 1, 0, NOW(), NOW())
         ");
     }
 
