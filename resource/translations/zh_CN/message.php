@@ -694,6 +694,7 @@ return [
     'vip_daily_login_bonus' => 'VIP每日登录奖励',
     'activity_give' => '活动外增',
     'leaderboard_reward' => '排行榜奖励',
+    'children_cashback' => '推广红利',
     'daily_login_bonus_not_available' => '当前等级无每日登录奖励',
     'daily_login_bonus_already_received' => '今日登录奖励已领取',
     'daily_login_bonus_claim_success' => '登录奖励领取成功',

@@ -675,6 +675,7 @@ return [
     'vip_daily_login_bonus' => 'VIP毎日ログインボーナス',
     'activity_give' => 'イベント外付与',
     'leaderboard_reward' => 'ランキング報酬',
+    'children_cashback' => 'プロモーションの恩恵',
     'daily_login_bonus_not_available' => '現在のレベルには毎日ログインボーナスがありません',
     'daily_login_bonus_already_received' => '本日のログインボーナスは受け取り済みです',
     'daily_login_bonus_claim_success' => 'ログインボーナスを受け取りました',
