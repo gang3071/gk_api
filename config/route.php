@@ -143,6 +143,10 @@ Route::group('/api', function () {
         Route::post('/dish-admin/order-detail', [\app\api\controller\v1\DishAdminController::class, 'orderDetail']);
         // 店家更新訂單狀態（出餐）
         Route::post('/dish-admin/update-status', [\app\api\controller\v1\DishAdminController::class, 'updateStatus']);
+        // 推廣紅利
+        Route::post('/children/cashback', [\app\api\controller\web\PlayerController::class, 'childrenCashback']);
+        // 領取推廣紅利
+        Route::post('/children/cashback/claim', [\app\api\controller\web\PlayerController::class, 'childrenCashbackClaim']);
     });
 });
 
