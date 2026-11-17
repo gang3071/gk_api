@@ -151,6 +151,30 @@ class LeaderboardController
     }
 
     /**
+     * 鋼珠排行榜整頁（各店週排行 + 金樽週排行 + 金樽月排行）
+     *
+     * 計分來源：機台大賞（machine_lottery_record.lottery_win，鋼珠機台）
+     * 已登入：依玩家門店過濾各店週排行
+     * 未登入：有帶 store_id 則依該門店過濾，否則回全部
+     *
+     * @param Request $request
+     * @return Response
+     */
+    public function steelBallOverview(Request $request): Response
+    {
+        $departmentId = (int)$request->department_id;
+        $storeId = self::resolveStoreId($request);
+
+        $data = LeaderboardService::steelBallOverview($departmentId);
+
+        if ($storeId > 0) {
+            $data['store_weekly'] = self::filterStore($data['store_weekly'], $storeId);
+        }
+
+        return jsonSuccessResponse('success', $data);
+    }
+
+    /**
      * 我的排行榜獎勵列表
      *
      * @return Response

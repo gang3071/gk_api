@@ -14,6 +14,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int player_id 玩家id
  * @property int draw_bet 中奖分数
  * @property int use_turn 使用转数
+ * @property int odds_x 机台比值分子（开奖时快照）
+ * @property int odds_y 机台比值分母（开奖时快照）
+ * @property int lottery_win 中奖得分（钢珠=中奖珠数；Slot=开奖期间净得分）
+ * @property int lottery_bet Slot开奖期间总压分变化量
  * @property int has_rush 是否rush
  * @property string created_at 创建时间
  * @property string updated_at 更新时间
