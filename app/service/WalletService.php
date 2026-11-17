@@ -384,11 +384,13 @@ class WalletService
                 $error = $balanceData['error'] ?? 'unknown_error';
                 if ($error === 'key_not_found') {
                     WalletLogger::log($playerId, WalletLogger::OP_DEDUCT, $reason, $amount, 0, 0, false, array_merge($extra, ['error_code' => 'key_not_found']));
+                    $walletLogged = true;
                     throw new \Exception(trans('wallet_not_found', [], 'message'));
                 }
                 if ($error === 'insufficient_balance') {
                     $currentBalance = round(($balanceData['balance'] ?? 0) / 100, 2);
                     WalletLogger::log($playerId, WalletLogger::OP_DEDUCT, $reason, $amount, $currentBalance, $currentBalance, false, array_merge($extra, ['error_code' => 'insufficient_balance']));
+                    $walletLogged = true;
                     throw new \Exception(trans('game_amount_insufficient', [], 'message'));
                 }
                 throw new \Exception("Atomic decrement failed: {$error}");
@@ -410,6 +412,11 @@ class WalletService
                 'amount' => $amount,
                 'error' => $e->getMessage(),
             ]);
+            // 兜底记账：基础设施异常（Redis/解码失败等）也必须留痕；
+            // key_not_found / insufficient_balance 已在上方记过，避免重复
+            if (empty($walletLogged)) {
+                WalletLogger::log($playerId, WalletLogger::OP_DEDUCT, $reason, $amount, 0, 0, false, array_merge($extra, ['error_code' => 'exception']));
+            }
             throw $e;
         }
     }

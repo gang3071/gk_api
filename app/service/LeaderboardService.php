@@ -115,10 +115,12 @@ class LeaderboardService
                 ];
             }
             $stores[$sid]['list'][] = [
-                'rank'      => (int)$r->rank,
-                'player_id' => (int)$r->player_id,
-                'name'      => (string)$r->player_name,
-                'score'     => (string)(int)$r->score,
+                'rank'       => (int)$r->rank,
+                'player_id'  => (int)$r->player_id,
+                'name'       => (string)$r->player_name,
+                'store_id'   => $sid,
+                'store_name' => (string)($r->store_name ?? ''),
+                'score'      => (string)(int)$r->score,
             ];
         }
 
@@ -174,6 +176,23 @@ class LeaderboardService
     public static function steelBallGlobalMonthly(): array
     {
         return self::golden('steel_ball_global_monthly');
+    }
+
+    /**
+     * 鋼珠排行榜整頁資料（鋼珠各店週排行 + 鋼珠金樽週排行 + 鋼珠金樽月排行）
+     *
+     * 口徑同 overview()；計分來源：machine_lottery_record.lottery_win（機台大賞，鋼珠機台 type=2）
+     *
+     * @param int $departmentId 渠道/部門 id（來自 Site-Id）
+     * @return array
+     */
+    public static function steelBallOverview(int $departmentId): array
+    {
+        return [
+            'store_weekly'   => self::steelBallStoreWeekly($departmentId),
+            'golden_weekly'  => self::steelBallGlobalWeekly(),
+            'golden_monthly' => self::steelBallGlobalMonthly(),
+        ];
     }
 
     /**
