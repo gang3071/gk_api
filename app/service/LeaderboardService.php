@@ -347,10 +347,13 @@ class LeaderboardService
             $threshold = (float)($content['threshold'] ?? 0);
 
             $result[$code] = [
-                'name'           => (string)($content['name'] ?? $code),
-                'threshold'      => $threshold,
-                'threshold_text' => self::thresholdText($threshold),
-                'prizes'         => $content['prizes'] ?? [],
+                'name'              => (string)($content['name'] ?? $code),
+                'threshold'         => $threshold,
+                'threshold_text'    => self::thresholdText($threshold),
+                'prizes'            => $content['prizes'] ?? [],
+                'activity_rules'    => (string)($content['activity_rules'] ?? ''),
+                'distribution_rules'=> (string)($content['distribution_rules'] ?? ''),
+                'disclaimer'        => (string)($content['disclaimer'] ?? ''),
             ];
         }
 
