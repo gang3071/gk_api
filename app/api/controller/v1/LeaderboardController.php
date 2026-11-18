@@ -34,7 +34,7 @@ class LeaderboardController
 
         if ($storeId > 0) {
             $data['store_weekly']            = self::filterStore($data['store_weekly'], $storeId);
-//            $data['store_monthly']           = self::filterStore($data['store_monthly'], $storeId);
+            $data['store_monthly']           = self::filterStore($data['store_monthly'], $storeId);
             $data['steel_ball_store_weekly'] = self::filterStore($data['steel_ball_store_weekly'], $storeId);
         }
 
