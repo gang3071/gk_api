@@ -11,6 +11,7 @@ use app\model\ChannelRechargeSetting;
 use app\model\Currency;
 use app\model\GamePlatform;
 use app\model\GameType;
+use app\model\LeaderboardEntry;
 use app\model\Lottery;
 use app\model\LotteryTicket;
 use app\model\LotteryTicketActivity;
@@ -4637,6 +4638,55 @@ class PlayerController
         // 分页查询
         $records = $query->forPage($data['page'] ?? 1, $data['size'] ?? 10)->get();
 
+        // 批量解析排行榜奖励对应的榜单名称与期数（避免 N+1）
+        $entryIds = [];
+        $noticeIds = [];
+        foreach ($records as $record) {
+            if ($record->type != PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD) {
+                continue;
+            }
+            if ($record->target == 'leaderboard_entry') {
+                $entryIds[] = (int)$record->target_id;
+            } elseif ($record->target == 'notice') {
+                $noticeIds[] = (int)$record->target_id;
+            }
+            // 兜底：tradeno = LBRN + 通知ID
+            if (is_string($record->tradeno) && strpos($record->tradeno, 'LBRN') === 0) {
+                $noticeIds[] = (int)substr($record->tradeno, 4);
+            }
+        }
+
+        // 榜单名称/期数快照（来源一：结算榜单 leaderboard_entry -> leaderboard）
+        $leaderboardInfoMap = [];
+        if (!empty($entryIds)) {
+            $entries = LeaderboardEntry::query()
+                ->with(['leaderboard' => function ($q) {
+                    $q->select('id', 'name', 'period_key');
+                }])
+                ->whereIn('id', array_unique($entryIds))
+                ->get(['id', 'leaderboard_id']);
+            foreach ($entries as $entry) {
+                $leaderboardInfoMap['entry_' . $entry->id] = [
+                    'leaderboard_name' => (string)($entry->leaderboard->name ?? ''),
+                    'period_key' => (string)($entry->leaderboard->period_key ?? ''),
+                ];
+            }
+        }
+
+        // 榜单名称/期数快照（来源二：领奖通知 content JSON）
+        if (!empty($noticeIds)) {
+            $notices = Notice::query()
+                ->whereIn('id', array_unique($noticeIds))
+                ->get(['id', 'content']);
+            foreach ($notices as $notice) {
+                $content = json_decode((string)$notice->content, true) ?: [];
+                $leaderboardInfoMap['notice_' . $notice->id] = [
+                    'leaderboard_name' => (string)($content['leaderboard_name'] ?? ''),
+                    'period_key' => (string)($content['period_key'] ?? ''),
+                ];
+            }
+        }
+
         $list = [];
         /** @var PlayerDeliveryRecord $record */
         foreach ($records as $record) {
@@ -4652,6 +4702,29 @@ class PlayerController
                 default => trans('other', [], 'message'),
             };
 
+            // 排行榜奖励：补充具体榜单名称与期数
+            $leaderboardName = '';
+            $periodKey = '';
+            if ($record->type == PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD) {
+                $candidates = [];
+                if ($record->target == 'leaderboard_entry') {
+                    $candidates[] = $leaderboardInfoMap['entry_' . (int)$record->target_id] ?? null;
+                } elseif ($record->target == 'notice') {
+                    $candidates[] = $leaderboardInfoMap['notice_' . (int)$record->target_id] ?? null;
+                }
+                // 兜底：tradeno = LBRN + 通知ID
+                if (is_string($record->tradeno) && strpos($record->tradeno, 'LBRN') === 0) {
+                    $candidates[] = $leaderboardInfoMap['notice_' . (int)substr($record->tradeno, 4)] ?? null;
+                }
+                foreach ($candidates as $info) {
+                    if ($info !== null && $info['leaderboard_name'] !== '') {
+                        $leaderboardName = $info['leaderboard_name'];
+                        $periodKey = $info['period_key'];
+                        break;
+                    }
+                }
+            }
+
             $list[] = [
                 'id' => $record->id,
                 'type' => $record->type,
@@ -4659,6 +4732,8 @@ class PlayerController
                 'amount' => $record->amount,
                 'remark' => $record->remark,
                 'tradeno' => $record->tradeno,
+                'leaderboard_name' => $leaderboardName,
+                'period_key' => $periodKey,
                 'created_at' => date('Y-m-d H:i:s', strtotime($record->created_at)),
             ];
         }
