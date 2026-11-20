@@ -10,6 +10,7 @@ use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerMoneyEditLog;
 use support\Log;
+use support\Redis;
 
 /**
  * 排行榜服務（玩家端，唯讀）
@@ -33,6 +34,9 @@ class LeaderboardService
     /** VIP 排行榜開關（目前不做，保留程式） */
     const VIP_ENABLED = false;
 
+    /** 排行榜快取時間（秒）：屏蔽結算空窗期 */
+    const CACHE_TTL = 120;
+
     /** VIP 總榜代碼（由 gk_admin 結算寫入） */
     const VIP_CODE_WEEKLY = 'vip_weekly';
     const VIP_CODE_MONTHLY = 'vip_monthly';
@@ -45,12 +49,20 @@ class LeaderboardService
      */
     public static function overview(int $departmentId): array
     {
+        $cacheKey = 'leaderboard:overview:' . $departmentId;
+
+        // 结算空窗期保护：有缓存先用缓存
+        $cached = Redis::get($cacheKey);
+        if ($cached) {
+            return json_decode($cached, true);
+        }
+
         $pk = self::batchPeriodKeys([
             'store_weekly', 'golden_weekly', 'golden_monthly',
             'steel_ball_store_weekly', 'steel_ball_global_weekly', 'steel_ball_global_monthly',
         ]);
 
-        return [
+        $data = [
             'store_weekly'              => self::store('store_weekly', $departmentId, $pk['store_weekly'] ?? null),
             'store_monthly'             => [],
             'golden_weekly'             => self::golden('golden_weekly', $pk['golden_weekly'] ?? null),
@@ -60,6 +72,20 @@ class LeaderboardService
             'steel_ball_global_monthly' => self::golden('steel_ball_global_monthly', $pk['steel_ball_global_monthly'] ?? null),
             'vip_ranking'               => self::vipRanking($departmentId),
         ];
+
+        // 有实际数据才写缓存，空结果（结算空窗期）不缓存，以免覆盖旧缓存
+        $hasData = !empty($data['store_weekly'])
+            || !empty($data['golden_weekly'])
+            || !empty($data['golden_monthly'])
+            || !empty($data['steel_ball_store_weekly'])
+            || !empty($data['steel_ball_global_weekly'])
+            || !empty($data['steel_ball_global_monthly']);
+
+        if ($hasData) {
+            Redis::setex($cacheKey, self::CACHE_TTL, json_encode($data));
+        }
+
+        return $data;
     }
 
     /**
@@ -210,15 +236,32 @@ class LeaderboardService
      */
     public static function steelBallOverview(int $departmentId): array
     {
+        $cacheKey = 'leaderboard:steel_ball_overview:' . $departmentId;
+
+        $cached = Redis::get($cacheKey);
+        if ($cached) {
+            return json_decode($cached, true);
+        }
+
         $pk = self::batchPeriodKeys([
             'steel_ball_store_weekly', 'steel_ball_global_weekly', 'steel_ball_global_monthly',
         ]);
 
-        return [
+        $data = [
             'store_weekly'   => self::store('steel_ball_store_weekly', $departmentId, $pk['steel_ball_store_weekly'] ?? null),
             'golden_weekly'  => self::golden('steel_ball_global_weekly', $pk['steel_ball_global_weekly'] ?? null),
             'golden_monthly' => self::golden('steel_ball_global_monthly', $pk['steel_ball_global_monthly'] ?? null),
         ];
+
+        $hasData = !empty($data['store_weekly'])
+            || !empty($data['golden_weekly'])
+            || !empty($data['golden_monthly']);
+
+        if ($hasData) {
+            Redis::setex($cacheKey, self::CACHE_TTL, json_encode($data));
+        }
+
+        return $data;
     }
 
     /**
