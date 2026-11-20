@@ -702,4 +702,6 @@ return [
     'machine_vip_level_not_enough' => '该机台需要{vip}或以上等级才能使用',
     'high_setting_vip_no_play_num' => '您的VIP等级没有高设定机台可玩数量，无法游玩高设定机台',
     'high_setting_play_num_exceeded' => '已超出高设定机台可游玩数量（最多{num}台）',
+    'leaderboard_reward_not_found' => '排行榜奖励不存在',
+    'leaderboard_reward_amount_invalid' => '排行榜奖励金额错误',
 ];

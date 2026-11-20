@@ -2,8 +2,10 @@
 
 namespace app\api\controller\v1;
 
+use app\exception\PlayerCheckException;
 use app\model\Player;
 use app\service\LeaderboardService;
+use support\Log;
 use support\Request;
 use support\Response;
 use Tinywan\Jwt\JwtToken;
@@ -29,12 +31,6 @@ class LeaderboardController
     {
         $departmentId = (int)$request->department_id;
         $storeId      = self::resolveStoreId($request);
-
-        \support\Log::info('[Leaderboard] overview request', [
-            'department_id' => $departmentId,
-            'store_id'      => $storeId,
-            'worker_id'     => defined('WORKERMAN_WORKER_ID') ? WORKERMAN_WORKER_ID : (getmypid()),
-        ]);
 
         $data = LeaderboardService::overview($departmentId);
 
@@ -184,6 +180,7 @@ class LeaderboardController
      * 我的排行榜獎勵列表
      *
      * @return Response
+     * @throws PlayerCheckException
      */
     public function myRewards(): Response
     {
@@ -199,6 +196,7 @@ class LeaderboardController
      *
      * @param Request $request
      * @return Response
+     * @throws PlayerCheckException
      */
     public function claim(Request $request): Response
     {
@@ -213,8 +211,17 @@ class LeaderboardController
             $result = LeaderboardService::claimReward($player, $noticeId);
 
             return jsonSuccessResponse('success', $result);
-        } catch (\Throwable $e) {
+        } catch (\RuntimeException $e) {
+            // 業務邏輯錯誤（已翻譯），直接回傳給玩家
             return jsonFailResponse($e->getMessage());
+        } catch (\Throwable $e) {
+            // 系統異常（DB/Redis 等）：記錄原始錯誤，回傳通用提示
+            Log::error('[排行榜領取] 系統異常', [
+                'notice_id' => $noticeId,
+                'player_id' => (int)($player->id ?? 0),
+                'error'     => $e->getMessage(),
+            ]);
+            return jsonFailResponse(trans('system_error', [], 'message'));
         }
     }
 

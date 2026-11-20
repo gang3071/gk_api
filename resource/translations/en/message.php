@@ -686,4 +686,6 @@ return [
     'machine_vip_level_not_enough' => 'This machine requires {vip} or above to use',
     'high_setting_vip_no_play_num' => 'Your VIP level has no high-setting machine play quota, cannot play high-setting machines',
     'high_setting_play_num_exceeded' => 'High-setting machine play limit exceeded (max {num})',
+    'leaderboard_reward_not_found' => 'Leaderboard reward not found',
+    'leaderboard_reward_amount_invalid' => 'Leaderboard reward amount is invalid',
 ];

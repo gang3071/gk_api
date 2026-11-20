@@ -10,7 +10,6 @@ use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerMoneyEditLog;
 use support\Log;
-use support\Redis;
 
 /**
  * 排行榜服務（玩家端，唯讀）
@@ -34,10 +33,7 @@ class LeaderboardService
     /** VIP 排行榜開關（目前不做，保留程式） */
     const VIP_ENABLED = false;
 
-    /** 排行榜快取時間（秒）：屏蔽結算空窗期 */
-    const CACHE_TTL = 120;
-
-    /** VIP 總榜代碼（由 gk_admin 結算寫入） */
+/** VIP 總榜代碼（由 gk_admin 結算寫入） */
     const VIP_CODE_WEEKLY = 'vip_weekly';
     const VIP_CODE_MONTHLY = 'vip_monthly';
 
@@ -49,14 +45,6 @@ class LeaderboardService
      */
     public static function overview(int $departmentId): array
     {
-        $cacheKey = 'leaderboard:overview:' . $departmentId;
-
-        // 结算空窗期保护：有缓存先用缓存
-        $cached = Redis::get($cacheKey);
-        if ($cached) {
-            return json_decode($cached, true);
-        }
-
         $pk = self::batchPeriodKeys([
             'store_weekly', 'golden_weekly', 'golden_monthly',
             'steel_ball_store_weekly', 'steel_ball_global_weekly', 'steel_ball_global_monthly',
@@ -72,18 +60,6 @@ class LeaderboardService
             'steel_ball_global_monthly' => self::golden('steel_ball_global_monthly', $pk['steel_ball_global_monthly'] ?? null),
             'vip_ranking'               => self::vipRanking($departmentId),
         ];
-
-        // 有实际数据才写缓存，空结果（结算空窗期）不缓存，以免覆盖旧缓存
-        $hasData = !empty($data['store_weekly'])
-            || !empty($data['golden_weekly'])
-            || !empty($data['golden_monthly'])
-            || !empty($data['steel_ball_store_weekly'])
-            || !empty($data['steel_ball_global_weekly'])
-            || !empty($data['steel_ball_global_monthly']);
-
-        if ($hasData) {
-            Redis::setex($cacheKey, self::CACHE_TTL, json_encode($data));
-        }
 
         return $data;
     }
@@ -115,6 +91,7 @@ class LeaderboardService
      *
      * @param string $code
      * @param int $departmentId
+     * @param string|null $periodKey
      * @return array
      */
     private static function store(string $code, int $departmentId, ?string $periodKey = null): array
@@ -236,38 +213,22 @@ class LeaderboardService
      */
     public static function steelBallOverview(int $departmentId): array
     {
-        $cacheKey = 'leaderboard:steel_ball_overview:' . $departmentId;
-
-        $cached = Redis::get($cacheKey);
-        if ($cached) {
-            return json_decode($cached, true);
-        }
-
         $pk = self::batchPeriodKeys([
             'steel_ball_store_weekly', 'steel_ball_global_weekly', 'steel_ball_global_monthly',
         ]);
 
-        $data = [
+        return [
             'store_weekly'   => self::store('steel_ball_store_weekly', $departmentId, $pk['steel_ball_store_weekly'] ?? null),
             'golden_weekly'  => self::golden('steel_ball_global_weekly', $pk['steel_ball_global_weekly'] ?? null),
             'golden_monthly' => self::golden('steel_ball_global_monthly', $pk['steel_ball_global_monthly'] ?? null),
         ];
-
-        $hasData = !empty($data['store_weekly'])
-            || !empty($data['golden_weekly'])
-            || !empty($data['golden_monthly']);
-
-        if ($hasData) {
-            Redis::setex($cacheKey, self::CACHE_TTL, json_encode($data));
-        }
-
-        return $data;
     }
 
     /**
      * 金樽榜共用查詢（全站，不分渠道）
      *
      * @param string $code
+     * @param string|null $periodKey
      * @return array
      */
     private static function golden(string $code, ?string $periodKey = null): array
@@ -431,7 +392,7 @@ class LeaderboardService
     private static function scoreText(string $score): string
     {
         $value = (float)$score;
-        $decimals = (fmod($value, 1.0) < PHP_FLOAT_EPSILON) ? 0 : 2;
+        $decimals = (abs(fmod($value, 1.0)) < PHP_FLOAT_EPSILON) ? 0 : 2;
 
         return number_format($value, $decimals);
     }
@@ -598,6 +559,7 @@ class LeaderboardService
      */
     public static function claimReward(Player $player, int $noticeId): array
     {
+        /** @var Notice $notice */
         $notice = Notice::query()
             ->where('id', $noticeId)
             ->where('player_id', $player->id)
@@ -607,7 +569,7 @@ class LeaderboardService
             ->first();
 
         if (!$notice) {
-            throw new \RuntimeException('排行榜獎勵不存在');
+            throw new \RuntimeException(trans('leaderboard_reward_not_found', [], 'message'));
         }
 
         $content = json_decode((string)$notice->content, true) ?: [];
@@ -617,6 +579,7 @@ class LeaderboardService
         $entry = null;
         $originalGrantStatus = LeaderboardEntry::GRANT_STATUS_CLAIMABLE;
         if ($entryId > 0) {
+            /** @var LeaderboardEntry $entry */
             $entry = LeaderboardEntry::query()
                 ->where('id', $entryId)
                 ->where('player_id', $player->id)
@@ -629,7 +592,7 @@ class LeaderboardService
         }
 
         if ($amount <= 0) {
-            throw new \RuntimeException('排行榜獎勵金額錯誤');
+            throw new \RuntimeException(trans('leaderboard_reward_amount_invalid', [], 'message'));
         }
 
         $tradeNo = 'LBRN' . $notice->id;
@@ -669,12 +632,45 @@ class LeaderboardService
             ]);
 
         if ($claimed === 0) {
-            return [
-                'notice_id'       => (int)$notice->id,
-                'amount'          => $amount,
-                'balance'         => WalletService::getBalance($player->id),
-                'already_claimed' => true,
-            ];
+            // notice.status 已是 1，正常情況是已完整領取；但崩潰恢復時可能無入帳紀錄
+            $deliveryAfterLock = PlayerDeliveryRecord::query()
+                ->where('tradeno', $tradeNo)
+                ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
+                ->exists();
+            if (!$deliveryAfterLock) {
+                $deliveryAfterLock = PlayerMoneyEditLog::query()
+                    ->whereIn('tradeno', $legacyTradeNos)
+                    ->withTrashed()
+                    ->exists();
+            }
+
+            if ($deliveryAfterLock) {
+                // 完整領取完成（可能是本次之前另一請求完成的）
+                self::markRewardClaimed($notice->id, $entryId, $ts);
+                return [
+                    'notice_id'       => (int)$notice->id,
+                    'amount'          => $amount,
+                    'balance'         => WalletService::getBalance($player->id),
+                    'already_claimed' => true,
+                ];
+            }
+
+            // notice.status=1 但無入帳紀錄：進程崩潰或極短並發窗口
+            // 超過 30 秒的鎖視為崩潰遺留，重置以允許玩家重試；30 秒內視為並發在途
+            $reset = Notice::query()
+                ->where('id', $notice->id)
+                ->where('status', 1)
+                ->where('updated_at', '<=', date('Y-m-d H:i:s', strtotime('-30 seconds')))
+                ->update(['status' => 0, 'updated_at' => $ts]);
+
+            if ($reset > 0) {
+                Log::warning('[排行榜領取] 通知鎖逾時無入帳，已重置以允許重試', [
+                    'notice_id' => $notice->id,
+                    'player_id' => $player->id,
+                ]);
+            }
+
+            throw new \RuntimeException(trans('request_processing', [], 'message'));
         }
 
         if ($entry) {
@@ -691,24 +687,44 @@ class LeaderboardService
                 ]);
 
             if ($entryClaimed === 0) {
-                Notice::query()->where('id', $notice->id)->update([
-                    'status'     => 1,
-                    'updated_at' => $ts,
-                ]);
+                // grant_status 已被外部改為 ISSUED，重新確認是否真的有入帳紀錄
+                $isDelivered = PlayerDeliveryRecord::query()
+                    ->where('tradeno', $tradeNo)
+                    ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
+                    ->exists();
+                if (!$isDelivered) {
+                    $isDelivered = PlayerMoneyEditLog::query()
+                        ->whereIn('tradeno', $legacyTradeNos)
+                        ->withTrashed()
+                        ->exists();
+                }
 
-                return [
-                    'notice_id'       => (int)$notice->id,
-                    'amount'          => $amount,
-                    'balance'         => WalletService::getBalance($player->id),
-                    'already_claimed' => true,
-                ];
+                if ($isDelivered) {
+                    self::markRewardClaimed($notice->id, $entryId, $ts);
+                    return [
+                        'notice_id'       => (int)$notice->id,
+                        'amount'          => $amount,
+                        'balance'         => WalletService::getBalance($player->id),
+                        'already_claimed' => true,
+                    ];
+                }
+
+                // grant_status=ISSUED 但無入帳紀錄：數據不一致，重置 notice 鎖並記錄告警
+                Notice::query()->where('id', $notice->id)->update(['status' => 0, 'updated_at' => $ts]);
+                Log::error('[排行榜領取] grant_status 已 ISSUED 但無入帳紀錄，已重置通知鎖', [
+                    'notice_id' => $notice->id,
+                    'player_id' => $player->id,
+                    'entry_id'  => $entryId,
+                ]);
+                throw new \RuntimeException(trans('system_error', [], 'message'));
             }
         }
 
         try {
-            $before = WalletService::getBalance($player->id);
             $result = WalletService::atomicIncrement($player->id, $amount);
-            $after = (float)($result['balance'] ?? bcadd((string)$before, (string)$amount, 2));
+            // atomicIncrement 原子操作：'old' 為加款前快照，'balance' 為加款後餘額，兩者同一 Lua 腳本內讀取
+            $before = (float)($result['old'] ?? 0);
+            $after  = (float)($result['balance'] ?? 0);
         } catch (\Throwable $e) {
             self::revertRewardClaim($notice->id, $entryId, $originalGrantStatus, $ts);
             throw $e;
@@ -863,7 +879,7 @@ class LeaderboardService
         }
 
         $wan = $threshold / 10000;
-        $num = (floor($wan) == $wan) ? number_format($wan) : (string)$wan;
+        $num = (fmod($wan, 1.0) < PHP_FLOAT_EPSILON) ? number_format($wan) : (string)$wan;
 
         return "需達{$num}萬分以上";
     }
