@@ -96,11 +96,13 @@ class LeaderboardService
 
         $rows = LeaderboardEntry::query()
             ->join('leaderboard as l', 'l.id', '=', 'leaderboard_entry.leaderboard_id')
-            ->join('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
+            ->leftJoin('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
             ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
             ->where('l.code', $code)
             ->where('l.period_key', $periodKey)
-            ->where('p.department_id', $departmentId)
+            ->where(function ($q) use ($departmentId) {
+                $q->where('p.department_id', $departmentId)->orWhereNull('p.id');
+            })
             ->where('leaderboard_entry.rank', '<=', self::TOP)
             ->orderBy('leaderboard_entry.store_admin_id')
             ->orderBy('leaderboard_entry.rank')
