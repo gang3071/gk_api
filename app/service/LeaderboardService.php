@@ -46,7 +46,6 @@ class LeaderboardService
     {
         return [
             'store_weekly'              => self::storeWeekly($departmentId),
-//            'store_monthly'             => self::storeMonthly($departmentId),
             'store_monthly'             => [],
             'golden_weekly'             => self::goldenWeekly(),
             'golden_monthly'            => self::goldenMonthly(),

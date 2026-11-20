@@ -246,21 +246,16 @@ class LeaderboardController
      */
     private static function resolveStoreId(Request $request): int
     {
-        $storeId = (int)($request->all()['store_id'] ?? 0);
-
         try {
             $playerId = (int)JwtToken::getCurrentId();
             if ($playerId > 0) {
-                $playerStoreId = (int)(Player::query()->where('id', $playerId)->value('store_admin_id') ?? 0);
-                if ($playerStoreId > 0) {
-                    return $playerStoreId;
-                }
+                return (int)(Player::query()->where('id', $playerId)->value('store_admin_id') ?? 0);
             }
         } catch (\Throwable $e) {
             // 未登入或 token 無效，維持使用 store_id 參數
         }
 
-        return $storeId;
+        return (int)($request->all()['store_id'] ?? 0);
     }
 
     /**
