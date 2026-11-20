@@ -293,7 +293,8 @@ class PlayerController
         $reverseWaterPoolRemaining = $reverseWaterPoolPending - $reverseWaterPoolClaimable;
 
         // VIP 每日登录奖励（按当前 VIP 等级配置，0 表示该等级无奖励）
-        $dailyLoginBonus = $this->formatAmount((float)($vipLevel->daily_login_bonus ?? 0));
+        // 发放判断：领取需满足昨日打码量，未达标时直接把 daily_login_bonus 返回值处理为 0
+        $dailyLoginBonus = $this->resolveDailyLoginBonus($player, $vipLevel);
         $isDailyLoginBonusReceived = false;
         if ($dailyLoginBonus > 0) {
             $now8am = \Illuminate\Support\Carbon::now();
@@ -331,7 +332,7 @@ class PlayerController
             $currentPeriod = $player->currentVipPeriod()->first();
             $periodBetAmount = $currentPeriod ? $currentPeriod->period_bet_amount : 0;
             $minClaimAmount = $vipLevel->min_claim_amount ?? 0;
-            $dailyLoginBonus = $this->formatAmount((float)($vipLevel->daily_login_bonus ?? 0));
+            $dailyLoginBonus = $this->resolveDailyLoginBonus($player, $vipLevel);
             $retainLevelDays = (int)($vipLevel->retain_level_days ?? 0);
             [$retainPeriod, $retainEndTs, $retainRemainingDays] = $this->retainPeriodInfo($player, $retainLevelDays);
         }
@@ -410,7 +411,7 @@ class PlayerController
             'reverse_water_pool_min_claim' => $minClaimAmount > 0 ? $this->formatAmount($minClaimAmount) : 0, // 当前等级最低领取金额，未设置返回0
             'claimable_voucher_counts' => \app\service\VoucherService::getClaimableCounts($player), // 今日可领福利券/体验券数量
             'available_points' => (int)\app\model\PlayerPoints::getOrCreate($player->id, $player->department_id)->available_points, // 用户可用积分
-            'daily_login_bonus' => $dailyLoginBonus, // 当前 VIP 等级每日登录奖励金额（0=无奖励）
+            'daily_login_bonus' => $dailyLoginBonus, // 当前 VIP 等级每日登录奖励金额（0=无奖励，未满足昨日打码量时返回 0）
             'is_daily_login_bonus_received' => $isDailyLoginBonusReceived, // 今日是否已领取
         ]);
     }
@@ -459,6 +460,67 @@ class PlayerController
             // 小数：保留两位小数
             return round($amount, 2);
         }
+    }
+
+    /**
+     * 昨日打码量（08:00 班次口径：电子游戏 bet + 实体机台 chip_amount）
+     *
+     * 与本接口 yesterday_game_bet_amount 同口径。
+     * @param int $playerId
+     * @return float
+     */
+    private function getYesterdayBetAmount(int $playerId): float
+    {
+        $now = \Illuminate\Support\Carbon::now();
+        $today8am = \Illuminate\Support\Carbon::today()->setTime(8, 0, 0);
+        $yesterday8am = \Illuminate\Support\Carbon::yesterday()->setTime(8, 0, 0);
+
+        if ($now->gte($today8am)) {
+            // 08:00 之后：昨日区间 = 昨日 08:00 ~ 今日 08:00
+            $start = $yesterday8am->toDateTimeString();
+            $end = $today8am->toDateTimeString();
+        } else {
+            // 08:00 之前（凌晨）：昨日区间 = 前天 08:00 ~ 昨日 08:00
+            $start = \Illuminate\Support\Carbon::parse('-2 days')->setTime(8, 0, 0)->toDateTimeString();
+            $end = $yesterday8am->toDateTimeString();
+        }
+
+        $betAmount = (float)PlayGameRecord::query()
+            ->where('player_id', $playerId)
+            ->where('created_at', '>=', $start)
+            ->where('created_at', '<', $end)
+            ->sum('bet');
+        $betAmount += (float)PlayerGameLog::query()
+            ->where('player_id', $playerId)
+            ->where('created_at', '>=', $start)
+            ->where('created_at', '<', $end)
+            ->sum('chip_amount');
+
+        return $betAmount;
+    }
+
+    /**
+     * 每日登录奖励发放判断
+     *
+     * 领取每日登入奖励需满足昨日打码量（vip_level.daily_login_bonus_bet_amount，0=不限制），
+     * 未达标时按无奖励处理，由接口直接把 daily_login_bonus 的返回值处理为 0。
+     * @param Player $player
+     * @param VipLevel|null $vipLevel
+     * @return float|int
+     */
+    private function resolveDailyLoginBonus(Player $player, ?VipLevel $vipLevel): float|int
+    {
+        $bonusAmount = $this->formatAmount((float)($vipLevel->daily_login_bonus ?? 0));
+        if ($bonusAmount <= 0) {
+            return 0;
+        }
+
+        $requiredBetAmount = (float)($vipLevel->daily_login_bonus_bet_amount ?? 0);
+        if ($requiredBetAmount > 0 && $this->getYesterdayBetAmount($player->id) < $requiredBetAmount) {
+            return 0;
+        }
+
+        return $bonusAmount;
     }
 
     #[RateLimiter(limit: 5)]
@@ -4112,6 +4174,14 @@ class PlayerController
         if ($hasReceived) {
             $this->releaseIdempotent($requestId);
             return jsonFailResponse(trans('daily_login_bonus_already_received', [], 'message'));
+        }
+
+        // 每日奖励领取打码量：昨日打码量需达到当前 VIP 等级配置值才可领取（0=不限制）
+        // 与发放判断（resolveDailyLoginBonus）同口径，此处为服务端兜底校验
+        $requiredBetAmount = (float)($player->vipLevel->daily_login_bonus_bet_amount ?? 0);
+        if ($requiredBetAmount > 0 && $this->getYesterdayBetAmount($player->id) < $requiredBetAmount) {
+            $this->releaseIdempotent($requestId);
+            return jsonFailResponse(trans('daily_login_bonus_bet_amount_not_met', ['{amount}' => $requiredBetAmount], 'message'));
         }
 
         Db::beginTransaction();

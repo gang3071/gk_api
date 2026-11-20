@@ -680,6 +680,7 @@ return [
     'daily_login_bonus_not_available' => '現在のレベルには毎日ログインボーナスがありません',
     'daily_login_bonus_already_received' => '本日のログインボーナスは受け取り済みです',
     'daily_login_bonus_claim_success' => 'ログインボーナスを受け取りました',
+    'daily_login_bonus_bet_amount_not_met' => '前日のベット額が不足しています。{amount}に達してから毎日ログインボーナスを受け取れます',
     'machine_vip_level_not_enough' => 'この台は{vip}以上のVIPレベルが必要です',
     'high_setting_vip_no_play_num' => 'VIPレベルに高設定機台のプレイ数が設定されていないため、高設定機台はプレイできません',
     'high_setting_play_num_exceeded' => '高設定機台のプレイ可能数を超えています（最大{num}台）',

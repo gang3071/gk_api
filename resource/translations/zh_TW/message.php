@@ -689,6 +689,7 @@ return [
     'daily_login_bonus_not_available' => '當前等級無每日登錄獎勵',
     'daily_login_bonus_already_received' => '今日登錄獎勵已領取',
     'daily_login_bonus_claim_success' => '登錄獎勵領取成功',
+    'daily_login_bonus_bet_amount_not_met' => '昨日打碼量不足，需達到{amount}才可領取每日登錄獎勵',
     'machine_vip_level_not_enough' => '該機台需要{vip}或以上等級才能使用',
     'high_setting_vip_no_play_num' => '您的VIP等級沒有高設定機台可玩數量，無法遊玩高設定機台',
     'high_setting_play_num_exceeded' => '已超出高設定機台可遊玩數量（最多{num}台）',
