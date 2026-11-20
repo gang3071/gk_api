@@ -5,10 +5,10 @@ namespace app\service;
 use app\model\Leaderboard;
 use app\model\LeaderboardEntry;
 use app\model\Notice;
+use app\model\SystemSetting;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerMoneyEditLog;
-use support\Db;
 use support\Log;
 
 /**
@@ -319,23 +319,31 @@ class LeaderboardService
             ];
         }
 
-        $board = Db::table('leaderboard')
+        $board = Leaderboard::query()
             ->where('code', $code)
             ->where('period_key', $periodKey)
             ->first(['start_at', 'end_at']);
 
-        $sql = "SELECT e.`rank`, e.player_id, p.name, p.vip_level_id,
-                       vl.name AS vip_level_name, e.score,
-                       e.store_admin_id, au.nickname AS store_name
-                FROM leaderboard_entry e
-                JOIN leaderboard l ON l.id = e.leaderboard_id
-                JOIN player p ON p.id = e.player_id
-                LEFT JOIN vip_level vl ON vl.id = p.vip_level_id
-                LEFT JOIN admin_users au ON au.id = e.store_admin_id
-                WHERE l.code = ? AND l.period_key = ? AND e.`rank` <= ?
-                ORDER BY e.`rank` ASC";
-
-        $rows = Db::select($sql, [$code, $periodKey, self::VIP_TOP]);
+        $rows = LeaderboardEntry::query()
+            ->join('leaderboard as l', 'l.id', '=', 'leaderboard_entry.leaderboard_id')
+            ->join('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
+            ->leftJoin('vip_level as vl', 'vl.id', '=', 'p.vip_level_id')
+            ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
+            ->where('l.code', $code)
+            ->where('l.period_key', $periodKey)
+            ->where('leaderboard_entry.rank', '<=', self::VIP_TOP)
+            ->orderBy('leaderboard_entry.rank')
+            ->select([
+                'leaderboard_entry.rank',
+                'leaderboard_entry.player_id',
+                'p.name',
+                'p.vip_level_id',
+                'vl.name as vip_level_name',
+                'leaderboard_entry.score',
+                'leaderboard_entry.store_admin_id',
+                'au.nickname as store_name',
+            ])
+            ->get();
 
         $list = [];
         foreach ($rows as $r) {
@@ -382,7 +390,7 @@ class LeaderboardService
      */
     public static function rules(): array
     {
-        $rows = Db::table('system_setting')
+        $rows = SystemSetting::query()
             ->where('feature', 'like', 'leaderboard_%')
             ->where('department_id', 0)
             ->where('status', 1)
