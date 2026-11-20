@@ -89,6 +89,7 @@ class LeaderboardService
     {
         $periodKey = self::latestPeriodKey($code);
         if (!$periodKey) {
+            Log::warning('[Leaderboard] store: no period_key', ['code' => $code, 'department_id' => $departmentId]);
             return [];
         }
 
@@ -103,6 +104,13 @@ class LeaderboardService
                 ORDER BY e.store_admin_id ASC, e.`rank` ASC";
 
         $rows = Db::select($sql, [$code, $periodKey, $departmentId, self::TOP]);
+
+        Log::info('[Leaderboard] store', [
+            'code'          => $code,
+            'period_key'    => $periodKey,
+            'department_id' => $departmentId,
+            'row_count'     => count($rows),
+        ]);
 
         $stores = [];
         foreach ($rows as $r) {
@@ -205,6 +213,7 @@ class LeaderboardService
     {
         $periodKey = self::latestPeriodKey($code);
         if (!$periodKey) {
+            Log::warning('[Leaderboard] golden: no period_key', ['code' => $code]);
             return [];
         }
 
@@ -218,6 +227,12 @@ class LeaderboardService
                 ORDER BY e.`rank` ASC";
 
         $rows = Db::select($sql, [$code, $periodKey, self::TOP]);
+
+        Log::info('[Leaderboard] golden', [
+            'code'       => $code,
+            'period_key' => $periodKey,
+            'row_count'  => count($rows),
+        ]);
 
         $list = [];
         foreach ($rows as $r) {

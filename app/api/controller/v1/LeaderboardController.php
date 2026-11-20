@@ -28,7 +28,13 @@ class LeaderboardController
     public function overview(Request $request): Response
     {
         $departmentId = (int)$request->department_id;
-        $storeId = self::resolveStoreId($request);
+        $storeId      = self::resolveStoreId($request);
+
+        \support\Log::info('[Leaderboard] overview request', [
+            'department_id' => $departmentId,
+            'store_id'      => $storeId,
+            'worker_id'     => defined('WORKERMAN_WORKER_ID') ? WORKERMAN_WORKER_ID : (getmypid()),
+        ]);
 
         $data = LeaderboardService::overview($departmentId);
 
