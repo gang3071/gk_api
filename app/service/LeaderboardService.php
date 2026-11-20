@@ -105,7 +105,7 @@ class LeaderboardService
             ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
             ->where('l.code', $code)
             ->where('l.period_key', $periodKey)
-            ->where('p.department_id', $departmentId)
+            ->where('au.department_id', $departmentId)
             ->where('leaderboard_entry.rank', '<=', self::TOP)
             ->orderBy('leaderboard_entry.store_admin_id')
             ->orderBy('leaderboard_entry.rank')
@@ -388,7 +388,7 @@ class LeaderboardService
     private static function scoreText(string $score): string
     {
         $value = (float)$score;
-        $decimals = (floor($value) == $value) ? 0 : 2;
+        $decimals = (fmod($value, 1.0) < PHP_FLOAT_EPSILON) ? 0 : 2;
 
         return number_format($value, $decimals);
     }
@@ -446,56 +446,72 @@ class LeaderboardService
             ->limit(50)
             ->get();
 
-        $list = [];
+        // 預先收集所有 entry_id，批量查詢 LeaderboardEntry
+        $entryIdMap = [];
         foreach ($notices as $notice) {
             $content = json_decode((string)$notice->content, true) ?: [];
             $entryId = (int)($content['entry_id'] ?? $notice->source_id ?? 0);
-            $amount = (float)($content['amount'] ?? 0);
-            $entry = null;
-
             if ($entryId > 0) {
-                $entry = LeaderboardEntry::query()
-                    ->where('id', $entryId)
-                    ->first(['prize_amount', 'grant_status']);
-
-                if ($entry) {
-                    $amount = (float)$entry->prize_amount;
-                }
+                $entryIdMap[$notice->id] = $entryId;
             }
+        }
 
-            $status = (int)$notice->status;
-            $claimed = $status === 1;
+        $entryIds = array_values(array_unique($entryIdMap));
+        $entriesById = $entryIds
+            ? LeaderboardEntry::query()
+                ->whereIn('id', $entryIds)
+                ->get(['id', 'prize_amount', 'grant_status'])
+                ->keyBy('id')
+            : collect();
+
+        // 批量查 PlayerDeliveryRecord（以 LBRN{notice_id} 為 tradeno）
+        $noticeIds = $notices->pluck('id')->all();
+        $deliveryTradeNos = array_map(fn($id) => 'LBRN' . $id, $noticeIds);
+        $claimedByDelivery = PlayerDeliveryRecord::query()
+            ->whereIn('tradeno', $deliveryTradeNos)
+            ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
+            ->pluck('tradeno')
+            ->flip()
+            ->all();
+
+        // 批量查 PlayerMoneyEditLog（LBRN{notice_id} + LBR{entry_id}）
+        $legacyTradeNos = $deliveryTradeNos;
+        foreach ($entryIdMap as $eid) {
+            $legacyTradeNos[] = 'LBR' . $eid;
+        }
+        $claimedByLog = PlayerMoneyEditLog::query()
+            ->whereIn('tradeno', array_unique($legacyTradeNos))
+            ->withTrashed()
+            ->pluck('tradeno')
+            ->flip()
+            ->all();
+
+        // 需要補標的 notice_id（舊版已自動入帳）
+        $noticeIdsToMark = [];
+
+        $list = [];
+        foreach ($notices as $notice) {
+            $content  = json_decode((string)$notice->content, true) ?: [];
+            $entryId  = $entryIdMap[$notice->id] ?? 0;
+            $entry    = $entryId > 0 ? ($entriesById[$entryId] ?? null) : null;
+            $amount   = $entry ? (float)$entry->prize_amount : (float)($content['amount'] ?? 0);
+            $status   = (int)$notice->status;
+            $claimed  = $status === 1;
 
             if ($entry && (int)$entry->grant_status === LeaderboardEntry::GRANT_STATUS_ISSUED) {
                 $claimed = true;
-
-                // 舊版已自動入帳的通知，補標成已領取
+                // 舊版已自動入帳的通知，累積後批量補標
                 if ($status === 0) {
-                    Notice::query()->where('id', $notice->id)->update([
-                        'status'     => 1,
-                        'updated_at' => date('Y-m-d H:i:s'),
-                    ]);
+                    $noticeIdsToMark[] = (int)$notice->id;
                     $status = 1;
                 }
             }
 
             if (!$claimed) {
-                $tradeNos = ['LBRN' . $notice->id];
-                if ($entryId > 0) {
-                    $tradeNos[] = 'LBR' . $entryId;
-                }
-
-                $claimed = PlayerDeliveryRecord::query()
-                    ->where('tradeno', 'LBRN' . $notice->id)
-                    ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
-                    ->exists();
-
-                if (!$claimed) {
-                    $claimed = PlayerMoneyEditLog::query()
-                        ->whereIn('tradeno', $tradeNos)
-                        ->withTrashed()
-                        ->exists();
-                }
+                $deliveryKey = 'LBRN' . $notice->id;
+                $claimed = isset($claimedByDelivery[$deliveryKey])
+                    || isset($claimedByLog[$deliveryKey])
+                    || ($entryId > 0 && isset($claimedByLog['LBR' . $entryId]));
             }
 
             $list[] = [
@@ -508,6 +524,21 @@ class LeaderboardService
                 'text'             => (string)($content['text'] ?? $notice->content),
                 'created_at'       => (string)$notice->created_at,
             ];
+        }
+
+        // 批量補標舊版已自動入帳通知
+        if ($noticeIdsToMark) {
+            try {
+                Notice::query()
+                    ->whereIn('id', $noticeIdsToMark)
+                    ->where('status', 0)
+                    ->update(['status' => 1, 'updated_at' => date('Y-m-d H:i:s')]);
+            } catch (\Throwable $e) {
+                Log::warning('[Leaderboard] myRewards 補標失敗', [
+                    'notice_ids' => $noticeIdsToMark,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
         }
 
         return $list;
@@ -541,6 +572,7 @@ class LeaderboardService
         $amount = (float)($content['amount'] ?? 0);
 
         $entry = null;
+        $originalGrantStatus = LeaderboardEntry::GRANT_STATUS_CLAIMABLE;
         if ($entryId > 0) {
             $entry = LeaderboardEntry::query()
                 ->where('id', $entryId)
@@ -549,6 +581,7 @@ class LeaderboardService
 
             if ($entry) {
                 $amount = (float)$entry->prize_amount;
+                $originalGrantStatus = (int)$entry->grant_status;
             }
         }
 
@@ -634,7 +667,7 @@ class LeaderboardService
             $result = WalletService::atomicIncrement($player->id, $amount);
             $after = (float)($result['balance'] ?? bcadd((string)$before, (string)$amount, 2));
         } catch (\Throwable $e) {
-            self::revertRewardClaim($notice->id, $entryId, $ts);
+            self::revertRewardClaim($notice->id, $entryId, $originalGrantStatus, $ts);
             throw $e;
         }
 
@@ -675,7 +708,7 @@ class LeaderboardService
             }
 
             if ($rolledBack) {
-                self::revertRewardClaim($notice->id, $entryId, $ts);
+                self::revertRewardClaim($notice->id, $entryId, $originalGrantStatus, $ts);
             }
 
             throw $e;
@@ -718,10 +751,11 @@ class LeaderboardService
      *
      * @param int $noticeId
      * @param int $entryId
+     * @param int $originalGrantStatus 領取前的原始 grant_status，用於正確還原
      * @param string $ts
      * @return void
      */
-    private static function revertRewardClaim(int $noticeId, int $entryId, string $ts): void
+    private static function revertRewardClaim(int $noticeId, int $entryId, int $originalGrantStatus, string $ts): void
     {
         Notice::query()->where('id', $noticeId)->update([
             'status'     => 0,
@@ -730,7 +764,7 @@ class LeaderboardService
 
         if ($entryId > 0) {
             LeaderboardEntry::query()->where('id', $entryId)->update([
-                'grant_status' => LeaderboardEntry::GRANT_STATUS_CLAIMABLE,
+                'grant_status' => $originalGrantStatus,
                 'granted_at'   => null,
                 'updated_at'   => $ts,
             ]);
