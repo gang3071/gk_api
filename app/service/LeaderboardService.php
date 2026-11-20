@@ -45,14 +45,19 @@ class LeaderboardService
      */
     public static function overview(int $departmentId): array
     {
+        $pk = self::batchPeriodKeys([
+            'store_weekly', 'golden_weekly', 'golden_monthly',
+            'steel_ball_store_weekly', 'steel_ball_global_weekly', 'steel_ball_global_monthly',
+        ]);
+
         return [
-            'store_weekly'              => self::storeWeekly($departmentId),
+            'store_weekly'              => self::store('store_weekly', $departmentId, $pk['store_weekly'] ?? null),
             'store_monthly'             => [],
-            'golden_weekly'             => self::goldenWeekly(),
-            'golden_monthly'            => self::goldenMonthly(),
-            'steel_ball_store_weekly'   => self::steelBallStoreWeekly($departmentId),
-            'steel_ball_global_weekly'  => self::steelBallGlobalWeekly(),
-            'steel_ball_global_monthly' => self::steelBallGlobalMonthly(),
+            'golden_weekly'             => self::golden('golden_weekly', $pk['golden_weekly'] ?? null),
+            'golden_monthly'            => self::golden('golden_monthly', $pk['golden_monthly'] ?? null),
+            'steel_ball_store_weekly'   => self::store('steel_ball_store_weekly', $departmentId, $pk['steel_ball_store_weekly'] ?? null),
+            'steel_ball_global_weekly'  => self::golden('steel_ball_global_weekly', $pk['steel_ball_global_weekly'] ?? null),
+            'steel_ball_global_monthly' => self::golden('steel_ball_global_monthly', $pk['steel_ball_global_monthly'] ?? null),
             'vip_ranking'               => self::vipRanking($departmentId),
         ];
     }
@@ -86,9 +91,9 @@ class LeaderboardService
      * @param int $departmentId
      * @return array
      */
-    private static function store(string $code, int $departmentId): array
+    private static function store(string $code, int $departmentId, ?string $periodKey = null): array
     {
-        $periodKey = self::latestPeriodKey($code);
+        $periodKey ??= self::latestPeriodKey($code);
         if (!$periodKey) {
             Log::warning('[Leaderboard] store: no period_key', ['code' => $code, 'department_id' => $departmentId]);
             return [];
@@ -100,9 +105,7 @@ class LeaderboardService
             ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
             ->where('l.code', $code)
             ->where('l.period_key', $periodKey)
-            ->where(function ($q) use ($departmentId) {
-                $q->where('p.department_id', $departmentId)->orWhereNull('p.id');
-            })
+            ->where('p.department_id', $departmentId)
             ->where('leaderboard_entry.rank', '<=', self::TOP)
             ->orderBy('leaderboard_entry.store_admin_id')
             ->orderBy('leaderboard_entry.rank')
@@ -139,7 +142,7 @@ class LeaderboardService
                 'name'       => (string)$r->player_name,
                 'store_id'   => $sid,
                 'store_name' => (string)($r->store_name ?? ''),
-                'score'      => (string)(int)$r->score,
+                'score'      => (string)$r->score,
             ];
         }
 
@@ -207,10 +210,14 @@ class LeaderboardService
      */
     public static function steelBallOverview(int $departmentId): array
     {
+        $pk = self::batchPeriodKeys([
+            'steel_ball_store_weekly', 'steel_ball_global_weekly', 'steel_ball_global_monthly',
+        ]);
+
         return [
-            'store_weekly'   => self::steelBallStoreWeekly($departmentId),
-            'golden_weekly'  => self::steelBallGlobalWeekly(),
-            'golden_monthly' => self::steelBallGlobalMonthly(),
+            'store_weekly'   => self::store('steel_ball_store_weekly', $departmentId, $pk['steel_ball_store_weekly'] ?? null),
+            'golden_weekly'  => self::golden('steel_ball_global_weekly', $pk['steel_ball_global_weekly'] ?? null),
+            'golden_monthly' => self::golden('steel_ball_global_monthly', $pk['steel_ball_global_monthly'] ?? null),
         ];
     }
 
@@ -220,9 +227,9 @@ class LeaderboardService
      * @param string $code
      * @return array
      */
-    private static function golden(string $code): array
+    private static function golden(string $code, ?string $periodKey = null): array
     {
-        $periodKey = self::latestPeriodKey($code);
+        $periodKey ??= self::latestPeriodKey($code);
         if (!$periodKey) {
             Log::warning('[Leaderboard] golden: no period_key', ['code' => $code]);
             return [];
@@ -261,7 +268,7 @@ class LeaderboardService
                 'name'       => (string)$r->player_name,
                 'store_id'   => (int)$r->store_admin_id,
                 'store_name' => (string)($r->store_name ?? ''),
-                'score'      => (string)(int)$r->score,
+                'score'      => (string)$r->score,
                 'prize'      => (string)$r->prize_amount,
             ];
         }
@@ -311,8 +318,12 @@ class LeaderboardService
      */
     private static function vipBoard(string $code): array
     {
-        $periodKey = self::latestPeriodKey($code);
-        if ($periodKey === null) {
+        $board = Leaderboard::query()
+            ->where('code', $code)
+            ->orderBy('period_key', 'desc')
+            ->first(['period_key', 'start_at', 'end_at']);
+
+        if (!$board) {
             return [
                 'period_key' => null,
                 'start_at'   => null,
@@ -321,10 +332,7 @@ class LeaderboardService
             ];
         }
 
-        $board = Leaderboard::query()
-            ->where('code', $code)
-            ->where('period_key', $periodKey)
-            ->first(['start_at', 'end_at']);
+        $periodKey = (string)$board->period_key;
 
         $rows = LeaderboardEntry::query()
             ->join('leaderboard as l', 'l.id', '=', 'leaderboard_entry.leaderboard_id')
@@ -349,7 +357,7 @@ class LeaderboardService
 
         $list = [];
         foreach ($rows as $r) {
-            $score = (string)(int)$r->score;
+            $score = (string)$r->score;
             $list[] = [
                 'rank'           => (int)$r->rank,
                 'player_id'      => (int)$r->player_id,
@@ -365,8 +373,8 @@ class LeaderboardService
 
         return [
             'period_key' => $periodKey,
-            'start_at'   => $board ? (string)$board->start_at : null,
-            'end_at'     => $board ? (string)$board->end_at : null,
+            'start_at'   => (string)$board->start_at,
+            'end_at'     => (string)$board->end_at,
             'list'       => $list,
         ];
     }
@@ -747,6 +755,22 @@ class LeaderboardService
             ->value('period_key');
 
         return $key !== null ? (string)$key : null;
+    }
+
+    /**
+     * 批量取多個榜單的最新期別（一次查詢）
+     *
+     * @param string[] $codes
+     * @return array<string, string>  code => period_key
+     */
+    private static function batchPeriodKeys(array $codes): array
+    {
+        return Leaderboard::query()
+            ->whereIn('code', $codes)
+            ->groupBy('code')
+            ->selectRaw('code, MAX(period_key) AS period_key')
+            ->pluck('period_key', 'code')
+            ->all();
     }
 
     /**
