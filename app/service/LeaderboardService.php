@@ -50,7 +50,7 @@ class LeaderboardService
             'steel_ball_store_weekly', 'steel_ball_global_weekly', 'steel_ball_global_monthly',
         ]);
 
-        $data = [
+        return [
             'store_weekly'              => self::store('store_weekly', $departmentId, $pk['store_weekly'] ?? null),
             'store_monthly'             => [],
             'golden_weekly'             => self::golden('golden_weekly', $pk['golden_weekly'] ?? null),
@@ -60,8 +60,6 @@ class LeaderboardService
             'steel_ball_global_monthly' => self::golden('steel_ball_global_monthly', $pk['steel_ball_global_monthly'] ?? null),
             'vip_ranking'               => self::vipRanking($departmentId),
         ];
-
-        return $data;
     }
 
     /**
@@ -145,7 +143,7 @@ class LeaderboardService
                 'name'       => (string)$r->player_name,
                 'store_id'   => $sid,
                 'store_name' => (string)($r->store_name ?? ''),
-                'score'      => (string)$r->score,
+                'score'      => (string)(int)floor((float)$r->score),
             ];
         }
 
@@ -272,7 +270,7 @@ class LeaderboardService
                 'name'       => (string)$r->player_name,
                 'store_id'   => (int)$r->store_admin_id,
                 'store_name' => (string)($r->store_name ?? ''),
-                'score'      => (string)$r->score,
+                'score'      => (string)(int)floor((float)$r->score),
                 'prize'      => (string)$r->prize_amount,
             ];
         }
@@ -361,7 +359,7 @@ class LeaderboardService
 
         $list = [];
         foreach ($rows as $r) {
-            $score = (string)$r->score;
+            $score = (string)(int)floor((float)$r->score);
             $list[] = [
                 'rank'           => (int)$r->rank,
                 'player_id'      => (int)$r->player_id,
