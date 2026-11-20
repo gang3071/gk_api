@@ -2,12 +2,13 @@
 
 namespace app\service;
 
+use app\model\Leaderboard;
 use app\model\LeaderboardEntry;
 use app\model\Notice;
+use app\model\SystemSetting;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\PlayerMoneyEditLog;
-use support\Db;
 use support\Log;
 
 /**
@@ -32,7 +33,7 @@ class LeaderboardService
     /** VIP 排行榜開關（目前不做，保留程式） */
     const VIP_ENABLED = false;
 
-    /** VIP 總榜代碼（由 gk_admin 結算寫入） */
+/** VIP 總榜代碼（由 gk_admin 結算寫入） */
     const VIP_CODE_WEEKLY = 'vip_weekly';
     const VIP_CODE_MONTHLY = 'vip_monthly';
 
@@ -44,17 +45,23 @@ class LeaderboardService
      */
     public static function overview(int $departmentId): array
     {
-        return [
-            'store_weekly'              => self::storeWeekly($departmentId),
-//            'store_monthly'             => self::storeMonthly($departmentId),
+        $pk = self::batchPeriodKeys([
+            'store_weekly', 'golden_weekly', 'golden_monthly',
+            'steel_ball_store_weekly', 'steel_ball_global_weekly', 'steel_ball_global_monthly',
+        ]);
+
+        $data = [
+            'store_weekly'              => self::store('store_weekly', $departmentId, $pk['store_weekly'] ?? null),
             'store_monthly'             => [],
-            'golden_weekly'             => self::goldenWeekly(),
-            'golden_monthly'            => self::goldenMonthly(),
-            'steel_ball_store_weekly'   => self::steelBallStoreWeekly($departmentId),
-            'steel_ball_global_weekly'  => self::steelBallGlobalWeekly(),
-            'steel_ball_global_monthly' => self::steelBallGlobalMonthly(),
+            'golden_weekly'             => self::golden('golden_weekly', $pk['golden_weekly'] ?? null),
+            'golden_monthly'            => self::golden('golden_monthly', $pk['golden_monthly'] ?? null),
+            'steel_ball_store_weekly'   => self::store('steel_ball_store_weekly', $departmentId, $pk['steel_ball_store_weekly'] ?? null),
+            'steel_ball_global_weekly'  => self::golden('steel_ball_global_weekly', $pk['steel_ball_global_weekly'] ?? null),
+            'steel_ball_global_monthly' => self::golden('steel_ball_global_monthly', $pk['steel_ball_global_monthly'] ?? null),
             'vip_ranking'               => self::vipRanking($departmentId),
         ];
+
+        return $data;
     }
 
     /**
@@ -84,26 +91,43 @@ class LeaderboardService
      *
      * @param string $code
      * @param int $departmentId
+     * @param string|null $periodKey
      * @return array
      */
-    private static function store(string $code, int $departmentId): array
+    private static function store(string $code, int $departmentId, ?string $periodKey = null): array
     {
-        $periodKey = self::latestPeriodKey($code);
+        $periodKey ??= self::latestPeriodKey($code);
         if (!$periodKey) {
+            Log::warning('[Leaderboard] store: no period_key', ['code' => $code, 'department_id' => $departmentId]);
             return [];
         }
 
-        $sql = "SELECT e.store_admin_id, au.nickname AS store_name,
-                       e.`rank`, e.player_id, p.name AS player_name, e.score
-                FROM leaderboard_entry e
-                JOIN leaderboard l ON l.id = e.leaderboard_id
-                JOIN player p ON p.id = e.player_id
-                LEFT JOIN admin_users au ON au.id = e.store_admin_id
-                WHERE l.code = ? AND l.period_key = ?
-                  AND p.department_id = ? AND e.`rank` <= ?
-                ORDER BY e.store_admin_id ASC, e.`rank` ASC";
+        $rows = LeaderboardEntry::query()
+            ->join('leaderboard as l', 'l.id', '=', 'leaderboard_entry.leaderboard_id')
+            ->leftJoin('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
+            ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
+            ->where('l.code', $code)
+            ->where('l.period_key', $periodKey)
+            ->where('au.department_id', $departmentId)
+            ->where('leaderboard_entry.rank', '<=', self::TOP)
+            ->orderBy('leaderboard_entry.store_admin_id')
+            ->orderBy('leaderboard_entry.rank')
+            ->select([
+                'leaderboard_entry.store_admin_id',
+                'au.nickname as store_name',
+                'leaderboard_entry.rank',
+                'leaderboard_entry.player_id',
+                'p.name as player_name',
+                'leaderboard_entry.score',
+            ])
+            ->get();
 
-        $rows = Db::select($sql, [$code, $periodKey, $departmentId, self::TOP]);
+        Log::info('[Leaderboard] store', [
+            'code'          => $code,
+            'period_key'    => $periodKey,
+            'department_id' => $departmentId,
+            'row_count'     => $rows->count(),
+        ]);
 
         $stores = [];
         foreach ($rows as $r) {
@@ -121,7 +145,7 @@ class LeaderboardService
                 'name'       => (string)$r->player_name,
                 'store_id'   => $sid,
                 'store_name' => (string)($r->store_name ?? ''),
-                'score'      => (string)(int)$r->score,
+                'score'      => (string)$r->score,
             ];
         }
 
@@ -189,10 +213,14 @@ class LeaderboardService
      */
     public static function steelBallOverview(int $departmentId): array
     {
+        $pk = self::batchPeriodKeys([
+            'steel_ball_store_weekly', 'steel_ball_global_weekly', 'steel_ball_global_monthly',
+        ]);
+
         return [
-            'store_weekly'   => self::steelBallStoreWeekly($departmentId),
-            'golden_weekly'  => self::steelBallGlobalWeekly(),
-            'golden_monthly' => self::steelBallGlobalMonthly(),
+            'store_weekly'   => self::store('steel_ball_store_weekly', $departmentId, $pk['steel_ball_store_weekly'] ?? null),
+            'golden_weekly'  => self::golden('steel_ball_global_weekly', $pk['steel_ball_global_weekly'] ?? null),
+            'golden_monthly' => self::golden('steel_ball_global_monthly', $pk['steel_ball_global_monthly'] ?? null),
         ];
     }
 
@@ -200,25 +228,41 @@ class LeaderboardService
      * 金樽榜共用查詢（全站，不分渠道）
      *
      * @param string $code
+     * @param string|null $periodKey
      * @return array
      */
-    private static function golden(string $code): array
+    private static function golden(string $code, ?string $periodKey = null): array
     {
-        $periodKey = self::latestPeriodKey($code);
+        $periodKey ??= self::latestPeriodKey($code);
         if (!$periodKey) {
+            Log::warning('[Leaderboard] golden: no period_key', ['code' => $code]);
             return [];
         }
 
-        $sql = "SELECT e.`rank`, e.player_id, p.name AS player_name,
-                       e.store_admin_id, au.nickname AS store_name, e.score, e.prize_amount
-                FROM leaderboard_entry e
-                JOIN leaderboard l ON l.id = e.leaderboard_id
-                JOIN player p ON p.id = e.player_id
-                LEFT JOIN admin_users au ON au.id = e.store_admin_id
-                WHERE l.code = ? AND l.period_key = ? AND e.`rank` <= ?
-                ORDER BY e.`rank` ASC";
+        $rows = LeaderboardEntry::query()
+            ->join('leaderboard as l', 'l.id', '=', 'leaderboard_entry.leaderboard_id')
+            ->leftJoin('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
+            ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
+            ->where('l.code', $code)
+            ->where('l.period_key', $periodKey)
+            ->where('leaderboard_entry.rank', '<=', self::TOP)
+            ->orderBy('leaderboard_entry.rank')
+            ->select([
+                'leaderboard_entry.rank',
+                'leaderboard_entry.player_id',
+                'p.name as player_name',
+                'leaderboard_entry.store_admin_id',
+                'au.nickname as store_name',
+                'leaderboard_entry.score',
+                'leaderboard_entry.prize_amount',
+            ])
+            ->get();
 
-        $rows = Db::select($sql, [$code, $periodKey, self::TOP]);
+        Log::info('[Leaderboard] golden', [
+            'code'       => $code,
+            'period_key' => $periodKey,
+            'row_count'  => $rows->count(),
+        ]);
 
         $list = [];
         foreach ($rows as $r) {
@@ -228,7 +272,7 @@ class LeaderboardService
                 'name'       => (string)$r->player_name,
                 'store_id'   => (int)$r->store_admin_id,
                 'store_name' => (string)($r->store_name ?? ''),
-                'score'      => (string)(int)$r->score,
+                'score'      => (string)$r->score,
                 'prize'      => (string)$r->prize_amount,
             ];
         }
@@ -278,8 +322,12 @@ class LeaderboardService
      */
     private static function vipBoard(string $code): array
     {
-        $periodKey = self::latestPeriodKey($code);
-        if ($periodKey === null) {
+        $board = Leaderboard::query()
+            ->where('code', $code)
+            ->orderBy('period_key', 'desc')
+            ->first(['period_key', 'start_at', 'end_at']);
+
+        if (!$board) {
             return [
                 'period_key' => null,
                 'start_at'   => null,
@@ -288,27 +336,32 @@ class LeaderboardService
             ];
         }
 
-        $board = Db::table('leaderboard')
-            ->where('code', $code)
-            ->where('period_key', $periodKey)
-            ->first(['start_at', 'end_at']);
+        $periodKey = (string)$board->period_key;
 
-        $sql = "SELECT e.`rank`, e.player_id, p.name, p.vip_level_id,
-                       vl.name AS vip_level_name, e.score,
-                       e.store_admin_id, au.nickname AS store_name
-                FROM leaderboard_entry e
-                JOIN leaderboard l ON l.id = e.leaderboard_id
-                JOIN player p ON p.id = e.player_id
-                LEFT JOIN vip_level vl ON vl.id = p.vip_level_id
-                LEFT JOIN admin_users au ON au.id = e.store_admin_id
-                WHERE l.code = ? AND l.period_key = ? AND e.`rank` <= ?
-                ORDER BY e.`rank` ASC";
-
-        $rows = Db::select($sql, [$code, $periodKey, self::VIP_TOP]);
+        $rows = LeaderboardEntry::query()
+            ->join('leaderboard as l', 'l.id', '=', 'leaderboard_entry.leaderboard_id')
+            ->leftJoin('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
+            ->leftJoin('vip_level as vl', 'vl.id', '=', 'p.vip_level_id')
+            ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
+            ->where('l.code', $code)
+            ->where('l.period_key', $periodKey)
+            ->where('leaderboard_entry.rank', '<=', self::VIP_TOP)
+            ->orderBy('leaderboard_entry.rank')
+            ->select([
+                'leaderboard_entry.rank',
+                'leaderboard_entry.player_id',
+                'p.name',
+                'p.vip_level_id',
+                'vl.name as vip_level_name',
+                'leaderboard_entry.score',
+                'leaderboard_entry.store_admin_id',
+                'au.nickname as store_name',
+            ])
+            ->get();
 
         $list = [];
         foreach ($rows as $r) {
-            $score = (string)(int)$r->score;
+            $score = (string)$r->score;
             $list[] = [
                 'rank'           => (int)$r->rank,
                 'player_id'      => (int)$r->player_id,
@@ -324,8 +377,8 @@ class LeaderboardService
 
         return [
             'period_key' => $periodKey,
-            'start_at'   => $board ? (string)$board->start_at : null,
-            'end_at'     => $board ? (string)$board->end_at : null,
+            'start_at'   => (string)$board->start_at,
+            'end_at'     => (string)$board->end_at,
             'list'       => $list,
         ];
     }
@@ -339,7 +392,7 @@ class LeaderboardService
     private static function scoreText(string $score): string
     {
         $value = (float)$score;
-        $decimals = (floor($value) == $value) ? 0 : 2;
+        $decimals = (abs(fmod($value, 1.0)) < PHP_FLOAT_EPSILON) ? 0 : 2;
 
         return number_format($value, $decimals);
     }
@@ -351,7 +404,7 @@ class LeaderboardService
      */
     public static function rules(): array
     {
-        $rows = Db::table('system_setting')
+        $rows = SystemSetting::query()
             ->where('feature', 'like', 'leaderboard_%')
             ->where('department_id', 0)
             ->where('status', 1)
@@ -397,56 +450,72 @@ class LeaderboardService
             ->limit(50)
             ->get();
 
-        $list = [];
+        // 預先收集所有 entry_id，批量查詢 LeaderboardEntry
+        $entryIdMap = [];
         foreach ($notices as $notice) {
             $content = json_decode((string)$notice->content, true) ?: [];
             $entryId = (int)($content['entry_id'] ?? $notice->source_id ?? 0);
-            $amount = (float)($content['amount'] ?? 0);
-            $entry = null;
-
             if ($entryId > 0) {
-                $entry = LeaderboardEntry::query()
-                    ->where('id', $entryId)
-                    ->first(['prize_amount', 'grant_status']);
-
-                if ($entry) {
-                    $amount = (float)$entry->prize_amount;
-                }
+                $entryIdMap[$notice->id] = $entryId;
             }
+        }
 
-            $status = (int)$notice->status;
-            $claimed = $status === 1;
+        $entryIds = array_values(array_unique($entryIdMap));
+        $entriesById = $entryIds
+            ? LeaderboardEntry::query()
+                ->whereIn('id', $entryIds)
+                ->get(['id', 'prize_amount', 'grant_status'])
+                ->keyBy('id')
+            : collect();
+
+        // 批量查 PlayerDeliveryRecord（以 LBRN{notice_id} 為 tradeno）
+        $noticeIds = $notices->pluck('id')->all();
+        $deliveryTradeNos = array_map(fn($id) => 'LBRN' . $id, $noticeIds);
+        $claimedByDelivery = PlayerDeliveryRecord::query()
+            ->whereIn('tradeno', $deliveryTradeNos)
+            ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
+            ->pluck('tradeno')
+            ->flip()
+            ->all();
+
+        // 批量查 PlayerMoneyEditLog（LBRN{notice_id} + LBR{entry_id}）
+        $legacyTradeNos = $deliveryTradeNos;
+        foreach ($entryIdMap as $eid) {
+            $legacyTradeNos[] = 'LBR' . $eid;
+        }
+        $claimedByLog = PlayerMoneyEditLog::query()
+            ->whereIn('tradeno', array_unique($legacyTradeNos))
+            ->withTrashed()
+            ->pluck('tradeno')
+            ->flip()
+            ->all();
+
+        // 需要補標的 notice_id（舊版已自動入帳）
+        $noticeIdsToMark = [];
+
+        $list = [];
+        foreach ($notices as $notice) {
+            $content  = json_decode((string)$notice->content, true) ?: [];
+            $entryId  = $entryIdMap[$notice->id] ?? 0;
+            $entry    = $entryId > 0 ? ($entriesById[$entryId] ?? null) : null;
+            $amount   = $entry ? (float)$entry->prize_amount : (float)($content['amount'] ?? 0);
+            $status   = (int)$notice->status;
+            $claimed  = $status === 1;
 
             if ($entry && (int)$entry->grant_status === LeaderboardEntry::GRANT_STATUS_ISSUED) {
                 $claimed = true;
-
-                // 舊版已自動入帳的通知，補標成已領取
+                // 舊版已自動入帳的通知，累積後批量補標
                 if ($status === 0) {
-                    Notice::query()->where('id', $notice->id)->update([
-                        'status'     => 1,
-                        'updated_at' => date('Y-m-d H:i:s'),
-                    ]);
+                    $noticeIdsToMark[] = (int)$notice->id;
                     $status = 1;
                 }
             }
 
             if (!$claimed) {
-                $tradeNos = ['LBRN' . $notice->id];
-                if ($entryId > 0) {
-                    $tradeNos[] = 'LBR' . $entryId;
-                }
-
-                $claimed = PlayerDeliveryRecord::query()
-                    ->where('tradeno', 'LBRN' . $notice->id)
-                    ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
-                    ->exists();
-
-                if (!$claimed) {
-                    $claimed = PlayerMoneyEditLog::query()
-                        ->whereIn('tradeno', $tradeNos)
-                        ->withTrashed()
-                        ->exists();
-                }
+                $deliveryKey = 'LBRN' . $notice->id;
+                $claimed = isset($claimedByDelivery[$deliveryKey])
+                    || isset($claimedByLog[$deliveryKey])
+                    || ($entryId > 0 && isset($claimedByLog['LBR' . $entryId]));
             }
 
             $list[] = [
@@ -459,6 +528,21 @@ class LeaderboardService
                 'text'             => (string)($content['text'] ?? $notice->content),
                 'created_at'       => (string)$notice->created_at,
             ];
+        }
+
+        // 批量補標舊版已自動入帳通知
+        if ($noticeIdsToMark) {
+            try {
+                Notice::query()
+                    ->whereIn('id', $noticeIdsToMark)
+                    ->where('status', 0)
+                    ->update(['status' => 1, 'updated_at' => date('Y-m-d H:i:s')]);
+            } catch (\Throwable $e) {
+                Log::warning('[Leaderboard] myRewards 補標失敗', [
+                    'notice_ids' => $noticeIdsToMark,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
         }
 
         return $list;
@@ -475,6 +559,7 @@ class LeaderboardService
      */
     public static function claimReward(Player $player, int $noticeId): array
     {
+        /** @var Notice $notice */
         $notice = Notice::query()
             ->where('id', $noticeId)
             ->where('player_id', $player->id)
@@ -484,7 +569,7 @@ class LeaderboardService
             ->first();
 
         if (!$notice) {
-            throw new \RuntimeException('排行榜獎勵不存在');
+            throw new \RuntimeException(trans('leaderboard_reward_not_found', [], 'message'));
         }
 
         $content = json_decode((string)$notice->content, true) ?: [];
@@ -492,7 +577,9 @@ class LeaderboardService
         $amount = (float)($content['amount'] ?? 0);
 
         $entry = null;
+        $originalGrantStatus = LeaderboardEntry::GRANT_STATUS_CLAIMABLE;
         if ($entryId > 0) {
+            /** @var LeaderboardEntry $entry */
             $entry = LeaderboardEntry::query()
                 ->where('id', $entryId)
                 ->where('player_id', $player->id)
@@ -500,11 +587,12 @@ class LeaderboardService
 
             if ($entry) {
                 $amount = (float)$entry->prize_amount;
+                $originalGrantStatus = (int)$entry->grant_status;
             }
         }
 
         if ($amount <= 0) {
-            throw new \RuntimeException('排行榜獎勵金額錯誤');
+            throw new \RuntimeException(trans('leaderboard_reward_amount_invalid', [], 'message'));
         }
 
         $tradeNo = 'LBRN' . $notice->id;
@@ -544,12 +632,45 @@ class LeaderboardService
             ]);
 
         if ($claimed === 0) {
-            return [
-                'notice_id'       => (int)$notice->id,
-                'amount'          => $amount,
-                'balance'         => WalletService::getBalance($player->id),
-                'already_claimed' => true,
-            ];
+            // notice.status 已是 1，正常情況是已完整領取；但崩潰恢復時可能無入帳紀錄
+            $deliveryAfterLock = PlayerDeliveryRecord::query()
+                ->where('tradeno', $tradeNo)
+                ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
+                ->exists();
+            if (!$deliveryAfterLock) {
+                $deliveryAfterLock = PlayerMoneyEditLog::query()
+                    ->whereIn('tradeno', $legacyTradeNos)
+                    ->withTrashed()
+                    ->exists();
+            }
+
+            if ($deliveryAfterLock) {
+                // 完整領取完成（可能是本次之前另一請求完成的）
+                self::markRewardClaimed($notice->id, $entryId, $ts);
+                return [
+                    'notice_id'       => (int)$notice->id,
+                    'amount'          => $amount,
+                    'balance'         => WalletService::getBalance($player->id),
+                    'already_claimed' => true,
+                ];
+            }
+
+            // notice.status=1 但無入帳紀錄：進程崩潰或極短並發窗口
+            // 超過 30 秒的鎖視為崩潰遺留，重置以允許玩家重試；30 秒內視為並發在途
+            $reset = Notice::query()
+                ->where('id', $notice->id)
+                ->where('status', 1)
+                ->where('updated_at', '<=', date('Y-m-d H:i:s', strtotime('-30 seconds')))
+                ->update(['status' => 0, 'updated_at' => $ts]);
+
+            if ($reset > 0) {
+                Log::warning('[排行榜領取] 通知鎖逾時無入帳，已重置以允許重試', [
+                    'notice_id' => $notice->id,
+                    'player_id' => $player->id,
+                ]);
+            }
+
+            throw new \RuntimeException(trans('request_processing', [], 'message'));
         }
 
         if ($entry) {
@@ -566,26 +687,46 @@ class LeaderboardService
                 ]);
 
             if ($entryClaimed === 0) {
-                Notice::query()->where('id', $notice->id)->update([
-                    'status'     => 1,
-                    'updated_at' => $ts,
-                ]);
+                // grant_status 已被外部改為 ISSUED，重新確認是否真的有入帳紀錄
+                $isDelivered = PlayerDeliveryRecord::query()
+                    ->where('tradeno', $tradeNo)
+                    ->where('type', PlayerDeliveryRecord::TYPE_LEADERBOARD_REWARD)
+                    ->exists();
+                if (!$isDelivered) {
+                    $isDelivered = PlayerMoneyEditLog::query()
+                        ->whereIn('tradeno', $legacyTradeNos)
+                        ->withTrashed()
+                        ->exists();
+                }
 
-                return [
-                    'notice_id'       => (int)$notice->id,
-                    'amount'          => $amount,
-                    'balance'         => WalletService::getBalance($player->id),
-                    'already_claimed' => true,
-                ];
+                if ($isDelivered) {
+                    self::markRewardClaimed($notice->id, $entryId, $ts);
+                    return [
+                        'notice_id'       => (int)$notice->id,
+                        'amount'          => $amount,
+                        'balance'         => WalletService::getBalance($player->id),
+                        'already_claimed' => true,
+                    ];
+                }
+
+                // grant_status=ISSUED 但無入帳紀錄：數據不一致，重置 notice 鎖並記錄告警
+                Notice::query()->where('id', $notice->id)->update(['status' => 0, 'updated_at' => $ts]);
+                Log::error('[排行榜領取] grant_status 已 ISSUED 但無入帳紀錄，已重置通知鎖', [
+                    'notice_id' => $notice->id,
+                    'player_id' => $player->id,
+                    'entry_id'  => $entryId,
+                ]);
+                throw new \RuntimeException(trans('system_error', [], 'message'));
             }
         }
 
         try {
-            $before = WalletService::getBalance($player->id);
             $result = WalletService::atomicIncrement($player->id, $amount);
-            $after = (float)($result['balance'] ?? bcadd((string)$before, (string)$amount, 2));
+            // atomicIncrement 原子操作：'old' 為加款前快照，'balance' 為加款後餘額，兩者同一 Lua 腳本內讀取
+            $before = (float)($result['old'] ?? 0);
+            $after  = (float)($result['balance'] ?? 0);
         } catch (\Throwable $e) {
-            self::revertRewardClaim($notice->id, $entryId, $ts);
+            self::revertRewardClaim($notice->id, $entryId, $originalGrantStatus, $ts);
             throw $e;
         }
 
@@ -626,7 +767,7 @@ class LeaderboardService
             }
 
             if ($rolledBack) {
-                self::revertRewardClaim($notice->id, $entryId, $ts);
+                self::revertRewardClaim($notice->id, $entryId, $originalGrantStatus, $ts);
             }
 
             throw $e;
@@ -669,10 +810,11 @@ class LeaderboardService
      *
      * @param int $noticeId
      * @param int $entryId
+     * @param int $originalGrantStatus 領取前的原始 grant_status，用於正確還原
      * @param string $ts
      * @return void
      */
-    private static function revertRewardClaim(int $noticeId, int $entryId, string $ts): void
+    private static function revertRewardClaim(int $noticeId, int $entryId, int $originalGrantStatus, string $ts): void
     {
         Notice::query()->where('id', $noticeId)->update([
             'status'     => 0,
@@ -681,7 +823,7 @@ class LeaderboardService
 
         if ($entryId > 0) {
             LeaderboardEntry::query()->where('id', $entryId)->update([
-                'grant_status' => LeaderboardEntry::GRANT_STATUS_CLAIMABLE,
+                'grant_status' => $originalGrantStatus,
                 'granted_at'   => null,
                 'updated_at'   => $ts,
             ]);
@@ -700,12 +842,28 @@ class LeaderboardService
      */
     private static function latestPeriodKey(string $code): ?string
     {
-        $key = Db::table('leaderboard')
+        $key = Leaderboard::query()
             ->where('code', $code)
             ->orderBy('period_key', 'desc')
             ->value('period_key');
 
         return $key !== null ? (string)$key : null;
+    }
+
+    /**
+     * 批量取多個榜單的最新期別（一次查詢）
+     *
+     * @param string[] $codes
+     * @return array<string, string>  code => period_key
+     */
+    private static function batchPeriodKeys(array $codes): array
+    {
+        return Leaderboard::query()
+            ->whereIn('code', $codes)
+            ->groupBy('code')
+            ->selectRaw('code, MAX(period_key) AS period_key')
+            ->pluck('period_key', 'code')
+            ->all();
     }
 
     /**
@@ -721,7 +879,7 @@ class LeaderboardService
         }
 
         $wan = $threshold / 10000;
-        $num = (floor($wan) == $wan) ? number_format($wan) : (string)$wan;
+        $num = (fmod($wan, 1.0) < PHP_FLOAT_EPSILON) ? number_format($wan) : (string)$wan;
 
         return "需達{$num}萬分以上";
     }

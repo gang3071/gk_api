@@ -684,4 +684,6 @@ return [
     'machine_vip_level_not_enough' => 'この台は{vip}以上のVIPレベルが必要です',
     'high_setting_vip_no_play_num' => 'VIPレベルに高設定機台のプレイ数が設定されていないため、高設定機台はプレイできません',
     'high_setting_play_num_exceeded' => '高設定機台のプレイ可能数を超えています（最大{num}台）',
+    'leaderboard_reward_not_found' => 'ランキング報酬が見つかりません',
+    'leaderboard_reward_amount_invalid' => 'ランキング報酬の金額が無効です',
 ];

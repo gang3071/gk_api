@@ -2,8 +2,10 @@
 
 namespace app\api\controller\v1;
 
+use app\exception\PlayerCheckException;
 use app\model\Player;
 use app\service\LeaderboardService;
+use support\Log;
 use support\Request;
 use support\Response;
 use Tinywan\Jwt\JwtToken;
@@ -28,7 +30,7 @@ class LeaderboardController
     public function overview(Request $request): Response
     {
         $departmentId = (int)$request->department_id;
-        $storeId = self::resolveStoreId($request);
+        $storeId      = self::resolveStoreId($request);
 
         $data = LeaderboardService::overview($departmentId);
 
@@ -178,6 +180,7 @@ class LeaderboardController
      * 我的排行榜獎勵列表
      *
      * @return Response
+     * @throws PlayerCheckException
      */
     public function myRewards(): Response
     {
@@ -193,6 +196,7 @@ class LeaderboardController
      *
      * @param Request $request
      * @return Response
+     * @throws PlayerCheckException
      */
     public function claim(Request $request): Response
     {
@@ -207,8 +211,17 @@ class LeaderboardController
             $result = LeaderboardService::claimReward($player, $noticeId);
 
             return jsonSuccessResponse('success', $result);
-        } catch (\Throwable $e) {
+        } catch (\RuntimeException $e) {
+            // 業務邏輯錯誤（已翻譯），直接回傳給玩家
             return jsonFailResponse($e->getMessage());
+        } catch (\Throwable $e) {
+            // 系統異常（DB/Redis 等）：記錄原始錯誤，回傳通用提示
+            Log::error('[排行榜領取] 系統異常', [
+                'notice_id' => $noticeId,
+                'player_id' => (int)($player->id ?? 0),
+                'error'     => $e->getMessage(),
+            ]);
+            return jsonFailResponse(trans('system_error', [], 'message'));
         }
     }
 
@@ -246,21 +259,16 @@ class LeaderboardController
      */
     private static function resolveStoreId(Request $request): int
     {
-        $storeId = (int)($request->all()['store_id'] ?? 0);
-
         try {
             $playerId = (int)JwtToken::getCurrentId();
             if ($playerId > 0) {
-                $playerStoreId = (int)(Player::query()->where('id', $playerId)->value('store_admin_id') ?? 0);
-                if ($playerStoreId > 0) {
-                    return $playerStoreId;
-                }
+                return (int)(Player::query()->where('id', $playerId)->value('store_admin_id') ?? 0);
             }
         } catch (\Throwable $e) {
             // 未登入或 token 無效，維持使用 store_id 參數
         }
 
-        return $storeId;
+        return (int)($request->all()['store_id'] ?? 0);
     }
 
     /**
