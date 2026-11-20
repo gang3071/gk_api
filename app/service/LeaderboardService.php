@@ -2,6 +2,7 @@
 
 namespace app\service;
 
+use app\model\Leaderboard;
 use app\model\LeaderboardEntry;
 use app\model\Notice;
 use app\model\Player;
@@ -93,23 +94,31 @@ class LeaderboardService
             return [];
         }
 
-        $sql = "SELECT e.store_admin_id, au.nickname AS store_name,
-                       e.`rank`, e.player_id, p.name AS player_name, e.score
-                FROM leaderboard_entry e
-                JOIN leaderboard l ON l.id = e.leaderboard_id
-                JOIN player p ON p.id = e.player_id
-                LEFT JOIN admin_users au ON au.id = e.store_admin_id
-                WHERE l.code = ? AND l.period_key = ?
-                  AND p.department_id = ? AND e.`rank` <= ?
-                ORDER BY e.store_admin_id ASC, e.`rank` ASC";
-
-        $rows = Db::select($sql, [$code, $periodKey, $departmentId, self::TOP]);
+        $rows = LeaderboardEntry::query()
+            ->join('leaderboard as l', 'l.id', '=', 'leaderboard_entry.leaderboard_id')
+            ->join('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
+            ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
+            ->where('l.code', $code)
+            ->where('l.period_key', $periodKey)
+            ->where('p.department_id', $departmentId)
+            ->where('leaderboard_entry.rank', '<=', self::TOP)
+            ->orderBy('leaderboard_entry.store_admin_id')
+            ->orderBy('leaderboard_entry.rank')
+            ->select([
+                'leaderboard_entry.store_admin_id',
+                'au.nickname as store_name',
+                'leaderboard_entry.rank',
+                'leaderboard_entry.player_id',
+                'p.name as player_name',
+                'leaderboard_entry.score',
+            ])
+            ->get();
 
         Log::info('[Leaderboard] store', [
             'code'          => $code,
             'period_key'    => $periodKey,
             'department_id' => $departmentId,
-            'row_count'     => count($rows),
+            'row_count'     => $rows->count(),
         ]);
 
         $stores = [];
@@ -217,21 +226,29 @@ class LeaderboardService
             return [];
         }
 
-        $sql = "SELECT e.`rank`, e.player_id, p.name AS player_name,
-                       e.store_admin_id, au.nickname AS store_name, e.score, e.prize_amount
-                FROM leaderboard_entry e
-                JOIN leaderboard l ON l.id = e.leaderboard_id
-                JOIN player p ON p.id = e.player_id
-                LEFT JOIN admin_users au ON au.id = e.store_admin_id
-                WHERE l.code = ? AND l.period_key = ? AND e.`rank` <= ?
-                ORDER BY e.`rank` ASC";
-
-        $rows = Db::select($sql, [$code, $periodKey, self::TOP]);
+        $rows = LeaderboardEntry::query()
+            ->join('leaderboard as l', 'l.id', '=', 'leaderboard_entry.leaderboard_id')
+            ->join('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
+            ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
+            ->where('l.code', $code)
+            ->where('l.period_key', $periodKey)
+            ->where('leaderboard_entry.rank', '<=', self::TOP)
+            ->orderBy('leaderboard_entry.rank')
+            ->select([
+                'leaderboard_entry.rank',
+                'leaderboard_entry.player_id',
+                'p.name as player_name',
+                'leaderboard_entry.store_admin_id',
+                'au.nickname as store_name',
+                'leaderboard_entry.score',
+                'leaderboard_entry.prize_amount',
+            ])
+            ->get();
 
         Log::info('[Leaderboard] golden', [
             'code'       => $code,
             'period_key' => $periodKey,
-            'row_count'  => count($rows),
+            'row_count'  => $rows->count(),
         ]);
 
         $list = [];
@@ -714,7 +731,7 @@ class LeaderboardService
      */
     private static function latestPeriodKey(string $code): ?string
     {
-        $key = Db::table('leaderboard')
+        $key = Leaderboard::query()
             ->where('code', $code)
             ->orderBy('period_key', 'desc')
             ->value('period_key');
