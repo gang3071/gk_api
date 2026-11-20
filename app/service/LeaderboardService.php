@@ -228,7 +228,7 @@ class LeaderboardService
 
         $rows = LeaderboardEntry::query()
             ->join('leaderboard as l', 'l.id', '=', 'leaderboard_entry.leaderboard_id')
-            ->join('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
+            ->leftJoin('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
             ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
             ->where('l.code', $code)
             ->where('l.period_key', $periodKey)
@@ -326,7 +326,7 @@ class LeaderboardService
 
         $rows = LeaderboardEntry::query()
             ->join('leaderboard as l', 'l.id', '=', 'leaderboard_entry.leaderboard_id')
-            ->join('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
+            ->leftJoin('player as p', 'p.id', '=', 'leaderboard_entry.player_id')
             ->leftJoin('vip_level as vl', 'vl.id', '=', 'p.vip_level_id')
             ->leftJoin('admin_users as au', 'au.id', '=', 'leaderboard_entry.store_admin_id')
             ->where('l.code', $code)
