@@ -174,7 +174,8 @@ class TicketRecord extends Model
             default => 'TK',
         };
 
-        return $prefix . date('ymdHis') . str_pad((string) mt_rand(1, 99), 2, '0', STR_PAD_LEFT);
+        $cs = str_pad((string)(intval(microtime(true) * 100) % 100), 2, '0', STR_PAD_LEFT);
+        return $prefix . date('ymdHis') . $cs;
     }
 
     /**
