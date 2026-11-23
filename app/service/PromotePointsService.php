@@ -199,6 +199,10 @@ class PromotePointsService
 
             $adminInfo = ['admin_id' => 0, 'admin_name' => 'system', 'admin_ip' => ''];
 
+            // 备注用玩家名称（与后台「玩家帳號」列同口径：name ?? account），无名时回退 ID
+            $childName  = $child->name ?: ($child->account ?: $childPlayerId);
+            $parentName = $parent->name ?: ($parent->account ?: $parentPlayerId);
+
             // 7. ✅ 上級直接入账 + 记录（与下級扣回分开 try/catch，任一步失败不连带跳过另一步；
             //    失败后下轮扫描会自动重试，batch_id 保证不重复）
             try {
@@ -207,7 +211,7 @@ class PromotePointsService
                     $promotePoints,
                     PlayerPointsRecord::TYPE_PROMOTE_POINTS,
                     PlayerPointsRecord::SOURCE_PROMOTE_POINTS,
-                    "推廣積分（來自下級玩家 {$childPlayerId}）",
+                    "推廣積分（來自下級玩家 {$childName}）",
                     ['batch_id' => "children_points:parent:{$recordType}:{$recordId}"],
                     $adminInfo
                 );
@@ -262,7 +266,7 @@ class PromotePointsService
                     $childPlayerId,
                     $deduct,
                     PlayerPointsRecord::TYPE_PROMOTE_DEDUCT,
-                    "推廣積分抽成（上級玩家 {$parentPlayerId}）",
+                    "推廣積分抽成（上級玩家 {$parentName}）",
                     [
                         'batch_id' => "children_points:child:{$recordType}:{$recordId}",
                         'source'   => PlayerPointsRecord::SOURCE_PROMOTE_POINTS,
