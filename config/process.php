@@ -86,4 +86,19 @@ return [
         'reusePort' => false,
         'constructor' => [],
     ],
+
+    // ========================================
+    // 推广积分补算任务（每分钟）
+    // ========================================
+
+    'promote_points_task' => [
+        'handler' => \process\PromotePointsTask::class,
+        'listen' => '',
+        'count' => 1,
+        'user' => '',
+        'group' => '',
+        'reloadable' => true,
+        'reusePort' => false,
+        'constructor' => [],
+    ],
 ];

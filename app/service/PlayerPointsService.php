@@ -910,6 +910,15 @@ LUA;
             return false;
         }
 
+        // ✅ 幂等：同一 batch_id 只扣一次（队列重投/补算重跑防重复扣）
+        if (!empty($extraData['batch_id']) && PlayerPointsRecord::where('batch_id', $extraData['batch_id'])->exists()) {
+            self::log()->info('[积分] batch_id已存在，跳过重复扣除', [
+                'player_id' => $playerId,
+                'batch_id' => $extraData['batch_id'],
+            ]);
+            return true;
+        }
+
         if ($useTransaction) {
             Db::beginTransaction();
         }

@@ -40,6 +40,7 @@ class GameServiceFactory
     const TYPE_TNINE = 'TNINE'; // T9
     const TYPE_TNINE_SLOT = 'TNINE_SLOT'; // T9电子
     const TYPE_KT = 'KT'; // T9
+    const TYPE_AS = 'AS'; // AS电子
 
     /** @var Player $player */
     public $player;
@@ -99,6 +100,8 @@ class GameServiceFactory
                 return new TNineSlotServiceInterface($player);
             case self::TYPE_KT:
                 return new KTServiceInterface($player);
+            case self::TYPE_AS:
+                return new ASServiceInterface($player);
             default:
                 throw new Exception("未知的游戏服务类型: $type");
         }
