@@ -91,6 +91,8 @@ class PlayerPointsRecord extends Model
     const TYPE_REFUND = 6;           // 订单退款
     const TYPE_TRANSFER_OUT = 11;    // 积分转赠（送出）
     const TYPE_TRANSFER_IN = 12;     // 积分转赠（收入）
+    const TYPE_PROMOTE_POINTS = 14;  // 推广积分（上级收入）
+    const TYPE_PROMOTE_DEDUCT = 15;  // 推广积分抽成（下级扣除）
 
     // 来源常量
     const SOURCE_BETTING_SUMMARY = 'betting_summary'; // 打码汇总
@@ -100,6 +102,7 @@ class PlayerPointsRecord extends Model
     const SOURCE_ACTIVITY = 'activity';               // 活动
     const SOURCE_REFUND = 'refund';                   // 退款
     const SOURCE_TRANSFER = 'transfer';               // 转赠
+    const SOURCE_PROMOTE_POINTS = 'children_points';  // 推广积分
 
     // 汇总周期常量
     const PERIOD_DAILY = 'daily';      // 每日
@@ -118,6 +121,8 @@ class PlayerPointsRecord extends Model
         self::TYPE_REFUND => '订单退款',
         self::TYPE_TRANSFER_OUT => '积分转赠（送出）',
         self::TYPE_TRANSFER_IN => '积分转赠（收入）',
+        self::TYPE_PROMOTE_POINTS => '推广积分',
+        self::TYPE_PROMOTE_DEDUCT => '推广积分抽成',
     ];
 
     /**
