@@ -6,6 +6,7 @@ use app\model\Player;
 use app\model\PlayerPoints;
 use app\model\PlayerPointsRecord;
 use app\model\PlayGameRecord;
+use app\model\VipLevel;
 use app\model\VipLevelPoint;
 use Carbon\Carbon;
 use Exception;
@@ -76,12 +77,17 @@ class PlayerPointsService
     /**
      * 从打码中增加积分（实时累加到Redis）
      *
+     * 推广积分拆分（2026-11-24 口径，算分处一次算出两人份额）：
+     * 应得积分按 上級 children_points_ratio% 拆分——上級应得与下級所得都走
+     * 【累加（余额）+ 每日汇总（记录）】，不逐消息写积分流水（否则记录爆炸）。
+     * 下級打码汇总=剩餘、上級每日一条推廣積分匯總，剩餘+拆分额=应得，账实相符。
+     *
      * @param int $playerId 玩家ID
      * @param float $betAmount 打码金额（元）
      * @param array $recordIds 游戏记录IDs（可选，用于查询平台信息）
      * @param string $batchId 批次ID（幂等性）
      * @param Carbon|null $createdAt 时间
-     * @return array ['points_earned' => float, 'total_points' => float, 'available_points' => float]
+     * @return array ['points_earned' => float(下級實入), 'promote_points' => float(上級应得), 'total_points' => float, 'available_points' => float]
      * @throws Exception
      */
     public static function addPointsFromBetting(
@@ -103,8 +109,13 @@ class PlayerPointsService
                 throw new Exception("Player not found: {$playerId}");
             }
 
-            // 2. 按平台分别计算积分，再汇总
-            $totalPointsEarned = 0;
+            // 2. 按平台分别计算积分（calculatePoints 算分处一次算出两人份额），再汇总
+            $promote = self::resolvePromoteFor($playerId);
+            $promoteParentId = (int) ($promote['parent_id'] ?? 0);
+            $promoteRatio = floatval($promote['ratio'] ?? 0);
+
+            $totalPointsEarned = 0; // 下級所得（剩餘）合计
+            $promotePoints = 0.0;   // 上級应得合计
             $totalBetAmount = 0;
             $platformDetails = [];
 
@@ -115,31 +126,40 @@ class PlayerPointsService
                 }
 
                 $platformId = intval($platformId);
-                $points = self::calculatePoints(
+                $calc = self::calculatePoints(
                     $betAmount,
                     $playerInfo['vip_level_id'],
                     $platformId,
-                    $playerInfo['department_id']
+                    $playerInfo['department_id'],
+                    $promoteRatio
                 );
 
                 $totalBetAmount += $betAmount;
-                $totalPointsEarned += $points;
-                $platformDetails[] = "platform:{$platformId} bet:{$betAmount} points:{$points}";
+                $totalPointsEarned += $calc['points'];
+                $promotePoints += $calc['promote'];
+                $platformDetails[] = "platform:{$platformId} bet:{$betAmount} points:{$calc['points']} promote:{$calc['promote']}";
             }
+
+            $totalPointsEarned = round($totalPointsEarned, 4);
+            $promotePoints = round($promotePoints, 4);
+            $totalGross = round($totalPointsEarned + $promotePoints, 4);
 
             self::log()->debug('[积分] 汇总完成', [
                 'player_id' => $playerId,
                 'total_bet_amount' => $totalBetAmount,
-                'total_points_earned' => $totalPointsEarned,
+                'gross' => $totalGross,
+                'points_earned' => $totalPointsEarned,
+                'promote_points' => $promotePoints,
                 'platform_details' => $platformDetails,
             ]);
 
-            if ($totalPointsEarned <= 0) {
+            if ($totalGross <= 0) {
                 self::log()->debug('[积分] 总积分为0，跳过', [
                     'player_id' => $playerId,
                 ]);
                 return [
                     'points_earned' => 0,
+                    'promote_points' => 0,
                     'total_points' => 0,
                     'available_points' => 0,
                 ];
@@ -155,7 +175,9 @@ class PlayerPointsService
 
                     $currentPoints = self::getPlayerPoints($playerId);
                     return [
-                        'points_earned' => 0,
+                        // 回读首次处理时的实际入账积分（供日志/通知展示）
+                        'points_earned' => self::getProcessedBatchPoints($batchId),
+                        'promote_points' => 0.0,
                         'total_points' => $currentPoints['total_points'],
                         'available_points' => $currentPoints['available_points'],
                     ];
@@ -167,19 +189,20 @@ class PlayerPointsService
             $dailyLimit = $config['daily_limit'] ?? 0;
             $redis = Redis::connection()->client();
 
-            if ($dailyLimit > 0 && !self::checkAndRecordDailyPoints($playerId, $totalPointsEarned)) {
+            if ($dailyLimit > 0 && !self::checkAndRecordDailyPoints($playerId, $totalGross)) {
                 self::log()->info('[积分] 今日积分已达上限', [
                     'player_id'   => $playerId,
                     'daily_limit' => $dailyLimit,
                 ]);
                 return [
                     'points_earned'   => 0,
+                    'promote_points'  => 0,
                     'total_points'    => 0,
                     'available_points' => 0,
                 ];
             }
 
-            // 6. Redis Lua 原子累加积分
+            // 6. Redis Lua 原子累加积分（下級只入账剩餘）
             self::log()->debug('[积分] 准备调用Lua累加', [
                 'player_id' => $playerId,
                 'points' => $totalPointsEarned,
@@ -191,11 +214,11 @@ class PlayerPointsService
                 if ($dailyLimit > 0) {
                     try {
                         $dailyKey = 'gk_api:player_points_daily:' . date('Ymd') . ':' . $playerId;
-                        $redis->incrByFloat($dailyKey, -$totalPointsEarned);
+                        $redis->incrByFloat($dailyKey, -$totalGross);
                     } catch (Exception $rollbackEx) {
                         self::log()->error('[积分] 回滚每日限额失败', [
                             'player_id' => $playerId,
-                            'points'    => $totalPointsEarned,
+                            'points'    => $totalGross,
                             'error'     => $rollbackEx->getMessage(),
                         ]);
                     }
@@ -207,19 +230,44 @@ class PlayerPointsService
                 'result' => $result,
             ]);
 
-            // 7. 标记 batch_id 已处理
+            // 6.5 上級应得同款累加（余额走 Lua，记录走推广每日汇总 Key，由 dailySummary 每日一条）
+            if ($promotePoints > 0 && $promoteParentId > 0) {
+                try {
+                    self::incrementPointsByLua($promoteParentId, $promotePoints);
+                    self::markPlayerAsDirty($promoteParentId);
+                } catch (Exception $e) {
+                    // 上級累加失败不回滚下級（下級已入账）：记 error 告警人工补，不能抛出重试
+                    // （抛出会把下級也重入一遍造成翻倍）
+                    self::log()->error('[积分] 上級推广积分累加失败', [
+                        'parent_player_id' => $promoteParentId,
+                        'child_player_id'  => $playerId,
+                        'promote_points'   => $promotePoints,
+                        'batch_id'         => $batchId,
+                        'error'            => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            // 7. 标记 batch_id 已处理（记录下級實入，供重复批次回读）
             if (!empty($batchId)) {
-                self::markBatchAsProcessed($batchId);
+                self::markBatchAsProcessed($batchId, $totalPointsEarned);
             }
 
             // 8. 标记玩家需要同步到 MySQL
             self::markPlayerAsDirty($playerId);
 
-            // 10. 累加当日打码积分到 Redis（供 dailySummary 写汇总记录用）
+            // 10. 累加当日打码积分到 Redis（供 dailySummary 写汇总记录用）——只记剩餘
             try {
                 $dailyBettingKey = 'gk_api:player_points_betting_daily:' . $createdAt->toDateString() . ':' . $playerId;
                 $redis->incrByFloat($dailyBettingKey, $totalPointsEarned);
                 $redis->expire($dailyBettingKey, 86400 * 7);
+
+                // 上級推广积分同款汇总 Key（dailySummary 每日写一条推廣積分匯總）
+                if ($promotePoints > 0 && $promoteParentId > 0) {
+                    $promoteDailyKey = 'gk_api:player_points_promote_daily:' . $createdAt->toDateString() . ':' . $promoteParentId;
+                    $redis->incrByFloat($promoteDailyKey, $promotePoints);
+                    $redis->expire($promoteDailyKey, 86400 * 7);
+                }
             } catch (Exception $e) {
                 // 此处失败会导致 dailySummary 永久遗漏该玩家的汇总记录（积分本身已正确入账）
                 self::log()->error('[积分] 累加当日打码积分Key失败，dailySummary将遗漏该玩家', [
@@ -234,12 +282,14 @@ class PlayerPointsService
                 'total_bet_amount' => $totalBetAmount,
                 'platform_details' => $platformDetails,
                 'points_earned' => $totalPointsEarned,
+                'promote_points' => $promotePoints,
                 'new_total' => $result['new_total'],
                 'batch_id' => $batchId,
             ]);
 
             return [
                 'points_earned' => $totalPointsEarned,
+                'promote_points' => $promotePoints,
                 'total_points' => $result['new_total'],
                 'available_points' => $result['new_available'],
             ];
@@ -490,20 +540,25 @@ class PlayerPointsService
     // ========================================
 
     /**
-     * 计算应得积分
+     * 计算应得积分（算分处一次算出两人份额）
+     *
+     * 应得 = 打码量 × 积分比例 × 活动倍数；按 上級 children_points_ratio% 拆分——
+     * 下級所得（剩餘）与上級应得一并返回，由调用方各自累加/汇总。
      *
      * @param float $betAmount 打码金额（元）
-     * @param int $vipLevel VIP等级
-     * @param string $platform 平台
+     * @param int $vipLevel 下級VIP等级
+     * @param int $platform 平台
      * @param int $departmentId 渠道ID
-     * @return float 应得积分
+     * @param float $promoteRatio 上級推广积分比例（children_points_ratio，0=不拆分）
+     * @return array{points: float, promote: float} points=下級所得(剩餘)，promote=上級应得
      */
     public static function calculatePoints(
         float $betAmount,
         int $vipLevel,
         int $platform,
-        int $departmentId
-    ): float {
+        int $departmentId,
+        float $promoteRatio = 0.0
+    ): array {
         // 從快取讀取 VIP 等級積分比例，避免高頻打碼時重複查詢資料庫
         $vipConfig = self::getVipLevelPointConfig($vipLevel, $platform);
 
@@ -512,7 +567,7 @@ class PlayerPointsService
                 'vip_level_id' => $vipLevel,
                 'platform_id' => $platform,
             ]);
-            return 0;
+            return ['points' => 0, 'promote' => 0];
         }
 
         // 1. 邊界檢查：負數
@@ -521,23 +576,92 @@ class PlayerPointsService
                 'bet_amount' => $betAmount,
                 'vip_level_id' => $vipLevel,
             ]);
-            return 0;
+            return ['points' => 0, 'promote' => 0];
         }
 
         // 2. 活動倍數
         $activityMultiple = self::getActivityMultiple();
 
-        // 3. 計算積分（/100，保留4位小數）
-        $points = round($betAmount * (float)$vipConfig['ratio_point'] * $activityMultiple / 100, 4);
+        // 3. 計算應得積分（/100，保留4位小數）
+        $gross = max(0, round($betAmount * (float)$vipConfig['ratio_point'] * $activityMultiple / 100, 4));
+
+        // 4. 推广积分拆分：上級应得 = 應得 × children_points_ratio%，下級得剩餘
+        $promote = 0.0;
+        if ($promoteRatio > 0 && $gross > 0) {
+            $promote = min(round($gross * $promoteRatio / 100, 4), $gross);
+        }
+        $points = round($gross - $promote, 4);
 
         self::log()->debug('[积分] 计算明细', [
             'bet_amount' => $betAmount,
             'ratio_point' => $vipConfig['ratio_point'],
             'activity_multiple' => $activityMultiple,
+            'gross' => $gross,
+            'promote' => $promote,
             'points' => $points,
         ]);
 
-        return max(0, $points);
+        return ['points' => $points, 'promote' => $promote];
+    }
+
+    /**
+     * 解析下級玩家的上級与推广积分比例（进程内短缓存，机台每注消息高频防打库）
+     *
+     * 名称口径与后台「玩家帳號」列一致：name → account → player ID。
+     *
+     * @param int $childPlayerId 下級玩家ID
+     * @return array{parent_id:int, child_name:string, parent_name:string, ratio:float}|null 无上级/未配置返回 null
+     */
+    private static function resolvePromoteFor(int $childPlayerId): ?array
+    {
+        static $cache = [];
+        static $cacheTtl = 60;
+
+        if ($childPlayerId <= 0) {
+            return null;
+        }
+
+        $now = time();
+        if (isset($cache[$childPlayerId]) && $cache[$childPlayerId]['exp'] > $now) {
+            $entry = $cache[$childPlayerId];
+            return ($entry['parent_id'] > 0 && $entry['ratio'] > 0) ? $entry : null;
+        }
+
+        $entry = null;
+        try {
+            $child = Player::query()->find($childPlayerId);
+            if ($child) {
+                $entry = [
+                    'exp'         => $now + $cacheTtl,
+                    'parent_id'   => (int) ($child->recommend_id ?? 0),
+                    'child_name'  => $child->name ?: ($child->account ?: $childPlayerId),
+                    'parent_name' => '',
+                    'ratio'       => 0.0,
+                ];
+
+                if ($entry['parent_id'] > 0) {
+                    $parent = Player::query()->find($entry['parent_id']);
+                    if (!$parent) {
+                        $entry['parent_id'] = 0;
+                    } else {
+                        $entry['parent_name'] = $parent->name ?: ($parent->account ?: $entry['parent_id']);
+                        $parentVip = VipLevel::query()->find($parent->vip_level_id);
+                        $entry['ratio'] = floatval($parentVip->children_points_ratio ?? 0);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // 解析失败按无推广处理：下級全额入账，不拆分（宁可少发推广，不可错扣下級）
+            self::log()->warning('[积分] 推广积分比例解析失败，本次不拆分', [
+                'child_player_id' => $childPlayerId,
+                'error'           => $e->getMessage(),
+            ]);
+            return null;
+        }
+
+        $cache[$childPlayerId] = $entry ?? ['exp' => $now + $cacheTtl, 'parent_id' => 0, 'child_name' => '', 'parent_name' => '', 'ratio' => 0.0];
+
+        return ($entry && $entry['parent_id'] > 0 && $entry['ratio'] > 0) ? $entry : null;
     }
 
     /**
@@ -1700,9 +1824,10 @@ LUA;
      * - 内存占用：10万批次/天 × 100字节 ≈ 10MB（可接受）
      *
      * @param string $batchId 批次ID
+     * @param float $pointsEarned 本批下級实际入账积分（供重复批次回读，见 getProcessedBatchPoints）
      * @return void
      */
-    private static function markBatchAsProcessed(string $batchId): void
+    private static function markBatchAsProcessed(string $batchId, float $pointsEarned = 0.0): void
     {
         if (empty($batchId)) {
             return;
@@ -1715,12 +1840,45 @@ LUA;
             // 设置24小时过期
             $redis->setex($key, 86400, time());
 
+            // 单独的积分Key：老Key的value是time()，不能混用（会把时间戳误读成巨额积分）
+            $redis->setex('gk_api:points_batch_pts:' . $batchId, 86400, (string) $pointsEarned);
+
         } catch (Exception $e) {
             // 标记失败不影响业务（Redis 故障时仍能累加）
             self::log()->warning('[积分] 标记batch_id失败', [
                 'batch_id' => $batchId,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * 回读批次首次处理时的实际入账积分
+     *
+     * 用途：消息部分失败重投时（积分已累加、推广未做完），重复批次分支
+     * 据此返回首次的 points_earned，让推广积分能重试补做。
+     * 无记录（老批次/从未入账）返回 0，不会误发推广。
+     *
+     * @param string $batchId 批次ID
+     * @return float
+     */
+    private static function getProcessedBatchPoints(string $batchId): float
+    {
+        if (empty($batchId)) {
+            return 0.0;
+        }
+
+        try {
+            $redis = Redis::connection()->client();
+            $val = $redis->get('gk_api:points_batch_pts:' . $batchId);
+
+            return ($val === false || $val === null || $val === '') ? 0.0 : floatval($val);
+        } catch (\Throwable $e) {
+            self::log()->warning('[积分] 回读批次积分失败', [
+                'batch_id' => $batchId,
+                'error' => $e->getMessage(),
+            ]);
+            return 0.0;
         }
     }
 
@@ -1945,6 +2103,69 @@ LUA;
     // ========================================
     // 每日汇总
     // ========================================
+    /**
+     * SCAN 分批遍历 Redis Key（唯一使用原始 Redis 客户端 scan 的地方）
+     *
+     * 说明：pattern 匹配必须走 SCAN（KEYS 会阻塞线上），support\Redis 门面无扫描封装，
+     * 故收口在此一处，其余地方一律复用。按批 yield，调用方可流式处理。
+     *
+     * ⚠️ ext-redis 语义：scan(&$iterator, $pattern, $count) 返回【本批 keys 数组】，
+     * 游标经引用参数推进，遍历结束返回 false——不是 [cursor, keys] 形态
+     * （早期代码按 [cursor, keys] 解析导致恒扫不到 Key，每日汇总一直为空）。
+     *
+     * @param string $pattern 如 gk_api:player_points:*
+     * @param int $batchSize 每批数量
+     * @return \Generator<string[]> 每批 Key 数组
+     */
+    private static function scanKeyBatches(string $pattern, int $batchSize = 500): \Generator
+    {
+        $redis = Redis::connection()->client();
+        $iterator = null;
+
+        while (($result = $redis->scan($iterator, $pattern, $batchSize)) !== false) {
+            if ($result === null) {
+                return;
+            }
+
+            // 兜底兼容 [cursor, keys] 形态的客户端（keys 必为数组，普通 Key 是字符串可安全区分）
+            if (is_array($result) && count($result) === 2 && is_array($result[1] ?? null)) {
+                [$iterator, $keys] = $result;
+                if (!empty($keys)) {
+                    yield array_values($keys);
+                }
+                if ($iterator == 0) {
+                    return;
+                }
+                continue;
+            }
+
+            if (!empty($result)) {
+                yield array_values($result);
+            }
+        }
+    }
+
+    /**
+     * 扫描当日汇总 Key 对应的玩家ID列表（{prefix}{playerId} 形态的 Redis Key）
+     *
+     * @param string $keyPrefix 形如 gk_api:player_points_promote_daily:2026-11-24:
+     * @return int[]
+     */
+    private static function scanDailyPlayerIds(string $keyPrefix): array
+    {
+        $playerIds = [];
+
+        foreach (self::scanKeyBatches($keyPrefix . '*') as $keys) {
+            foreach ($keys as $key) {
+                $playerId = (int)substr($key, strlen($keyPrefix));
+                if ($playerId > 0) {
+                    $playerIds[] = $playerId;
+                }
+            }
+        }
+
+        return array_values(array_unique($playerIds));
+    }
 
     /**
      * 每日汇总积分记录（定时任务调用）
@@ -1956,6 +2177,7 @@ LUA;
      *
      * @param string|null $date 汇总日期（默认昨天）
      * @return int 汇总的玩家数
+     * @throws Exception
      */
     public static function dailySummary(?string $date = null): int
     {
@@ -1975,28 +2197,7 @@ LUA;
             // 以 player_points_betting_daily:{date}:* 为准，不依赖 updated_at
             // 原因：脏数据可能在午夜后才同步落库，导致 updated_at 变成今天而被遗漏
             $keyPrefix = 'gk_api:player_points_betting_daily:' . $date . ':';
-            $pattern = $keyPrefix . '*';
-            $playerIds = [];
-            $cursor = 0;
-
-            do {
-                $result = $redis->scan($cursor, $pattern, 500);
-                if ($result === false) {
-                    break;
-                }
-                [$cursor, $keys] = (is_array($result) && count($result) === 2)
-                    ? $result
-                    : [0, []];
-
-                foreach ($keys as $key) {
-                    $playerId = (int)substr($key, strlen($keyPrefix));
-                    if ($playerId > 0) {
-                        $playerIds[] = $playerId;
-                    }
-                }
-            } while ($cursor != 0);
-
-            $playerIds = array_values(array_unique($playerIds));
+            $playerIds = self::scanDailyPlayerIds($keyPrefix);
 
             if (empty($playerIds)) {
                 self::log()->info('[积分汇总] 无打码积分玩家', ['date' => $date]);
@@ -2105,6 +2306,54 @@ LUA;
                 }
             }
 
+            // 4. 推广积分每日汇总（与打码汇总同款：当日累加 Key → 每日一条 TYPE_PROMOTE_POINTS，
+            //    不逐消息写流水，避免积分记录爆炸）
+            $promotePrefix = 'gk_api:player_points_promote_daily:' . $date . ':';
+            foreach (self::scanDailyPlayerIds($promotePrefix) as $playerId) {
+                try {
+                    $batchId = "promote_daily_{$date}_{$playerId}";
+
+                    if (PlayerPointsRecord::where('batch_id', $batchId)->exists()) {
+                        continue;
+                    }
+
+                    $promotePoints = round(floatval($redis->get($promotePrefix . $playerId) ?: 0), 4);
+                    if ($promotePoints <= 0) {
+                        continue;
+                    }
+
+                    $redisPoints = self::getPlayerPoints($playerId);
+                    $departmentId = $playerPointsMap->get($playerId)?->department_id
+                        ?? (self::getPlayerInfoCached($playerId)['department_id'] ?? 0);
+
+                    PlayerPointsRecord::query()->create([
+                        'player_id'     => $playerId,
+                        'department_id' => $departmentId,
+                        'type'          => PlayerPointsRecord::TYPE_PROMOTE_POINTS,
+                        'source'        => PlayerPointsRecord::SOURCE_PROMOTE_POINTS,
+                        'points'        => $promotePoints,
+                        'points_before' => 0,
+                        'points_after'  => $redisPoints['available_points'],
+                        'remark'        => $date . ' 推廣積分匯總',
+                        'batch_id'      => $batchId,
+                        'created_at'    => $date . ' 23:59:59',
+                    ]);
+
+                    $totalPoints += $promotePoints;
+
+                    self::log()->info('[积分汇总] 写入推广积分汇总记录', [
+                        'player_id'     => $playerId,
+                        'promote_points' => $promotePoints,
+                        'batch_id'      => $batchId,
+                    ]);
+                } catch (Exception $e) {
+                    self::log()->error('[积分汇总] 推广积分汇总失败', [
+                        'player_id' => $playerId,
+                        'error'     => $e->getMessage(),
+                    ]);
+                }
+            }
+
             self::log()->info('[积分汇总] 每日汇总完成', [
                 'date'         => $date,
                 'player_count' => $count,
@@ -2143,32 +2392,10 @@ LUA;
         $keyPattern = self::REDIS_KEY_PREFIX . '*';
 
         try {
-            // ✅ 改进：使用 SCAN 分批处理，不累积所有 key 到内存
-            $cursor = 0;
-            $batch = [];
-
-            do {
-                $result = $redis->scan($cursor, $keyPattern, $batchSize);
-
-                if ($result === false) {
-                    break;
-                }
-
-                // PhpRedis scan() 返回 [cursor, [keys]]
-                if (is_array($result) && count($result) == 2) {
-                    $cursor = $result[0];
-
-                    if (!empty($result[1])) {
-                        // ✅ 立即处理这批 key，不累积到内存
-                        $batch = $result[1];
-                        $count += self::processSyncBatch($batch, $redis);
-                        unset($batch);  // 释放内存
-                    }
-                } else {
-                    break;
-                }
-
-            } while ($cursor != 0);
+            // ✅ SCAN 分批处理（复用 scanKeyBatches，不累积所有 key 到内存）
+            foreach (self::scanKeyBatches($keyPattern, $batchSize) as $batch) {
+                $count += self::processSyncBatch($batch, $redis);
+            }
 
             self::log()->info('[积分同步] 同步完成', [
                 'synced_count' => $count,

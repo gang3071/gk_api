@@ -16,6 +16,7 @@ use Webman\RedisQueue\Consumer;
  * - 计算玩家应得积分（根据平台、VIP等级、活动倍数）
  * - 实时累加积分到 Redis（Lua原子操作）
  * - 防止重复消费（batch_id 去重）
+ * - 推广积分：算分处拆分——上級应得与下級所得各自累加，记录均走每日汇总（不逐消息写流水）
  *
  * 性能特性：
  * - Redis原子操作（并发安全）
@@ -101,7 +102,8 @@ class PlayerPoints implements Consumer
                 return;
             }
 
-            // 调用积分服务累加
+            // 调用积分服务累加（算分处拆分推广积分：上級应得与下級所得各自累加，
+            // 记录都走每日汇总——打码汇总=下級剩餘、推廣積分匯總=上級应得，不逐消息写流水）
             $result = PlayerPointsService::addPointsFromBetting(
                 $playerId,
                 $platformAmounts,
@@ -125,7 +127,7 @@ class PlayerPoints implements Consumer
                 ]);
             }
 
-        } catch (Exception $e) {
+        } catch (\Throwable $e) {
             $this->log->error('[积分队列] 消费异常，将重试', [
                 'player_id' => $playerId,
                 'total_bet_amount' => $totalBetAmount,
@@ -134,6 +136,10 @@ class PlayerPoints implements Consumer
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
+            // ✅ 失败时释放去重标记：SETNX 标记是入口处预写的，不释放的话
+            //    队列重试会被「重复批次」分支吞掉，消息直接丢失
+            $this->releaseDuplicate($batchId);
 
             // 抛出异常触发重试（webman/redis-queue 会自动重试）
             throw $e;
@@ -172,6 +178,32 @@ class PlayerPoints implements Consumer
                 'error' => $e->getMessage(),
             ]);
             return false;
+        }
+    }
+
+    /**
+     * 释放去重标记（消费失败时调用，允许队列重试）
+     *
+     * 与 isDuplicate 的 SETNX 标记配对：处理失败后删除标记，
+     * 重试消息才能重新进入处理流程（重复入账由 batch_id 幂等兜底）。
+     *
+     * @param string $batchId 批次ID
+     * @return void
+     */
+    private function releaseDuplicate(string $batchId): void
+    {
+        if (empty($batchId)) {
+            return;
+        }
+
+        try {
+            $redis = \support\Redis::connection()->client();
+            $redis->del('gk_api:points_processed_batch_' . $batchId);
+        } catch (\Throwable $e) {
+            $this->log->error('[积分队列] 释放去重标记失败（消息可能无法重试）', [
+                'batch_id' => $batchId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
