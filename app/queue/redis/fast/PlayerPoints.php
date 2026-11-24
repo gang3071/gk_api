@@ -174,7 +174,7 @@ class PlayerPoints implements Consumer
             $redis = \support\Redis::connection()->client();
             // predis: set() 直接返回 bool
             // phpredis: 数组语法可能返回非 bool，用 === true 严格判断
-            $result = $redis->set($cacheKey, time(), ['NX', 'EX' => 3600]);
+            $result = $redis->set($cacheKey, time(), ['NX', 'EX' => 86400]);
             $isFirst = ($result === true);
 
             return !$isFirst;

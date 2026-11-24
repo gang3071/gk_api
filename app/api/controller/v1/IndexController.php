@@ -118,7 +118,7 @@ class IndexController
         }
 
         addLoginRecord($player->id);
-        PlayerPointsService::addDailyLoginPoints($player->id);
+
         $this->recordDeviceCurrentPlayer($player->id);
 
         $tokenPayload = [
@@ -191,7 +191,7 @@ class IndexController
         }
 
         addLoginRecord($player->id);
-        PlayerPointsService::addDailyLoginPoints($player->id);
+
         $this->recordDeviceCurrentPlayer($player->id);
 
         $tokenPayload = [
@@ -254,7 +254,7 @@ class IndexController
             }
 
             addLoginRecord($player->id);
-            PlayerPointsService::addDailyLoginPoints($player->id);
+    
             $this->recordDeviceCurrentPlayer($player->id);
             return jsonSuccessResponse('success', [
                 'token' => JwtToken::generateToken([

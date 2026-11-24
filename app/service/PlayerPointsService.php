@@ -457,36 +457,6 @@ class PlayerPointsService
         }
     }
 
-    /**
-     * 每日登录赠送积分（活动截止 2026-10-31）
-     * 幂等：同一玩家同一天仅发放一次，依赖 batch_id 唯一约束保障。
-     */
-    public static function addDailyLoginPoints(int $playerId): void
-    {
-        if (date('Y-m-d') > '2026-10-31') {
-            return;
-        }
-
-        $batchId = 'daily_login_' . date('Ymd') . '_' . $playerId;
-
-        try {
-            self::addPoints(
-                playerId: $playerId,
-                points: 10,
-                type: PlayerPointsRecord::TYPE_ACTIVITY,
-                source: PlayerPointsRecord::SOURCE_ACTIVITY,
-                remark: '每日登录奖励',
-                extraData: ['batch_id' => $batchId]
-            );
-        } catch (Exception $e) {
-            self::log()->warning('[积分] 每日登录积分发放失败', [
-                'player_id' => $playerId,
-                'batch_id'  => $batchId,
-                'error'     => $e->getMessage(),
-            ]);
-        }
-    }
-
     // ========================================
     // 积分计算
     // ========================================
@@ -1135,7 +1105,7 @@ LUA;
                 'department_id' => $playerPoints->department_id,
                 'type' => 2, // 兑换消耗类型（冻结是兑换流程的一部分）
                 'source' => 'exchange',
-                'points' => 0, // 冻结不改变总积分，只是状态转换
+                'points' => -$points, // 可用积分减少量（冻结转移，total_points不变）
                 'points_before' => $availableBefore,
                 'points_after' => $availableBefore - $points,
                 'remark' => '[冻结] ' . $remark,
@@ -2117,7 +2087,7 @@ LUA;
                         'type'          => PlayerPointsRecord::TYPE_BETTING_SUMMARY,
                         'source'        => PlayerPointsRecord::SOURCE_BETTING_SUMMARY,
                         'points'        => $bettingPoints,
-                        'points_before' => 0,
+                        'points_before' => max(0.0, round($redisPoints['available_points'] - $bettingPoints, 4)),
                         'points_after'  => $redisPoints['available_points'],
                         'remark'        => $date . ' 打码汇总',
                         'batch_id'      => $batchId,
@@ -2272,13 +2242,24 @@ LUA;
                 // 快照会把已扣的 available_points 还回去，产生 ~1分钟的虚假积分
                 $live = self::getPlayerPoints($playerId);
 
-                // total_points/used_points 只增不减，用 max() 防止快照滞后回退
-                // available_points/frozen_points 可双向变化，直接取实时值
-                $playerPoints->total_points     = max($playerPoints->total_points,  $live['total_points']);
-                $playerPoints->available_points = $live['available_points'];
-                $playerPoints->frozen_points    = $live['frozen_points'];
-                $playerPoints->used_points      = max($playerPoints->used_points,   $live['used_points']);
-                $playerPoints->save();
+                // 乐观锁更新：version 匹配才写，避免覆盖并发事务的结果
+                $currentVersion = $playerPoints->version;
+                $affected = PlayerPoints::where('id', $playerPoints->id)
+                    ->where('version', $currentVersion)
+                    ->update([
+                        // total_points/used_points 只增不减，用 max() 防止快照滞后回退
+                        'total_points'     => max($playerPoints->total_points, $live['total_points']),
+                        'available_points' => $live['available_points'],
+                        'frozen_points'    => $live['frozen_points'],
+                        'used_points'      => max($playerPoints->used_points, $live['used_points']),
+                        'version'          => $currentVersion + 1,
+                        'updated_at'       => date('Y-m-d H:i:s'),
+                    ]);
+
+                if ($affected === 0) {
+                    self::log()->warning('[积分同步] 乐观锁冲突，跳过', ['player_id' => $playerId]);
+                    continue;
+                }
 
                 $count++;
 
