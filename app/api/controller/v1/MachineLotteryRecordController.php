@@ -13,7 +13,7 @@ use support\Response;
  *
  * 口径与后台「机台大赏报表」（gk_admin MachineLotteryRecordController）一致：
  * machine_lottery_record 明细（不含 rush 开奖），只回传登录玩家本人的记录。
- * 排除机台类型 0（未知/机台已不存在）和斯洛机（GameType::TYPE_SLOT）的记录。
+ * 排除斯洛机（GameType::TYPE_SLOT）和 lottery_win 为 0 的记录。
  */
 class MachineLotteryRecordController
 {
@@ -32,13 +32,14 @@ class MachineLotteryRecordController
         $page = max(1, (int)($data['page'] ?? 1));
         $size = max(1, min(100, (int)($data['size'] ?? 10)));
 
-        // 只保留钢珠/鱼机等实体机记录：排除机台类型 0（未知/机台已不存在）和斯洛机
+        // 只保留钢珠/鱼机等实体机的中奖记录：排除斯洛机和 lottery_win 为 0 的记录
         $records = MachineLotteryRecord::query()
             ->with(['machine.machineLabel'])
             ->where('player_id', $player->id)
             ->where('has_rush', 0)
+            ->where('lottery_win', '!=', 0)
             ->whereIn('machine_id', Machine::withTrashed()
-                ->whereNotIn('type', [0, GameType::TYPE_SLOT])
+                ->whereNotIn('type', [GameType::TYPE_SLOT])
                 ->select('id'))
             ->orderBy('id', 'desc')
             ->forPage($page, $size)
