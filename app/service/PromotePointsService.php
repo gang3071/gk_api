@@ -2,330 +2,197 @@
 
 namespace app\service;
 
-use app\model\PlayGameRecord;
 use app\model\Player;
-use app\model\PlayerGameLog;
 use app\model\PlayerPointsRecord;
-use app\model\StoreSetting;
 use app\model\VipLevel;
-use support\Db;
 use support\Log;
 
 /**
- * 推广积分处理服务（补算式，全部在本项目）
+ * 推广积分处理服务（消息驱动，与打码积分同消息实时入账）
  *
- * 每分钟扫描近期已结算、尚未处理的游戏记录（pgr=三方 play_game_record /
- * pgl=机台 player_game_log），计算并入账：
+ * 触发：gk_api player-points 队列消费者（PlayerPoints::consume）在下级打码积分
+ * 入账成功后调用。三方（play_game_record）与机台（每注投递的 platform 0 消息）
+ * 同一路径、实时到账。
  *
- *   抽成 = 下級實際積分 × 上級 children_points_ratio%
- *   （下級實際積分 = PlayerPointsService::calculatePoints，与打码积分同一公式，
- *     含活动倍数，比例口径天然零漂移）
- *   上級直接入账（TYPE_PROMOTE_POINTS）+ 下級同額扣回（TYPE_PROMOTE_DEDUCT）
+ * 口径（定稿）：
+ *   推广积分 = 下級本批【實際入账】积分 × 上級 children_points_ratio%
+ *   - 下級积分为 0 或命中每日上限（points_earned = 0）时不计推广
+ *   - 上級直接入账（TYPE_PROMOTE_POINTS）+ 下級同額扣回（TYPE_PROMOTE_DEDUCT，机台三方都扣）
  *
- * 幂等/重试：player_points_record.batch_id 唯一索引即游标——
- *   已入账的记录会被扫描条件排除；处理失败的下一轮自动重扫重试，绝不重复入账。
- *
- * 口径与打码积分投递（GameRecordSyncWorker）一致：仅下注类型、非免费旋转、
- * 店家积分开关开启的记录产生推广积分。
+ * 不丢 / 不重：
+ *   - 与打码积分同消息同生共死——消息丢失时下級也没有积分，账目天然对称，
+ *     不存在「下級没积分、上級照拿」的第二事实源；
+ *   - batch_id 幂等（player_points_record.batch_id 唯一索引）：队列重投/重试
+ *     绝不重复入账（上級入账与下級扣回各自独立幂等，重试只补未完成的一半）；
+ *   - 消费失败由队列重试（消费端失败时释放去重标记），重试经 addPointsFromBetting
+ *     的批次已处理标记回读 points_earned，推广照常补做。
  */
 class PromotePointsService
 {
     /**
-     * 扫描窗口（天）：覆盖结算延迟与任务停机；batch_id 幂等保证不重发
+     * 上級/比例解析缓存 TTL（秒）——机台每注消息高频，避免逐条查库
      */
-    const SCAN_DAYS = 3;
+    private const RESOLVE_CACHE_TTL = 60;
 
     /**
-     * 每表单轮最大处理条数
+     * @var array<int, array{exp:int, parent_id:int, child_name:string, parent_name:string, ratio:float}>
      */
-    const BATCH_SIZE = 2000;
+    private static array $resolveCache = [];
 
     /**
-     * 扫描并处理一轮推广积分
+     * 处理一条打码积分消息的推广积分（上級入账 + 下級同額扣回）
      *
-     * @return array 处理统计
+     * @param int $childPlayerId 下級玩家ID（消息的 player_id）
+     * @param float $pointsEarned 下級本批實際入账积分（addPointsFromBetting 返回值）
+     * @param string $msgBatchId 消息 batch_id（幂等键来源）
+     * @throws \Throwable 入账失败时抛出，由队列重试（batch_id 幂等保证不重复）
      */
-    public static function run(): array
+    public static function applyForMessage(int $childPlayerId, float $pointsEarned, string $msgBatchId): void
     {
-        return [
-            'game'    => self::scanGameRecords(),
-            'machine' => self::scanMachineLogs(),
-        ];
-    }
-
-    /**
-     * 扫描三方游戏记录（play_game_record）
-     */
-    private static function scanGameRecords(): int
-    {
-        $table = (new PlayGameRecord())->getTable();
-        $since = date('Y-m-d H:i:s', time() - self::SCAN_DAYS * 86400);
-
-        $records = PlayGameRecord::query()
-            ->leftJoin('player_points_record as pp', 'pp.batch_id', '=', Db::raw("CONCAT('children_points:parent:pgr:', {$table}.id)"))
-            ->whereNull('pp.id')
-            ->where($table . '.settlement_status', PlayGameRecord::SETTLEMENT_STATUS_SETTLED)
-            ->where($table . '.bet', '>', 0)
-            ->where($table . '.parent_player_id', '>', 0)
-            ->where(function ($q) use ($table) {
-                $q->whereNull($table . '.type')->orWhere($table . '.type', PlayGameRecord::TYPE_BET);
-            })
-            // ⚠️ 必须带 created_at（play_game_record 按月分区，不带会扫全部分区）
-            ->where($table . '.created_at', '>=', $since)
-            ->select($table . '.*')
-            ->orderBy($table . '.id')
-            ->limit(self::BATCH_SIZE)
-            ->get();
-
-        $count = 0;
-        foreach ($records as $record) {
-            // 免费旋转（betKind=3）不计打码量/积分（bet_kind 未落库，原始请求数据里有）
-            $raw = json_decode((string) $record->original_data, true);
-            if (is_array($raw) && (int) ($raw['bet_kind'] ?? $raw['betKind'] ?? 1) == 3) {
-                continue;
-            }
-
-            self::process('pgr', (int) $record->id);
-            $count++;
+        if ($childPlayerId <= 0 || $pointsEarned <= 0 || $msgBatchId === '') {
+            return;
         }
 
-        return $count;
-    }
-
-    /**
-     * 扫描机台打码记录（player_game_log，弃台/下分）
-     */
-    private static function scanMachineLogs(): int
-    {
-        $table = (new PlayerGameLog())->getTable();
-        $since = date('Y-m-d H:i:s', time() - self::SCAN_DAYS * 86400);
-
-        $records = PlayerGameLog::query()
-            ->leftJoin('player_points_record as pp', 'pp.batch_id', '=', Db::raw("CONCAT('children_points:parent:pgl:', {$table}.id)"))
-            ->whereNull('pp.id')
-            ->whereIn($table . '.action', [PlayerGameLog::ACTION_LEAVE, PlayerGameLog::ACTION_DOWN])
-            ->where($table . '.chip_amount', '>', 0)
-            ->where($table . '.parent_player_id', '>', 0)
-            ->where($table . '.created_at', '>=', $since)
-            ->select($table . '.*')
-            ->orderBy($table . '.id')
-            ->limit(self::BATCH_SIZE)
-            ->get();
-
-        foreach ($records as $record) {
-            self::process('pgl', (int) $record->id);
-        }
-
-        return count($records);
-    }
-
-    /**
-     * 处理单条记录的推广积分（口径校验 → 比例 → 计算 → 上級入账 + 下級扣回）
-     *
-     * @param string $recordType 'pgr'=三方记录 / 'pgl'=机台记录
-     * @param int $recordId 游戏记录ID
-     */
-    public static function process(string $recordType, int $recordId): void
-    {
         try {
-            // 1. 载入游戏记录
-            $record = $recordType === 'pgl'
-                ? PlayerGameLog::query()->find($recordId)
-                : PlayGameRecord::query()->find($recordId);
-
-            if (!$record) {
+            $resolved = self::resolveParent($childPlayerId);
+            if (!$resolved || $resolved['parent_id'] <= 0) {
                 return;
             }
 
-            // 2. 记录口径校验（与打码积分投递 GameRecordSyncWorker 同口径）
-            if ($recordType === 'pgr') {
-                if (($record->type ?? PlayGameRecord::TYPE_BET) != PlayGameRecord::TYPE_BET
-                    || $record->bet <= 0) {
-                    return;
-                }
-                $betAmount  = (float) $record->bet;
-                $platformId = (int) $record->platform_id;
-            } else {
-                if ($record->chip_amount <= 0) {
-                    return;
-                }
-                $betAmount  = (float) $record->chip_amount;
-                $platformId = 0; // 机台打码积分按 platform 0
-            }
-
-            $childPlayerId  = (int) $record->player_id;
-            $parentPlayerId = (int) ($record->parent_player_id ?? 0);
-
-            if ($childPlayerId <= 0 || $parentPlayerId <= 0) {
+            $ratio = $resolved['ratio'];
+            if ($ratio <= 0) {
                 return;
             }
 
-            // 3. 下級/上級玩家
-            $child = Player::query()->find($childPlayerId);
-            $parent = Player::query()->find($parentPlayerId);
-            if (!$child || !$parent) {
-                Log::channel('player_points')->warning('PromotePoints: 玩家不存在', [
-                    'child_player_id'  => $childPlayerId,
-                    'parent_player_id' => $parentPlayerId,
-                    'record_type'      => $recordType,
-                    'record_id'        => $recordId,
-                ]);
-                return;
-            }
-
-            // 4. 店家积分开关（关闭时下級不产生积分，也没有抽成）
-            if (! self::isPointsEnabled($child)) {
-                return;
-            }
-
-            // 5. 上級 VIP 的推广积分比例
-            $parentVip = VipLevel::query()->find($parent->vip_level_id);
-            $childrenRatio = floatval($parentVip->children_points_ratio ?? 0);
-            if ($childrenRatio <= 0) {
-                return;
-            }
-
-            // 6. 抽成 = 下級實際積分 × children_points_ratio%
-            $gross = PlayerPointsService::calculatePoints(
-                $betAmount,
-                (int) $child->vip_level_id,
-                $platformId,
-                (int) ($child->department_id ?? 0)
-            );
-            $promotePoints = round($gross * $childrenRatio / 100, 4);
-            if ($promotePoints <= 0) {
+            // 抽成 = 下級實際入账积分 × children_points_ratio%
+            $promote = round($pointsEarned * $ratio / 100, 4);
+            if ($promote <= 0) {
                 return;
             }
 
             $adminInfo = ['admin_id' => 0, 'admin_name' => 'system', 'admin_ip' => ''];
 
-            // 备注用玩家名称（与后台「玩家帳號」列同口径：name ?? account），无名时回退 ID
-            $childName  = $child->name ?: ($child->account ?: $childPlayerId);
-            $parentName = $parent->name ?: ($parent->account ?: $parentPlayerId);
+            // ✅ 上級直接入账（batch_id 幂等；失败抛出触发队列重试）
+            PlayerPointsService::addPoints(
+                $resolved['parent_id'],
+                $promote,
+                PlayerPointsRecord::TYPE_PROMOTE_POINTS,
+                PlayerPointsRecord::SOURCE_PROMOTE_POINTS,
+                "推廣積分（來自下級玩家 {$resolved['child_name']}）",
+                ['batch_id' => "children_points:parent:msg:{$msgBatchId}"],
+                $adminInfo
+            );
 
-            // 7. ✅ 上級直接入账 + 记录（与下級扣回分开 try/catch，任一步失败不连带跳过另一步；
-            //    失败后下轮扫描会自动重试，batch_id 保证不重复）
-            try {
-                PlayerPointsService::addPoints(
-                    $parentPlayerId,
-                    $promotePoints,
-                    PlayerPointsRecord::TYPE_PROMOTE_POINTS,
-                    PlayerPointsRecord::SOURCE_PROMOTE_POINTS,
-                    "推廣積分（來自下級玩家 {$childName}）",
-                    ['batch_id' => "children_points:parent:{$recordType}:{$recordId}"],
-                    $adminInfo
-                );
-
-                Log::channel('player_points')->info('PromotePoints: 上级积分入账成功', [
-                    'parent_player_id' => $parentPlayerId,
-                    'child_player_id'  => $childPlayerId,
-                    'promote_points'   => $promotePoints,
-                    'record_type'      => $recordType,
-                    'record_id'        => $recordId,
-                ]);
-            } catch (\Throwable $e) {
-                Log::channel('player_points')->error('PromotePoints: 上级积分入账失败', [
-                    'parent_player_id' => $parentPlayerId,
-                    'child_player_id'  => $childPlayerId,
-                    'promote_points'   => $promotePoints,
-                    'record_type'      => $recordType,
-                    'record_id'        => $recordId,
-                    'error'            => $e->getMessage(),
-                ]);
-            }
-
-            // 8. ✅ 下級扣回同額積分（机台、三方都扣：上级拿多少、下级就扣多少）
-            try {
-                $available = PlayerPointsService::getPlayerPoints($childPlayerId)['available_points'];
-                $deduct = min($promotePoints, floatval($available));
-
-                if ($deduct <= 0) {
-                    // ⚠️ error 级：扣回跳过绝不能静默，否则上级入账后下级账目对不上
-                    Log::channel('player_points')->error('PromotePoints: 下级积分扣回跳过（可用余额为0）', [
-                        'child_player_id' => $childPlayerId,
-                        'promote_points'  => $promotePoints,
-                        'available'       => $available,
-                        'record_type'     => $recordType,
-                        'record_id'       => $recordId,
-                    ]);
-                    return;
-                }
-
-                if ($deduct < $promotePoints) {
-                    Log::channel('player_points')->error('PromotePoints: 下级积分扣回金额不足，按可用余额扣减', [
-                        'child_player_id' => $childPlayerId,
-                        'promote_points'  => $promotePoints,
-                        'available'       => $available,
-                        'record_type'     => $recordType,
-                        'record_id'       => $recordId,
-                    ]);
-                }
-
-                // source 经 extraData 覆盖（deductPoints 内部默认按 type 推导 source）
-                PlayerPointsService::deductPoints(
-                    $childPlayerId,
-                    $deduct,
-                    PlayerPointsRecord::TYPE_PROMOTE_DEDUCT,
-                    "推廣積分抽成（上級玩家 {$parentName}）",
-                    [
-                        'batch_id' => "children_points:child:{$recordType}:{$recordId}",
-                        'source'   => PlayerPointsRecord::SOURCE_PROMOTE_POINTS,
-                    ],
-                    $adminInfo
-                );
-
-                Log::channel('player_points')->info('PromotePoints: 下级积分扣回成功', [
-                    'parent_player_id' => $parentPlayerId,
-                    'child_player_id'  => $childPlayerId,
-                    'deduct_points'    => $deduct,
-                    'record_type'      => $recordType,
-                    'record_id'        => $recordId,
-                ]);
-            } catch (\Throwable $e) {
-                Log::channel('player_points')->error('PromotePoints: 下级积分扣回失败', [
-                    'parent_player_id' => $parentPlayerId,
-                    'child_player_id'  => $childPlayerId,
-                    'promote_points'   => $promotePoints,
-                    'record_type'      => $recordType,
-                    'record_id'        => $recordId,
-                    'error'            => $e->getMessage(),
-                ]);
-            }
-        } catch (\Throwable $e) {
-            Log::channel('player_points')->error('PromotePoints: 处理异常', [
-                'record_type' => $recordType,
-                'record_id'   => $recordId,
-                'error'       => $e->getMessage(),
+            Log::channel('player_points')->info('PromotePoints: 上级积分入账成功', [
+                'parent_player_id' => $resolved['parent_id'],
+                'child_player_id'  => $childPlayerId,
+                'promote_points'   => $promote,
+                'batch_id'         => $msgBatchId,
             ]);
+
+            // ✅ 下級同額扣回（上级拿多少、下级就扣多少）
+            $available = PlayerPointsService::getPlayerPoints($childPlayerId)['available_points'];
+            $deduct = min($promote, floatval($available));
+
+            if ($deduct <= 0) {
+                // ⚠️ error 级：扣回跳过绝不能静默，否则上级入账后下级账目对不上。
+                //    余额不会因重试改变，此处不抛出（抛出只会造成队列空转重试）。
+                Log::channel('player_points')->error('PromotePoints: 下级积分扣回跳过（可用余额为0）', [
+                    'child_player_id' => $childPlayerId,
+                    'promote_points'  => $promote,
+                    'available'       => $available,
+                    'batch_id'        => $msgBatchId,
+                ]);
+                return;
+            }
+
+            if ($deduct < $promote) {
+                Log::channel('player_points')->error('PromotePoints: 下级积分扣回金额不足，按可用余额扣减', [
+                    'child_player_id' => $childPlayerId,
+                    'promote_points'  => $promote,
+                    'deduct_points'   => $deduct,
+                    'available'       => $available,
+                    'batch_id'        => $msgBatchId,
+                ]);
+            }
+
+            // source 经 extraData 覆盖（deductPoints 内部默认按 type 推导 source）
+            PlayerPointsService::deductPoints(
+                $childPlayerId,
+                $deduct,
+                PlayerPointsRecord::TYPE_PROMOTE_DEDUCT,
+                "推廣積分抽成（上級玩家 {$resolved['parent_name']}）",
+                [
+                    'batch_id' => "children_points:child:msg:{$msgBatchId}",
+                    'source'   => PlayerPointsRecord::SOURCE_PROMOTE_POINTS,
+                ],
+                $adminInfo
+            );
+
+            Log::channel('player_points')->info('PromotePoints: 下级积分扣回成功', [
+                'parent_player_id' => $resolved['parent_id'],
+                'child_player_id'  => $childPlayerId,
+                'deduct_points'    => $deduct,
+                'batch_id'         => $msgBatchId,
+            ]);
+        } catch (\Throwable $e) {
+            Log::channel('player_points')->error('PromotePoints: 处理失败（等待队列重试）', [
+                'child_player_id' => $childPlayerId,
+                'points_earned'   => $pointsEarned,
+                'batch_id'        => $msgBatchId,
+                'error'           => $e->getMessage(),
+            ]);
+            throw $e;
         }
     }
 
     /**
-     * 玩家所属店家/代理的积分开关（与 gk_work PlayerPointsQueueService::isPointsEnabled 同口径）
+     * 解析下級 → 上級（含上級 VIP 比例、双方名称），带短 TTL 进程内缓存
      *
-     * ⚠️ 不可用 StoreSetting::getSetting()：会把 status=0 的「关闭」行过滤成 null，与「未配置」混淆。
+     * 名称口径与后台「玩家帳號」列一致：name → account → player ID。
+     *
+     * @return array{exp:int, parent_id:int, child_name:string, parent_name:string, ratio:float}|null
      */
-    private static function isPointsEnabled(Player $player): bool
+    private static function resolveParent(int $childPlayerId): ?array
     {
-        try {
-            $adminUserId = $player->store_admin_id ?: $player->agent_admin_id;
-            if (! $adminUserId) {
-                return true;
-            }
-
-            $setting = StoreSetting::query()
-                ->where('feature', 'enable_points')
-                ->where('department_id', $player->department_id ?? 0)
-                ->where('admin_user_id', $adminUserId)
-                ->first();
-
-            return ! $setting || $setting->status == 1;
-        } catch (\Throwable $e) {
-            Log::channel('player_points')->warning('PromotePoints: 积分开关查询异常，放行', [
-                'player_id' => $player->id ?? 0,
-                'error'     => $e->getMessage(),
-            ]);
-            return true;
+        $now = time();
+        $cached = self::$resolveCache[$childPlayerId] ?? null;
+        if ($cached && $cached['exp'] > $now) {
+            return $cached;
         }
+
+        $child = Player::query()->find($childPlayerId);
+        if (!$child) {
+            Log::channel('player_points')->warning('PromotePoints: 下级玩家不存在', [
+                'child_player_id' => $childPlayerId,
+            ]);
+            return null;
+        }
+
+        $entry = [
+            'exp'         => $now + self::RESOLVE_CACHE_TTL,
+            'parent_id'   => (int) ($child->recommend_id ?? 0),
+            'child_name'  => $child->name ?: ($child->account ?: $childPlayerId),
+            'parent_name' => '',
+            'ratio'       => 0.0,
+        ];
+
+        if ($entry['parent_id'] > 0) {
+            $parent = Player::query()->find($entry['parent_id']);
+            if (!$parent) {
+                Log::channel('player_points')->warning('PromotePoints: 上级玩家不存在', [
+                    'child_player_id'  => $childPlayerId,
+                    'parent_player_id' => $entry['parent_id'],
+                ]);
+                $entry['parent_id'] = 0;
+            } else {
+                $entry['parent_name'] = $parent->name ?: ($parent->account ?: $entry['parent_id']);
+                $parentVip = VipLevel::query()->find($parent->vip_level_id);
+                $entry['ratio'] = floatval($parentVip->children_points_ratio ?? 0);
+            }
+        }
+
+        self::$resolveCache[$childPlayerId] = $entry;
+        return $entry;
     }
 }

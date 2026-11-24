@@ -155,7 +155,9 @@ class PlayerPointsService
 
                     $currentPoints = self::getPlayerPoints($playerId);
                     return [
-                        'points_earned' => 0,
+                        // 回读首次处理时的实际入账积分：推广积分重试（部分失败后消息重投）
+                        // 需要据此判定，积分为0/每日上限的批次回读为0，不会误发推广
+                        'points_earned' => self::getProcessedBatchPoints($batchId),
                         'total_points' => $currentPoints['total_points'],
                         'available_points' => $currentPoints['available_points'],
                     ];
@@ -207,9 +209,9 @@ class PlayerPointsService
                 'result' => $result,
             ]);
 
-            // 7. 标记 batch_id 已处理
+            // 7. 标记 batch_id 已处理（记录实际入账积分，供重复批次回读）
             if (!empty($batchId)) {
-                self::markBatchAsProcessed($batchId);
+                self::markBatchAsProcessed($batchId, $totalPointsEarned);
             }
 
             // 8. 标记玩家需要同步到 MySQL
@@ -1700,9 +1702,10 @@ LUA;
      * - 内存占用：10万批次/天 × 100字节 ≈ 10MB（可接受）
      *
      * @param string $batchId 批次ID
+     * @param float $pointsEarned 本批实际入账积分（供重复批次回读，见 getProcessedBatchPoints）
      * @return void
      */
-    private static function markBatchAsProcessed(string $batchId): void
+    private static function markBatchAsProcessed(string $batchId, float $pointsEarned = 0.0): void
     {
         if (empty($batchId)) {
             return;
@@ -1715,12 +1718,45 @@ LUA;
             // 设置24小时过期
             $redis->setex($key, 86400, time());
 
+            // 单独的积分Key：老Key的value是time()，不能混用（会把时间戳误读成巨额积分）
+            $redis->setex('gk_api:points_batch_pts:' . $batchId, 86400, (string) $pointsEarned);
+
         } catch (Exception $e) {
             // 标记失败不影响业务（Redis 故障时仍能累加）
             self::log()->warning('[积分] 标记batch_id失败', [
                 'batch_id' => $batchId,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * 回读批次首次处理时的实际入账积分
+     *
+     * 用途：消息部分失败重投时（积分已累加、推广未做完），重复批次分支
+     * 据此返回首次的 points_earned，让推广积分能重试补做。
+     * 无记录（老批次/从未入账）返回 0，不会误发推广。
+     *
+     * @param string $batchId 批次ID
+     * @return float
+     */
+    private static function getProcessedBatchPoints(string $batchId): float
+    {
+        if (empty($batchId)) {
+            return 0.0;
+        }
+
+        try {
+            $redis = Redis::connection()->client();
+            $val = $redis->get('gk_api:points_batch_pts:' . $batchId);
+
+            return ($val === false || $val === null || $val === '') ? 0.0 : floatval($val);
+        } catch (\Throwable $e) {
+            self::log()->warning('[积分] 回读批次积分失败', [
+                'batch_id' => $batchId,
+                'error' => $e->getMessage(),
+            ]);
+            return 0.0;
         }
     }
 
