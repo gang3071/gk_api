@@ -2106,9 +2106,12 @@ LUA;
     /**
      * SCAN 分批遍历 Redis Key（唯一使用原始 Redis 客户端 scan 的地方）
      *
-     * 说明：pattern 匹配必须走 phpredis 的 SCAN（KEYS 会阻塞线上），
-     * support\Redis 门面不提供扫描封装，故收口在此一处，其余地方一律复用。
-     * 按批 yield，调用方可流式处理（不把全部 Key 堆进内存）。
+     * 说明：pattern 匹配必须走 SCAN（KEYS 会阻塞线上），support\Redis 门面无扫描封装，
+     * 故收口在此一处，其余地方一律复用。按批 yield，调用方可流式处理。
+     *
+     * ⚠️ ext-redis 语义：scan(&$iterator, $pattern, $count) 返回【本批 keys 数组】，
+     * 游标经引用参数推进，遍历结束返回 false——不是 [cursor, keys] 形态
+     * （早期代码按 [cursor, keys] 解析导致恒扫不到 Key，每日汇总一直为空）。
      *
      * @param string $pattern 如 gk_api:player_points:*
      * @param int $batchSize 每批数量
@@ -2117,25 +2120,29 @@ LUA;
     private static function scanKeyBatches(string $pattern, int $batchSize = 500): \Generator
     {
         $redis = Redis::connection()->client();
-        $cursor = 0;
+        $iterator = null;
 
-        do {
-            $result = $redis->scan($cursor, $pattern, $batchSize);
-
-            if ($result === false) {
+        while (($result = $redis->scan($iterator, $pattern, $batchSize)) !== false) {
+            if ($result === null) {
                 return;
             }
 
-            // PhpRedis scan() 返回 [cursor, [keys]]
-            if (!is_array($result) || count($result) !== 2) {
-                return;
+            // 兜底兼容 [cursor, keys] 形态的客户端（keys 必为数组，普通 Key 是字符串可安全区分）
+            if (is_array($result) && count($result) === 2 && is_array($result[1] ?? null)) {
+                [$iterator, $keys] = $result;
+                if (!empty($keys)) {
+                    yield array_values($keys);
+                }
+                if ($iterator == 0) {
+                    return;
+                }
+                continue;
             }
 
-            [$cursor, $keys] = $result;
-            if (!empty($keys)) {
-                yield $keys;
+            if (!empty($result)) {
+                yield array_values($result);
             }
-        } while ($cursor != 0);
+        }
     }
 
     /**
