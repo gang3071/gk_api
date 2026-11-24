@@ -3,7 +3,6 @@
 namespace app\queue\redis\fast;
 
 use app\service\PlayerPointsService;
-use app\service\PromotePointsService;
 use Carbon\Carbon;
 use Exception;
 use support\Log;
@@ -17,7 +16,7 @@ use Webman\RedisQueue\Consumer;
  * - 计算玩家应得积分（根据平台、VIP等级、活动倍数）
  * - 实时累加积分到 Redis（Lua原子操作）
  * - 防止重复消费（batch_id 去重）
- * - 推广积分：下级实际入账>0 时，上级入账 + 下级同额扣回（PromotePointsService）
+ * - 推广积分：算分处拆分——上級应得与下級所得各自累加，记录均走每日汇总（不逐消息写流水）
  *
  * 性能特性：
  * - Redis原子操作（并发安全）
@@ -103,7 +102,8 @@ class PlayerPoints implements Consumer
                 return;
             }
 
-            // 调用积分服务累加
+            // 调用积分服务累加（算分处拆分推广积分：上級应得与下級所得各自累加，
+            // 记录都走每日汇总——打码汇总=下級剩餘、推廣積分匯總=上級应得，不逐消息写流水）
             $result = PlayerPointsService::addPointsFromBetting(
                 $playerId,
                 $platformAmounts,
@@ -111,14 +111,6 @@ class PlayerPoints implements Consumer
                 $batchId,
                 $createdAt
             );
-
-            // ✅ 推广积分：下级本批实际入账>0 时，上级入账 + 下级同额扣回
-            //    与打码积分同消息实时入账（三方/机台同一路径）；
-            //    积分为0/每日上限（points_earned=0）不计推广；
-            //    失败抛出触发队列重试，batch_id 幂等保证不重复入账
-            if (($result['points_earned'] ?? 0) > 0) {
-                PromotePointsService::applyForMessage($playerId, (float) $result['points_earned'], $batchId);
-            }
 
             // 推送通知（可选）
             $this->pushNotification($playerId, $result);
