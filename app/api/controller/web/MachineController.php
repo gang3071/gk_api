@@ -7,7 +7,9 @@ use app\model\AdminUser;
 use app\model\ChannelMachine;
 use app\model\GameType;
 use app\model\Machine;
+use app\model\MachineCategoryGiveRule;
 use app\model\Player;
+use app\model\PlayerGiftRecord;
 use app\model\SystemSetting;
 use app\service\machine\MachineClient;
 use app\service\machine\MachineServices;
@@ -590,6 +592,68 @@ class MachineController
      *
      * @return array{min_player_amount:int,machine_score:int}|null
      */
+    #[RateLimiter(limit: 10)]
+    /**
+     * 查询机台可用赠点规则列表
+     *
+     * 返回当前机台分类下所有生效的赠点规则，以及玩家今日各规则已使用次数。
+     *
+     * @param Request $request
+     * @param string $machineId
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function getGiveRules(Request $request, string $machineId): Response
+    {
+        try {
+            $player = checkPlayer();
+
+            /** @var Machine $machine */
+            $machine = Machine::query()
+                ->where('id', $machineId)
+                ->where('status', 1)
+                ->where('machine_source', Machine::MACHINE_SOURCE_OFFLINE)
+                ->whereHas('channelMachines', function (Builder $query) use ($player) {
+                    $query->where('store_admin_id', $player->store_admin_id);
+                })->first();
+
+            if (!$machine) {
+                return apiFailResponse(trans('machine_not_found', [], 'message'));
+            }
+
+            $rules = MachineCategoryGiveRule::where('machine_category_id', $machine->cate_id)
+                ->where('status', 1)
+                ->get();
+
+            $today = date('Y-m-d');
+            $list = $rules->map(function (MachineCategoryGiveRule $rule) use ($player, $today) {
+                $usedToday = PlayerGiftRecord::where('player_id', $player->id)
+                    ->where('machine_category_give_rule_id', $rule->id)
+                    ->where('give_num', '>', 0)
+                    ->whereDate('created_at', $today)
+                    ->count();
+
+                return [
+                    'id'             => $rule->id,
+                    'open_num'       => $rule->open_num,   // 上分收费金额（元）
+                    'give_num'       => $rule->give_num,   // 赠送游戏分
+                    'condition'      => $rule->condition,  // 达成条件倍数（钢珠不使用）
+                    'give_rule_num'  => $rule->give_rule_num, // 每日限制次数（0=不限）
+                    'used_today'     => $usedToday,        // 玩家今日已使用次数
+                    'can_use'        => ($rule->give_rule_num <= 0 || $usedToday < $rule->give_rule_num),
+                ];
+            });
+
+            return apiSuccessResponse('ok', ['list' => $list]);
+        } catch (Exception $e) {
+            Log::error('[getGiveRules] Error', [
+                'machine_id' => $machineId,
+                'error'      => $e->getMessage(),
+            ]);
+            return apiFailResponse($e->getMessage() ?: trans('system_error', [], 'message'));
+        }
+    }
+
     public static function meiOpenConfig(Machine $machine): ?array
     {
         if ($machine->type != GameType::TYPE_SLOT

@@ -67,6 +67,8 @@ Route::group('/api', function () {
         Route::post('/machines/{machineId}/bind', [\app\api\controller\web\MachineController::class, 'bind']);
         // 機台操作（鋼珠機 + 斯洛機所有操作，使用 machine_id）
         Route::post('/machines/{machineId}/operation', [\app\api\controller\web\MachineController::class, 'machineOperation']);
+        // 查詢機台可用赠点规则（开分赠点用）
+        Route::get('/machines/{machineId}/give-rules', [\app\api\controller\web\MachineController::class, 'getGiveRules']);
         // 門店機台列表
         Route::get('/stores/{storeId}/machines', [\app\api\controller\web\MachineController::class, 'storeMachines']);
         // 摸獎券資訊

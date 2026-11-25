@@ -1037,6 +1037,12 @@ class MachineController
             if (empty($machineCategoryGiveRule)) {
                 throw new Exception(trans('give_amount_rule_err', [], 'message'));
             }
+            if ((int)$machineCategoryGiveRule->status !== 1) {
+                throw new Exception(trans('give_amount_rule_err', [], 'message'));
+            }
+            if ((int)$machineCategoryGiveRule->machine_category_id !== (int)$machine->cate_id) {
+                throw new Exception(trans('give_amount_rule_err', [], 'message'));
+            }
             /** @var PlayerGiftRecord $PlayerGiftRecord */
             $PlayerGiftRecordCount = PlayerGiftRecord::where('player_id', $player->id)
                 ->where('machine_category_give_rule_id', $ruleId)
