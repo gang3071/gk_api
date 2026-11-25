@@ -20,6 +20,7 @@ use support\Log;
 use support\Request;
 use support\Response;
 use Webman\RateLimiter\Annotation\RateLimiter;
+use Workerman\Timer;
 
 class MachineController
 {
@@ -308,26 +309,46 @@ class MachineController
         $lang = Str::replace('_', '-', $lang);
         $machineServices = MachineServices::createServices($machine, $lang);
 
+        // 异步触发机台主动上报（Song 钢珠协议支持 46c0 心跳，可主动查询 point/turn/score）
+        // 策略：先返回 Redis 缓存值，同时发送心跳让机台回报最新状态，下次请求即可读到新值
+        // 注：此接口仅处理 MACHINE_SOURCE_OFFLINE 机台；SongOfflineSlot 用 b7 协议，暂不处理
+        if ($machine->control_type === Machine::CONTROL_TYPE_SONG
+            && $machine->type == GameType::TYPE_STEEL_BALL) {
+            $refreshMachineId = (int) $machine->id;
+            Timer::add(0.001, static function () use ($refreshMachineId, $lang): void {
+                try {
+                    (new MachineClient())->executeOperation(
+                        $refreshMachineId,
+                        'send_raw_cmd',
+                        ['cmd' => '46c0', 'is_system' => 1],
+                        $lang
+                    );
+                } catch (\Throwable) {
+                    // 忽略，不影响已返回的响应
+                }
+            }, [], false);
+        }
+
         // 根据机台类型返回不同的状态
         if ($machine->type == GameType::TYPE_SLOT) {
             // 斯洛机：当前分数、自动状态、开奖状态
             return apiSuccessResponse('ok', [
                 'machineId' => $machine->id,
                 'type' => 'slot',
-                'point' => (int) ($machineServices->point ?? 0),           // 当前分数
-                'auto' => (int) ($machineServices->auto ?? 0),             // 自动状态（0=关闭，1=开启）
-                'rewardStatus' => (int) ($machineServices->reward_status ?? 0), // 开奖状态（0=未开奖，1=开奖中）
+                'point' => (int) ($machineServices->point ?? 0),
+                'auto' => (int) ($machineServices->auto ?? 0),
+                'rewardStatus' => (int) ($machineServices->reward_status ?? 0),
             ]);
         } else {
             // 钢珠机：当前分数、当前转数、当前得分、自动状态、开奖状态
             return apiSuccessResponse('ok', [
                 'machineId' => $machine->id,
                 'type' => 'jackpot',
-                'point' => (int) ($machineServices->point ?? 0),           // 当前分数
-                'turn' => (int) ($machineServices->turn ?? 0),           // 当前转数
-                'score' => (int) ($machineServices->score ?? 0),           // 当前得分（珠数）
-                'auto' => (int) ($machineServices->auto ?? 0),             // 自动状态（0=关闭，1=开启）
-                'rewardStatus' => (int) ($machineServices->reward_status ?? 0), // 开奖状态（0=未开奖，1=开奖中）
+                'point' => (int) ($machineServices->point ?? 0),
+                'turn' => (int) ($machineServices->turn ?? 0),
+                'score' => (int) ($machineServices->score ?? 0),
+                'auto' => (int) ($machineServices->auto ?? 0),
+                'rewardStatus' => (int) ($machineServices->reward_status ?? 0),
             ]);
         }
     }
