@@ -34,6 +34,7 @@ Route::group('/api', function () {
         // 個人資料
         Route::post('/me/profile', [\app\api\controller\web\PlayerController::class, 'profile']);
         Route::post('/me/bet-stats', [\app\api\controller\web\PlayerController::class, 'betStats']);
+        Route::post('/me/ball-stats', [\app\api\controller\web\PlayerController::class, 'ballStats']);
         // 门店洗分配置
         Route::post('/me/wash-point-setting', [\app\api\controller\v1\PlayerController::class, 'getWashPointSetting']);
         // 积分转赠（兼容旧路径）

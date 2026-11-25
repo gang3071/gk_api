@@ -11,6 +11,9 @@ use app\model\LotteryTicketVipConfig;
 use app\model\Machine;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
+use app\model\GameType;
+use app\model\Machine;
+use app\model\MachineLotteryRecord;
 use app\model\PlayerGameLog;
 use app\model\PlayerMoneyEditLog;
 use app\model\PlayerReverseWaterDetail;
@@ -258,6 +261,67 @@ class PlayerController
             'yesterdayScore' => self::formatAmount($yesterdayScore),
             'weekScore'      => self::formatAmount($weekScore),
             'monthScore'     => self::formatAmount($monthScore),
+        ]);
+    }
+
+    /**
+     * 钢珠得珠数统计（今日 / 昨日 / 本周 / 本月）
+     *
+     * 计分来源：machine_lottery_record.lottery_win（钢珠机台，type=2）。
+     * 时间边界与排行榜一致：每天 08:00 分界，周一 08:00 起算本周，每月 1 号 08:00 起算本月。
+     * 排除 rush 加成开奖（has_rush=0）及未中奖记录（lottery_win=0）。
+     *
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function ballStats(): Response
+    {
+        $player = checkPlayer();
+
+        $now          = Carbon::now();
+        $today8am     = Carbon::today()->setTime(8, 0, 0);
+        $yesterday8am = Carbon::yesterday()->setTime(8, 0, 0);
+        $tomorrow8am  = Carbon::tomorrow()->setTime(8, 0, 0);
+
+        if ($now->gte($today8am)) {
+            $todayStart     = $today8am->toDateTimeString();
+            $todayEnd       = $tomorrow8am->toDateTimeString();
+            $yesterdayStart = $yesterday8am->toDateTimeString();
+            $yesterdayEnd   = $today8am->toDateTimeString();
+        } else {
+            $todayStart     = $yesterday8am->toDateTimeString();
+            $todayEnd       = $today8am->toDateTimeString();
+            $yesterdayStart = Carbon::parse('-2 days')->setTime(8, 0, 0)->toDateTimeString();
+            $yesterdayEnd   = $yesterday8am->toDateTimeString();
+        }
+
+        $bizDate    = $now->gte($today8am) ? $today8am->copy() : $yesterday8am->copy();
+        $weekStart  = $bizDate->copy()->startOfWeek()->setTime(8, 0, 0)->toDateTimeString();
+        $weekEnd    = Carbon::parse($weekStart)->addWeek()->toDateTimeString();
+        $monthStart = $bizDate->copy()->startOfMonth()->setTime(8, 0, 0)->toDateTimeString();
+        $monthEnd   = Carbon::parse($monthStart)->addMonth()->toDateTimeString();
+
+        // 仅统计钢珠机台（type=2）的中奖珠数
+        $steelBallMachineIds = Machine::withTrashed()
+            ->where('type', GameType::TYPE_STEEL_BALL)
+            ->pluck('id');
+
+        $base = MachineLotteryRecord::query()
+            ->where('player_id', $player->id)
+            ->where('has_rush', 0)
+            ->where('lottery_win', '!=', 0)
+            ->whereIn('machine_id', $steelBallMachineIds);
+
+        $todayBalls     = (int) (clone $base)->where('created_at', '>=', $todayStart)->where('created_at', '<', $todayEnd)->sum('lottery_win');
+        $yesterdayBalls = (int) (clone $base)->where('created_at', '>=', $yesterdayStart)->where('created_at', '<', $yesterdayEnd)->sum('lottery_win');
+        $weekBalls      = (int) (clone $base)->where('created_at', '>=', $weekStart)->where('created_at', '<', $weekEnd)->sum('lottery_win');
+        $monthBalls     = (int) (clone $base)->where('created_at', '>=', $monthStart)->where('created_at', '<', $monthEnd)->sum('lottery_win');
+
+        return apiSuccessResponse('success', [
+            'todayBalls'     => $todayBalls,
+            'yesterdayBalls' => $yesterdayBalls,
+            'weekBalls'      => $weekBalls,
+            'monthBalls'     => $monthBalls,
         ]);
     }
 
