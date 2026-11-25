@@ -562,6 +562,12 @@ Route::group('/chuzhi',function(){
     // 储值机领取反水（复用 claimReverseWater）
     Route::post('/claimReverseWater', [\app\api\controller\v1\PlayerController::class, 'claimReverseWater']);
 
+    // ========== 推廣紅利 ==========
+    // 储值机查询推廣紅利（复用 childrenCashback）
+    Route::post('/children/cashback', [\app\api\controller\v1\PlayerController::class, 'childrenCashback']);
+    // 储值机领取推廣紅利（复用 childrenCashbackClaim）
+    Route::post('/children/cashback/claim', [\app\api\controller\v1\PlayerController::class, 'childrenCashbackClaim']);
+
     // ========== 洗分相关 ==========
     // 获取洗分配置（复用 getWashPointSetting）
     Route::post('/get-wash-point-setting', [\app\api\controller\v1\PlayerController::class, 'getWashPointSetting']);

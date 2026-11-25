@@ -3975,6 +3975,10 @@ class PlayerController
 
     /**
      * 推廣紅利
+     *
+     * 储值机入口（/chuzhi/children/cashback），逻辑与 web\PlayerController 同名方法一致，
+     * 仅响应包装改为 json*（与其它储值机接口口径一致）。
+     *
      * @return Response
      * @throws PlayerCheckException
      */
@@ -4000,7 +4004,7 @@ class PlayerController
             $claimable = floor($baseWager / $claimUnit) * $claimUnit;
         }
 
-        return apiSuccessResponse('success', [
+        return jsonSuccessResponse('success', [
             'claimUnit' => $claimUnit,
             'baseWager' => $baseWager,
             'claimable' => self::formatAmount($claimable)
@@ -4009,6 +4013,10 @@ class PlayerController
 
     /**
      * 領取推廣紅利
+     *
+     * 储值机入口（/chuzhi/children/cashback/claim），逻辑与 web\PlayerController 同名方法一致，
+     * 仅响应包装改为 json*（与其它储值机接口口径一致）。
+     *
      * @param Request $request
      * @return Response
      * @throws PlayerCheckException|Exception
@@ -4027,14 +4035,14 @@ class PlayerController
 
         if (! $this->reserveIdempotent($requestId, $operation, $player->id)) {
             $response = $this->checkIdempotent($requestId, $operation, $player->id);
-            return $response ?? apiFailResponse(trans('request_processing', [], 'message'));
+            return $response ?? jsonFailResponse(trans('request_processing', [], 'message'));
         }
 
         // ---------------------------------------- 流程檢查 ----------------------------------------
         $pendingAmount = $player->player_extend->pending_children_cashback_amount ?? 0;
 
         if ($pendingAmount <= 0) {
-            $response = apiSuccessResponse('success');
+            $response = jsonSuccessResponse('success');
             $this->saveIdempotent($requestId, $response, $operation, $player->id);
 
             return $response;
@@ -4054,14 +4062,14 @@ class PlayerController
 
         if ($minAmount <= 0) {
             $this->releaseIdempotent($requestId);
-            return apiFailResponse(trans('reverse_water_min_not_set', [], 'message'));
+            return jsonFailResponse(trans('reverse_water_min_not_set', [], 'message'));
         }
 
         $claimableAmount = floor($pendingAmount / $minAmount) * $minAmount;
 
         if ($claimableAmount <= 0) {
             $this->releaseIdempotent($requestId);
-            return apiFailResponse(trans('reverse_water_insufficient', [], 'message'));
+            return jsonFailResponse(trans('reverse_water_insufficient', [], 'message'));
         }
 
         Db::beginTransaction();
@@ -4105,7 +4113,7 @@ class PlayerController
 
             DB::commit();
 
-            $response = apiSuccessResponse('success', [
+            $response = jsonSuccessResponse('success', [
                 'walletBalance' => $afterGameAmount,
                 'remaining' => self::formatAmount($pendingAmount - $claimableAmount)
             ]);
@@ -4117,7 +4125,7 @@ class PlayerController
             DB::rollBack();
             $this->releaseIdempotent($requestId);
 
-            return apiFailResponse(trans('system_error', [], 'message'));
+            return jsonFailResponse(trans('system_error', [], 'message'));
         }
     }
 
