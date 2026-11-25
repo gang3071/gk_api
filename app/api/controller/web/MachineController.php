@@ -621,6 +621,9 @@ class MachineController
                 return apiFailResponse(trans('machine_not_found', [], 'message'));
             }
 
+            $storeAdmin = \app\model\AdminUser::query()->find($player->store_admin_id);
+            $givePointEnabled = (bool)($storeAdmin?->give_point_enabled ?? false);
+
             $rules = MachineCategoryGiveRule::where('machine_category_id', $machine->cate_id)
                 ->where('status', 1)
                 ->get();
@@ -644,7 +647,10 @@ class MachineController
                 ];
             });
 
-            return apiSuccessResponse('ok', ['list' => $list]);
+            return apiSuccessResponse('ok', [
+                'give_point_enabled' => $givePointEnabled,
+                'list'               => $list,
+            ]);
         } catch (Exception $e) {
             Log::error('[getGiveRules] Error', [
                 'machine_id' => $machineId,

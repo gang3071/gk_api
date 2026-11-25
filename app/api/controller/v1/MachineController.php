@@ -2111,7 +2111,9 @@ class MachineController
             ];
         }
         $givePoint = getGivePoints($player->id, $machine->id);
-        
+        $storeAdmin = \app\model\AdminUser::query()->find($player->store_admin_id);
+        $givePointEnabled = (bool)($storeAdmin?->give_point_enabled ?? false);
+
         return jsonSuccessResponse('success', [
             'machineCategory' => [
                 'id' => $machine->machineCategory->id,
@@ -2119,7 +2121,8 @@ class MachineController
                 'name' => $machine->machineCategory->name,
                 'keep_minutes' => $machine->machineCategory->keep_minutes,
                 'if_se_give_point' => (!empty($givePoint) && isset($givePoint['gift_point']) && $givePoint['gift_point'] > 0),
-                'is_allow_client_give_point' => isAllowClientGivePoint($machine, $player),
+                'give_point_enabled' => $givePointEnabled,
+                'is_allow_client_give_point' => $givePointEnabled && isAllowClientGivePoint($machine, $player),
                 'machine_category_give_rule' => $giveRuleArr,
             ]
         ]);
