@@ -154,6 +154,7 @@ class LotteryController
                 'amount',
                 'machine_code',
                 'machine_name',
+                'win_condition',
                 'created_at',
                 'uuid',
                 'machine_id'
@@ -169,6 +170,8 @@ class LotteryController
             $storeName = $item->player?->storeAdmin?->nickname ?? '';
             $playerNameWithStore = $item->player_name . ($storeName ? '/' . $storeName : '');
 
+            $isMachine = in_array($item->game_type, [GameType::TYPE_SLOT, GameType::TYPE_STEEL_BALL]);
+
             $list[] = [
                 'id' => $item->id,
                 'player_name' => $playerNameWithStore,
@@ -176,6 +179,8 @@ class LotteryController
                 'lottery_name' => $item->lottery_name,
                 'game_type' => $item->game_type,
                 'machine_code' => $item->machine_code ?? '',
+                'machine_name' => $isMachine ? ($item->machine_name ?? '') : null,
+                'win_condition' => $isMachine ? (int) ($item->win_condition ?? 0) : null,
                 'amount' => $item->amount,
                 'created_at' => date('Y-m-d H:i:s', strtotime($item->created_at)),
                 'uuid' => $item->uuid,
