@@ -568,6 +568,16 @@ Route::group('/chuzhi',function(){
     // 储值机领取推廣紅利（复用 childrenCashbackClaim）
     Route::post('/children/cashback/claim', [\app\api\controller\v1\PlayerController::class, 'childrenCashbackClaim']);
 
+    // ========== 修改密码 ==========
+    // 储值机修改密码（复用 updatePassword）
+    Route::post('/update-password', [\app\api\controller\v1\PlayerController::class, 'updatePassword']);
+
+    // ========== 积分转赠 ==========
+    // 储值机搜索赠送对象（复用 searchTransferTarget）
+    Route::get('/players/search', [\app\api\controller\web\PlayerController::class, 'searchTransferTarget']);
+    // 储值机赠送积分（复用 transferPoints）
+    Route::post('/points/gift', [\app\api\controller\web\PlayerController::class, 'transferPoints']);
+
     // ========== 洗分相关 ==========
     // 获取洗分配置（复用 getWashPointSetting）
     Route::post('/get-wash-point-setting', [\app\api\controller\v1\PlayerController::class, 'getWashPointSetting']);
