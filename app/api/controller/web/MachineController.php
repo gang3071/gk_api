@@ -309,22 +309,26 @@ class MachineController
         $lang = Str::replace('_', '-', $lang);
         $machineServices = MachineServices::createServices($machine, $lang);
 
-        // 异步触发机台主动上报（Song 钢珠协议支持 46c0 心跳，可主动查询 point/turn/score）
-        // 策略：先返回 Redis 缓存值，同时发送心跳让机台回报最新状态，下次请求即可读到新值
+        // 异步触发机台主动上报（Song 钢珠专用读取指令）
+        // 策略：先返回 Redis 缓存值，同时主动查询机台最新数据，gk_work 收到回复后写入 Redis，下次请求即可读到新值
         // 注：此接口仅处理 MACHINE_SOURCE_OFFLINE 机台；SongOfflineSlot 用 b7 协议，暂不处理
         if ($machine->control_type === Machine::CONTROL_TYPE_SONG
             && $machine->type == GameType::TYPE_STEEL_BALL) {
             $refreshMachineId = (int) $machine->id;
             Timer::add(0.001, static function () use ($refreshMachineId, $lang): void {
-                try {
-                    (new MachineClient())->executeOperation(
-                        $refreshMachineId,
-                        'send_raw_cmd',
-                        ['cmd' => '46c0', 'is_system' => 1],
-                        $lang
-                    );
-                } catch (\Throwable) {
-                    // 忽略，不影响已返回的响应
+                $client = new MachineClient();
+                // 46cea2=读分数, 46cea5=读珠数, 46cea6=读转数（依次发送，各自触发机台回报）
+                foreach (['46cea2', '46cea5', '46cea6'] as $cmd) {
+                    try {
+                        $client->executeOperation(
+                            $refreshMachineId,
+                            'send_raw_cmd',
+                            ['cmd' => $cmd, 'is_system' => 1],
+                            $lang
+                        );
+                    } catch (\Throwable) {
+                        // 单条失败不影响后续指令和已返回的响应
+                    }
                 }
             }, [], false);
         }
