@@ -309,28 +309,35 @@ class MachineController
         $lang = Str::replace('_', '-', $lang);
         $machineServices = MachineServices::createServices($machine, $lang);
 
-        // 异步触发机台主动上报（Song 钢珠专用读取指令）
+        // 异步触发机台主动上报（钢珠机专用读取指令）
         // 策略：先返回 Redis 缓存值，同时主动查询机台最新数据，gk_work 收到回复后写入 Redis，下次请求即可读到新值
-        // 注：此接口仅处理 MACHINE_SOURCE_OFFLINE 机台；SongOfflineSlot 用 b7 协议，暂不处理
-        if ($machine->control_type === Machine::CONTROL_TYPE_SONG
-            && $machine->type == GameType::TYPE_STEEL_BALL) {
-            $refreshMachineId = (int) $machine->id;
-            Timer::add(0.001, static function () use ($refreshMachineId, $lang): void {
-                $client = new MachineClient();
-                // 46cea2=读分数, 46cea5=读珠数, 46cea6=读转数（依次发送，各自触发机台回报）
-                foreach (['46cea2', '46cea5', '46cea6'] as $cmd) {
-                    try {
-                        $client->executeOperation(
-                            $refreshMachineId,
-                            'send_raw_cmd',
-                            ['cmd' => $cmd, 'is_system' => 1],
-                            $lang
-                        );
-                    } catch (\Throwable) {
-                        // 单条失败不影响后续指令和已返回的响应
+        // Song 钢珠：46cea2=读分数, 46cea5=读珠数, 46cea6=读转数
+        // 双美钢珠：21=读分数, 22=读珠数, 23=读转数（sendCmd 自动补 A2 前缀，此处传不含前缀的值）
+        if ($machine->type == GameType::TYPE_STEEL_BALL) {
+            $readCmds = match ($machine->control_type) {
+                Machine::CONTROL_TYPE_SONG => ['46cea2', '46cea5', '46cea6'],
+                Machine::CONTROL_TYPE_MEI  => ['21', '22', '23'],
+                default => [],
+            };
+
+            if (!empty($readCmds)) {
+                $refreshMachineId = (int) $machine->id;
+                Timer::add(0.001, static function () use ($refreshMachineId, $readCmds, $lang): void {
+                    $client = new MachineClient();
+                    foreach ($readCmds as $cmd) {
+                        try {
+                            $client->executeOperation(
+                                $refreshMachineId,
+                                'send_raw_cmd',
+                                ['cmd' => $cmd, 'is_system' => 1],
+                                $lang
+                            );
+                        } catch (\Throwable) {
+                            // 单条失败不影响后续指令和已返回的响应
+                        }
                     }
-                }
-            }, [], false);
+                }, [], false);
+            }
         }
 
         // 根据机台类型返回不同的状态
