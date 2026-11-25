@@ -95,6 +95,8 @@ Route::group('/api', function () {
         Route::post('/lottery-record-list', [\app\api\controller\web\LotteryController::class, 'lotteryRecordList']);
         // 得珠记录（机台大赏中奖记录）
         Route::post('/machine-lottery-records', [\app\api\controller\v1\MachineLotteryRecordController::class, 'records']);
+        // 游戏记录
+        Route::post('/game-record', [\app\api\controller\v1\PlayerController::class, 'gameRecord']);
 
         // ========== 排行榜 ==========
         // 排行榜整頁（各店週排行 + 金樽週/月 + 鋼珠榜 + VIP 排行）
