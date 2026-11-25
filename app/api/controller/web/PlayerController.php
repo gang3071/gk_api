@@ -69,92 +69,6 @@ class PlayerController
             ];
         }
 
-        // ---------------------------------------- 打分相關 ----------------------------------------
-        // 以每天 08:00 为分界点，与 playerInfo 保持一致
-        $now = Carbon::now();
-        $today8am = Carbon::today()->setTime(8, 0, 0);
-        $yesterday8am = Carbon::yesterday()->setTime(8, 0, 0);
-        $tomorrow8am = Carbon::tomorrow()->setTime(8, 0, 0);
-
-        if ($now->gte($today8am)) {
-            $todayStart     = $today8am->toDateTimeString();
-            $todayEnd       = $tomorrow8am->toDateTimeString();
-            $yesterdayStart = $yesterday8am->toDateTimeString();
-            $yesterdayEnd   = $today8am->toDateTimeString();
-        } else {
-            $todayStart     = $yesterday8am->toDateTimeString();
-            $todayEnd       = $today8am->toDateTimeString();
-            $yesterdayStart = Carbon::parse('-2 days')->setTime(8, 0, 0)->toDateTimeString();
-            $yesterdayEnd   = $yesterday8am->toDateTimeString();
-        }
-
-        // 线上游戏打码量（PlayGameRecord.bet）
-        $todayScore = PlayGameRecord::query()
-            ->where('player_id', $player->id)
-            ->where('created_at', '>=', $todayStart)
-            ->where('created_at', '<', $todayEnd)
-            ->sum('bet');
-
-        $yesterdayScore = PlayGameRecord::query()
-            ->where('player_id', $player->id)
-            ->where('created_at', '>=', $yesterdayStart)
-            ->where('created_at', '<', $yesterdayEnd)
-            ->sum('bet');
-
-        // 实体机台打码量（PlayerGameLog.chip_amount）
-        $todayMachineBet = PlayerGameLog::query()
-            ->where('player_id', $player->id)
-            ->where('created_at', '>=', $todayStart)
-            ->where('created_at', '<', $todayEnd)
-            ->sum('chip_amount');
-
-        $yesterdayMachineBet = PlayerGameLog::query()
-            ->where('player_id', $player->id)
-            ->where('created_at', '>=', $yesterdayStart)
-            ->where('created_at', '<', $yesterdayEnd)
-            ->sum('chip_amount');
-
-        $todayScore     = (float) bcadd((string)$todayScore, (string)$todayMachineBet, 2);
-        $yesterdayScore = (float) bcadd((string)$yesterdayScore, (string)$yesterdayMachineBet, 2);
-
-        // 本周/本月打码量区间（与 playerInfo 一致：周一08:00 ~ 下周一08:00、每月1号08:00 ~ 下月1号08:00）
-        // 归属按「业务日」走：凌晨08:00前仍算前一天，周/月跟着该业务日所属周期
-        $bizDate = $now->gte($today8am) ? $today8am->copy() : $yesterday8am->copy();
-        $weekStart = $bizDate->copy()->startOfWeek()->setTime(8, 0, 0);
-        $weekEnd = $weekStart->copy()->addWeek();
-        $monthStart = $bizDate->copy()->startOfMonth()->setTime(8, 0, 0);
-        $monthEnd = $monthStart->copy()->addMonth();
-
-        // 本周线上游戏打码量（PlayGameRecord.bet）
-        $weekScore = PlayGameRecord::query()
-            ->where('player_id', $player->id)
-            ->where('created_at', '>=', $weekStart->toDateTimeString())
-            ->where('created_at', '<', $weekEnd->toDateTimeString())
-            ->sum('bet');
-
-        // 本月线上游戏打码量（PlayGameRecord.bet）
-        $monthScore = PlayGameRecord::query()
-            ->where('player_id', $player->id)
-            ->where('created_at', '>=', $monthStart->toDateTimeString())
-            ->where('created_at', '<', $monthEnd->toDateTimeString())
-            ->sum('bet');
-
-        // 本周实体机台打码量（PlayerGameLog.chip_amount）
-        $weekMachineBet = PlayerGameLog::query()
-            ->where('player_id', $player->id)
-            ->where('created_at', '>=', $weekStart->toDateTimeString())
-            ->where('created_at', '<', $weekEnd->toDateTimeString())
-            ->sum('chip_amount');
-
-        // 本月实体机台打码量（PlayerGameLog.chip_amount）
-        $monthMachineBet = PlayerGameLog::query()
-            ->where('player_id', $player->id)
-            ->where('created_at', '>=', $monthStart->toDateTimeString())
-            ->where('created_at', '<', $monthEnd->toDateTimeString())
-            ->sum('chip_amount');
-
-        $weekScore  = (float) bcadd((string)$weekScore, (string)$weekMachineBet, 2);
-        $monthScore = (float) bcadd((string)$monthScore, (string)$monthMachineBet, 2);
         // ---------------------------------------- VIP 相關 ----------------------------------------
         $vipLevel = $player->vipLevel()->first();
         $currentPeriod = $player->currentVipPeriod()->first();
@@ -252,10 +166,6 @@ class PlayerController
                 'nickname' => $player->name,
                 'avatar' => $player->avatar,
                 'storeName' => $storeName,
-                'todayScore' => self::formatAmount($todayScore),
-                'yesterdayScore' => self::formatAmount($yesterdayScore),
-                'weekScore' => self::formatAmount($weekScore),   // 本周打码量（周一08:00起）
-                'monthScore' => self::formatAmount($monthScore), // 本月打码量（每月1号08:00起）
                 'createdAt' => $player->created_at,
                 'available_points' => (int)\app\service\PlayerPointsService::getPlayerPoints($player->id)['available_points'],
             ],
@@ -278,6 +188,76 @@ class PlayerController
                 'pending_minutes'      => (int) ($pendingMinutes ?? 0),
                 'gift_keeping_minutes' => (int) ($giftKeepingMinutes ?? 0),
             ],
+        ]);
+    }
+
+    /**
+     * 打码量统计（今日 / 昨日 / 本周 / 本月）
+     *
+     * 以每天 08:00 为业务日分界点，线上游戏（PlayGameRecord.bet）
+     * 与实体机台（PlayerGameLog.chip_amount）合并统计。
+     *
+     * @return Response
+     * @throws PlayerCheckException
+     */
+    public function betStats(): Response
+    {
+        $player = checkPlayer();
+
+        $now          = Carbon::now();
+        $today8am     = Carbon::today()->setTime(8, 0, 0);
+        $yesterday8am = Carbon::yesterday()->setTime(8, 0, 0);
+        $tomorrow8am  = Carbon::tomorrow()->setTime(8, 0, 0);
+
+        if ($now->gte($today8am)) {
+            $todayStart     = $today8am->toDateTimeString();
+            $todayEnd       = $tomorrow8am->toDateTimeString();
+            $yesterdayStart = $yesterday8am->toDateTimeString();
+            $yesterdayEnd   = $today8am->toDateTimeString();
+        } else {
+            $todayStart     = $yesterday8am->toDateTimeString();
+            $todayEnd       = $today8am->toDateTimeString();
+            $yesterdayStart = Carbon::parse('-2 days')->setTime(8, 0, 0)->toDateTimeString();
+            $yesterdayEnd   = $yesterday8am->toDateTimeString();
+        }
+
+        $bizDate    = $now->gte($today8am) ? $today8am->copy() : $yesterday8am->copy();
+        $weekStart  = $bizDate->copy()->startOfWeek()->setTime(8, 0, 0);
+        $weekEnd    = $weekStart->copy()->addWeek();
+        $monthStart = $bizDate->copy()->startOfMonth()->setTime(8, 0, 0);
+        $monthEnd   = $monthStart->copy()->addMonth();
+
+        $pid = $player->id;
+
+        $todayScore = (float) bcadd(
+            (string) PlayGameRecord::query()->where('player_id', $pid)->where('created_at', '>=', $todayStart)->where('created_at', '<', $todayEnd)->sum('bet'),
+            (string) PlayerGameLog::query()->where('player_id', $pid)->where('created_at', '>=', $todayStart)->where('created_at', '<', $todayEnd)->sum('chip_amount'),
+            2
+        );
+
+        $yesterdayScore = (float) bcadd(
+            (string) PlayGameRecord::query()->where('player_id', $pid)->where('created_at', '>=', $yesterdayStart)->where('created_at', '<', $yesterdayEnd)->sum('bet'),
+            (string) PlayerGameLog::query()->where('player_id', $pid)->where('created_at', '>=', $yesterdayStart)->where('created_at', '<', $yesterdayEnd)->sum('chip_amount'),
+            2
+        );
+
+        $weekScore = (float) bcadd(
+            (string) PlayGameRecord::query()->where('player_id', $pid)->where('created_at', '>=', $weekStart)->where('created_at', '<', $weekEnd)->sum('bet'),
+            (string) PlayerGameLog::query()->where('player_id', $pid)->where('created_at', '>=', $weekStart)->where('created_at', '<', $weekEnd)->sum('chip_amount'),
+            2
+        );
+
+        $monthScore = (float) bcadd(
+            (string) PlayGameRecord::query()->where('player_id', $pid)->where('created_at', '>=', $monthStart)->where('created_at', '<', $monthEnd)->sum('bet'),
+            (string) PlayerGameLog::query()->where('player_id', $pid)->where('created_at', '>=', $monthStart)->where('created_at', '<', $monthEnd)->sum('chip_amount'),
+            2
+        );
+
+        return apiSuccessResponse('success', [
+            'todayScore'     => self::formatAmount($todayScore),
+            'yesterdayScore' => self::formatAmount($yesterdayScore),
+            'weekScore'      => self::formatAmount($weekScore),
+            'monthScore'     => self::formatAmount($monthScore),
         ]);
     }
 
