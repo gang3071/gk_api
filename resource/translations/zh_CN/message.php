@@ -274,6 +274,7 @@ return [
     'fish_machine_must_stop_auto' => '当前处于自动状态中,请先停止自动再进行操作',
     'give_amount_rule_err' => '开分赠点：规则匹配失败',
     'give_amount_condition_limit' => '开分赠点：已超过每日参与数',
+    'give_point_disabled' => '开分赠点功能已关闭，请联系店家',
     'give_rule_id' => '开分赠点规则',
     'give_rule_not_found' => '未配置增点',
     'no_open_recode_err' => '无上分记录',

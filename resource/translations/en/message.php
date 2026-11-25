@@ -273,6 +273,7 @@ return [
     'fish_machine_must_stop_auto' => 'Currently in the automatic state, please stop automatic before proceeding',
     'give_amount_rule_err' => 'Open bonus points: Rule matching failed',
     'give_amount_condition_limit' => 'Open bonus points: The number of daily participations has been exceeded',
+    'give_point_disabled' => 'Gift points feature is disabled, please contact the store',
     'give_rule_id' => 'Rules for giving points when opening points',
     'give_rule_not_found' => 'No additional points configured',
     'no_open_recode_err' => 'No top score record',

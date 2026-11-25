@@ -274,6 +274,7 @@ return [
     'fish_machine_must_stop_auto' => '目前處於自動狀態中,請先停止自動再進行操作',
     'give_amount_rule_err' => '開分贈點：規則符合失敗',
     'give_amount_condition_limit' => '開分贈點：已超過每日參與數',
+    'give_point_disabled' => '開分贈點功能已關閉，請聯繫店家',
     'give_rule_id' => '開分贈點規則',
     'give_rule_not_found' => '未配置增點',
     'no_open_recode_err' => '無開分紀錄',

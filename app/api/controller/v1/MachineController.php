@@ -1032,6 +1032,12 @@ class MachineController
 
         // 1. 开赠规则校验
         if ($ruleId) {
+            // 检查门店是否开启了开分赠点功能
+            $storeAdmin = \app\model\AdminUser::query()->find($player->store_admin_id);
+            if ($storeAdmin && !($storeAdmin->give_point_enabled ?? false)) {
+                throw new Exception(trans('give_point_disabled', [], 'message'));
+            }
+
             /**@var MachineCategoryGiveRule $machineCategoryGiveRule */
             $machineCategoryGiveRule = MachineCategoryGiveRule::where('id', $ruleId)->first();
             if (empty($machineCategoryGiveRule)) {

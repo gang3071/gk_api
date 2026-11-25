@@ -124,6 +124,7 @@ class AdminUser extends Model
         'profit_amount' => 'float',
         'experience_voucher_enabled' => 'boolean',
         'welfare_voucher_enabled' => 'boolean',
+        'give_point_enabled' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',

@@ -273,6 +273,7 @@ return [
     'fish_machine_must_stop_auto' => '現在自動状態です。続行する前に自動を停止してください',
     'give_amount_rule_err' => 'オープンボーナスポイント: ルールの照合に失敗しました',
     'give_amount_condition_limit' => 'オープンボーナスポイント: 毎日の参加数を超えました',
+    'give_point_disabled' => 'ポイント付与機能は無効です。店舗にお問い合わせください',
     'give_rule_id' => 'ポイント開設時のポイント付与ルール',
     'give_rule_not_found' => '追加のポイントは設定されていません',
     'no_open_recode_err' => 'トップスコア記録がありません',
