@@ -12,7 +12,6 @@ use app\model\Machine;
 use app\model\Player;
 use app\model\PlayerDeliveryRecord;
 use app\model\GameType;
-use app\model\Machine;
 use app\model\MachineLotteryRecord;
 use app\model\PlayerGameLog;
 use app\model\PlayerMoneyEditLog;
