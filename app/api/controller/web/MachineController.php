@@ -309,14 +309,13 @@ class MachineController
         $lang = Str::replace('_', '-', $lang);
         $machineServices = MachineServices::createServices($machine, $lang);
 
-        // 异步触发机台主动上报（钢珠机专用读取指令）
+        // 异步触发机台主动上报（Song 钢珠专用读取指令）
         // 策略：先返回 Redis 缓存值，同时主动查询机台最新数据，gk_work 收到回复后写入 Redis，下次请求即可读到新值
         // Song 钢珠：46cea2=读分数, 46cea5=读珠数, 46cea6=读转数
-        // 双美钢珠：21=读分数, 22=读珠数, 23=读转数（sendCmd 自动补 A2 前缀，此处传不含前缀的值）
+        // 双美钢珠不走此逻辑（硬件不支持按需查询，分数/转数靠心跳被动更新）
         if ($machine->type == GameType::TYPE_STEEL_BALL) {
             $readCmds = match ($machine->control_type) {
                 Machine::CONTROL_TYPE_SONG => ['46cea2', '46cea5', '46cea6'],
-                Machine::CONTROL_TYPE_MEI  => ['21', '22', '23'],
                 default => [],
             };
 
