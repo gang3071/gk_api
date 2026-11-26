@@ -20,7 +20,6 @@ use support\Log;
 use support\Request;
 use support\Response;
 use Webman\RateLimiter\Annotation\RateLimiter;
-use Workerman\Timer;
 
 class MachineController
 {
@@ -309,56 +308,26 @@ class MachineController
         $lang = Str::replace('_', '-', $lang);
         $machineServices = MachineServices::createServices($machine, $lang);
 
-        // 异步触发机台主动上报（Song 钢珠专用读取指令）
-        // 策略：先返回 Redis 缓存值，同时主动查询机台最新数据，gk_work 收到回复后写入 Redis，下次请求即可读到新值
-        // Song 钢珠：46cea2=读分数, 46cea5=读珠数, 46cea6=读转数
-        // 双美钢珠不走此逻辑（硬件不支持按需查询，分数/转数靠心跳被动更新）
-        if ($machine->type == GameType::TYPE_STEEL_BALL) {
-            $readCmds = match ($machine->control_type) {
-                Machine::CONTROL_TYPE_SONG => ['46cea2', '46cea5', '46cea6'],
-                default => [],
-            };
-
-            if (!empty($readCmds)) {
-                $refreshMachineId = (int) $machine->id;
-                Timer::add(0.001, static function () use ($refreshMachineId, $readCmds, $lang): void {
-                    $client = new MachineClient();
-                    foreach ($readCmds as $cmd) {
-                        try {
-                            $client->executeOperation(
-                                $refreshMachineId,
-                                'send_raw_cmd',
-                                ['cmd' => $cmd, 'is_system' => 1],
-                                $lang
-                            );
-                        } catch (\Throwable) {
-                            // 单条失败不影响后续指令和已返回的响应
-                        }
-                    }
-                }, [], false);
-            }
-        }
-
         // 根据机台类型返回不同的状态
         if ($machine->type == GameType::TYPE_SLOT) {
             // 斯洛机：当前分数、自动状态、开奖状态
             return apiSuccessResponse('ok', [
                 'machineId' => $machine->id,
                 'type' => 'slot',
-                'point' => (int) ($machineServices->point ?? 0),
-                'auto' => (int) ($machineServices->auto ?? 0),
-                'rewardStatus' => (int) ($machineServices->reward_status ?? 0),
+                'point' => (int) ($machineServices->point ?? 0),           // 当前分数
+                'auto' => (int) ($machineServices->auto ?? 0),             // 自动状态（0=关闭，1=开启）
+                'rewardStatus' => (int) ($machineServices->reward_status ?? 0), // 开奖状态（0=未开奖，1=开奖中）
             ]);
         } else {
             // 钢珠机：当前分数、当前转数、当前得分、自动状态、开奖状态
             return apiSuccessResponse('ok', [
                 'machineId' => $machine->id,
                 'type' => 'jackpot',
-                'point' => (int) ($machineServices->point ?? 0),
-                'turn' => (int) ($machineServices->turn ?? 0),
-                'score' => (int) ($machineServices->score ?? 0),
-                'auto' => (int) ($machineServices->auto ?? 0),
-                'rewardStatus' => (int) ($machineServices->reward_status ?? 0),
+                'point' => (int) ($machineServices->point ?? 0),           // 当前分数
+                'turn' => (int) ($machineServices->turn ?? 0),           // 当前转数
+                'score' => (int) ($machineServices->score ?? 0),           // 当前得分（珠数）
+                'auto' => (int) ($machineServices->auto ?? 0),             // 自动状态（0=关闭，1=开启）
+                'rewardStatus' => (int) ($machineServices->reward_status ?? 0), // 开奖状态（0=未开奖，1=开奖中）
             ]);
         }
     }
