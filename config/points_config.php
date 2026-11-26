@@ -29,6 +29,14 @@ return [
     // Redis 积分 Hash 的缓存过期时间（秒），过期后从 MySQL 重新加载
     'redis_ttl' => 86400 * 365,
 
+    /**
+     * 是否启用每日汇总
+     *
+     * true = 每天凌晨自动汇总前一天的积分
+     * false = 仅实时累加，不生成汇总记录
+     */
+    'daily_summary_enabled' => env('POINTS_DAILY_SUMMARY', true),
+
     // 积分变动推送开关及阈值（变动量 >= threshold 才推送）
     'push_enabled'   => env('POINTS_PUSH_ENABLED', true),
     'push_threshold' => env('POINTS_PUSH_THRESHOLD', 10),
