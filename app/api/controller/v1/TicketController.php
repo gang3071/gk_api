@@ -333,8 +333,16 @@ class TicketController
                 DB::rollBack();
             }
 
-            // 事务失败，回退已扣除的余额
-            WalletService::atomicIncrement($player->id, $washAmount);
+            // 事务失败，回退已扣除的余额（回补本身可能因 Redis 不可用而抛出，需独立捕获）
+            try {
+                WalletService::atomicIncrement($player->id, $washAmount);
+            } catch (\Throwable $refundEx) {
+                Log::critical('redeemTicket: 余额回补失败，请人工处理', [
+                    'player_id'   => $player->id,
+                    'wash_amount' => $washAmount,
+                    'error'       => $refundEx->getMessage(),
+                ]);
+            }
 
             // 释放占位（允许重试）
             $this->releaseIdempotent($requestId);
@@ -353,8 +361,16 @@ class TicketController
                 DB::rollBack();
             }
 
-            // 事务失败，回退已扣除的余额
-            WalletService::atomicIncrement($player->id, $washAmount);
+            // 事务失败，回退已扣除的余额（回补本身可能因 Redis 不可用而抛出，需独立捕获）
+            try {
+                WalletService::atomicIncrement($player->id, $washAmount);
+            } catch (\Throwable $refundEx) {
+                Log::critical('redeemTicket: 余额回补失败，请人工处理', [
+                    'player_id'   => $player->id,
+                    'wash_amount' => $washAmount,
+                    'error'       => $refundEx->getMessage(),
+                ]);
+            }
 
             // 释放占位（允许重试）
             $this->releaseIdempotent($requestId);
@@ -812,7 +828,7 @@ class TicketController
             if (!empty($expConfig['enabled'])) {
                 $score = $expConfig['score'] ?? 1000;
                 $dailyLimit = $expConfig['daily_limit'] ?? 1;
-                $totalLimit = $expConfig['total_limit'] ?? 6;
+                $totalLimit = $expConfig['total_limit'] ?? 5;
                 $registerAfter = $expConfig['register_after'] ?? '2026-07-01 00:00:00';
 
                 $isNewUser = $player->created_at >= $registerAfter;
@@ -1131,19 +1147,14 @@ class TicketController
                     return jsonFailResponse(trans('voucher_welfare_higher_tier', ['{score}' => $maxQualifiedScore], 'message'));
                 }
 
-                // 检查今日是否已领取过昨日规则的任何档位
+                // 检查今日是否已领取过昨日规则的任何档位（DB 层过滤，避免 null extra_data 被跳过）
                 $yesterdayClaimedCount = TicketRecord::query()
                     ->where('player_id', $player->id)
                     ->where('ticket_type', TicketRecord::TYPE_WELFARE)
                     ->where('created_at', '>=', $todayStart)
                     ->where('created_at', '<', $todayEnd)
                     ->whereNull('deleted_at')
-                    ->get()
-                    ->filter(function ($record) {
-                        if (empty($record->extra_data)) return false;
-                        $extraData = is_array($record->extra_data) ? $record->extra_data : json_decode($record->extra_data, true);
-                        return isset($extraData['rule_type']) && $extraData['rule_type'] === 'yesterday';
-                    })
+                    ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(extra_data, '$.rule_type')) = 'yesterday'")
                     ->count();
 
                 if ($yesterdayClaimedCount > 0) {

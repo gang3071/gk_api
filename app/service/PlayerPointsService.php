@@ -1775,7 +1775,17 @@ LUA;
             $redis = Redis::connection()->client();
             $key = 'gk_api:points_batch:' . $batchId;
 
-            return $redis->exists($key) > 0;
+            // 原子性占位（SET NX EX）：写入成功表示首次处理（非重复），写入失败表示 key 已存在（重复）
+            // 避免 exists + setex 两步操作之间的 TOCTOU 竞态
+            $claimed = $redis->set($key, time(), ['nx' => true, 'ex' => 86400]);
+            if ($claimed !== false && $claimed !== null) {
+                // 首次：占位成功，非重复批次
+                return false;
+            }
+
+            // key 已存在：重复批次
+            self::log()->info('[积分] 重复 batch_id，跳过', ['batch_id' => $batchId]);
+            return true;
         } catch (\Throwable $e) {
             self::log()->error('[积分] 去重检查异常，放行', [
                 'batch_id' => $batchId,

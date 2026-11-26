@@ -364,10 +364,10 @@ class WalletService
         $amountInCents = (int)round($amount * 100);
 
         try {
-            // Cold-start protection: if key doesn't exist, load from DB
+            // Cold-start protection: load from DB only when absent, setnx 保证原子性避免 TOCTOU
             if (!Redis::exists($cacheKey)) {
                 $dbBalance = self::getBalanceFromDB($playerId, 1);
-                Redis::set($cacheKey, (int)round($dbBalance * 100));
+                Redis::setnx($cacheKey, (int)round($dbBalance * 100));
             }
 
             // 使用整数化的 LUA_ATOMIC_DECREMENT 脚本
@@ -455,10 +455,10 @@ class WalletService
         $amountInCents = (int)round($amount * 100);
 
         try {
-            // Cold-start protection: if key doesn't exist, load from DB
+            // Cold-start protection: load from DB only when absent, setnx 保证原子性避免 TOCTOU
             if (!Redis::exists($cacheKey)) {
                 $dbBalance = self::getBalanceFromDB($playerId, 1);
-                Redis::set($cacheKey, (int)round($dbBalance * 100));
+                Redis::setnx($cacheKey, (int)round($dbBalance * 100));
             }
 
             // 使用整数化的 LUA_ATOMIC_INCREMENT 脚本
@@ -1003,10 +1003,10 @@ LUA;
         try {
             $cacheKey = self::getCacheKey($playerId);
 
-            // Cold-start protection: if key doesn't exist, load from DB
+            // Cold-start protection: load from DB only when absent, setnx 保证原子性避免 TOCTOU
             if (!Redis::exists($cacheKey)) {
                 $dbBalance = self::getBalanceFromDB($playerId, 1);
-                Redis::set($cacheKey, (int)round($dbBalance * 100));
+                Redis::setnx($cacheKey, (int)round($dbBalance * 100));
             }
 
             // 🔧 转换为"分"（整数）
@@ -1090,10 +1090,10 @@ LUA;
         try {
             $cacheKey = self::getCacheKey($playerId);
 
-            // Cold-start protection: if key doesn't exist, load from DB
+            // Cold-start protection: load from DB only when absent, setnx 保证原子性避免 TOCTOU
             if (!Redis::exists($cacheKey)) {
                 $dbBalance = self::getBalanceFromDB($playerId, 1);
-                Redis::set($cacheKey, (int)round($dbBalance * 100));
+                Redis::setnx($cacheKey, (int)round($dbBalance * 100));
             }
 
             // 🔧 转换为"分"（整数）
